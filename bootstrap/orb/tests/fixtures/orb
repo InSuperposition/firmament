@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$ORB_TEST_ROOT/calls"
+case "$*" in
+'list --format json')
+  if [[ -f "$ORB_TEST_ROOT/list-error" ]]; then
+    echo 'OrbStack unavailable' >&2
+    exit 12
+  fi
+  if [[ -f "$ORB_TEST_ROOT/bad-list" ]]; then
+    echo '{}'
+  elif [[ -f "$ORB_TEST_ROOT/machine.json" ]]; then
+    jq '[.record]' "$ORB_TEST_ROOT/machine.json"
+  else
+    echo '[]'
+  fi
+  ;;
+'info firmament --format json')
+  cat "$ORB_TEST_ROOT/machine.json"
+  ;;
+'create --arch arm64 --cpus 4 --memory 8192M --disk 40G ubuntu:resolute firmament')
+  [[ ! -f "$ORB_TEST_ROOT/create-error" ]] || exit 13
+  cp "$ORB_TEST_FIXTURE" "$ORB_TEST_ROOT/machine.json"
+  ;;
+*)
+  echo "Unexpected OrbStack command: $*" >&2
+  exit 99
+  ;;
+esac

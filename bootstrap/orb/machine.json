@@ -1,0 +1,11 @@
+{
+  "name": "firmament",
+  "image": {
+    "distro": "ubuntu",
+    "version": "resolute",
+    "arch": "arm64"
+  },
+  "cpus": 4,
+  "memory_mib": 8192,
+  "disk_gib": 40
+}

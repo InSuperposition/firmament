@@ -1,0 +1,46 @@
+[settings]
+lockfile = true
+
+[tools]
+bats = "1.14.0"
+hk = "2.0.1"
+jq = "1.8.2"
+shellcheck = "0.11.0"
+shfmt = "3.14.1"
+
+[tasks."orb:inspect"]
+description = "Inspect the configured OrbStack machine without changing it"
+run = 'orb info "$(jq -er .name bootstrap/orb/machine.json)" --format json'
+
+[tasks."bootstrap:orb"]
+description = "Create or validate the dedicated OrbStack machine"
+run = 'bash "bootstrap/orb/scripts/bootstrap:orb.sh"'
+
+[tasks."orb:adopt"]
+description = "Explicitly adopt the validated existing OrbStack machine"
+run = 'bash "bootstrap/orb/scripts/orb:adopt.sh"'
+
+[tasks."orb:shellcheck"]
+description = "Check OrbStack shell scripts"
+run = "shellcheck bootstrap/orb/scripts/*.sh bootstrap/orb/tests/fixtures/orb"
+
+[tasks."orb:lint"]
+description = "Check OrbStack scripts and machine configuration"
+run = [
+  { task = "orb:shellcheck" },
+  "shfmt -d -i 2 bootstrap/orb/scripts/*.sh bootstrap/orb/tests/setup.bash bootstrap/orb/tests/fixtures/orb",
+  "shfmt -d -i 2 -ln bats bootstrap/orb/tests/*.bats",
+  "jq -e -L bootstrap/orb 'include \"machine-schema\"; valid_target' bootstrap/orb/machine.json",
+]
+
+[tasks."orb:test"]
+description = "Test OrbStack creation and adoption without a live VM"
+run = "bats bootstrap/orb/tests/*.bats"
+
+[tasks.check]
+description = "Run all off-cluster checks"
+run = [{ task = "orb:lint" }, { task = "orb:test" }]
+
+[tasks."hooks:install"]
+description = "Install repository Git hooks through mise"
+run = "hk install --mise"

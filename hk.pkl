@@ -1,0 +1,18 @@
+amends "package://github.com/jdx/hk/releases/download/v2.0.1/hk@2.0.1#/Config.pkl"
+
+steps {
+  ["shellcheck"] {
+    check = "mise run orb:shellcheck"
+  }
+  ["bats"] {
+    check = "mise run orb:test"
+  }
+}
+
+hooks {
+  ["pre-commit"] {
+    fix = false
+    stage = false
+    stash = "git"
+  }
+}
