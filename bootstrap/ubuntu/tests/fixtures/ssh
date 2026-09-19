@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -f "$BATS_TEST_ROOT/ssh-error" ]]; then
+  printf '%s\n' 'connection failed' >&2
+  exit 255
+fi
+if [[ -f "$BATS_TEST_ROOT/ubuntu-24" ]]; then
+  printf '%s\n' 'id=ubuntu' 'version_id=24.04' 'arch=aarch64' 'kernel=7.0.14' 'init=systemd' 'cgroup=cgroup2fs' 'btf=present' 'sudo=available' 'command_curl=present' 'command_systemctl=present'
+elif [[ -f "$BATS_TEST_ROOT/no-btf" ]]; then
+  printf '%s\n' 'id=ubuntu' 'version_id=26.04' 'arch=aarch64' 'kernel=7.0.14' 'init=systemd' 'cgroup=cgroup2fs' 'btf=missing' 'sudo=available' 'command_curl=present' 'command_systemctl=present'
+else
+  printf '%s\n' 'id=ubuntu' 'version_id=26.04' 'arch=aarch64' 'kernel=7.0.14' 'init=systemd' 'cgroup=cgroup2fs' 'btf=present' 'sudo=available' 'command_curl=present' 'command_systemctl=present'
+fi

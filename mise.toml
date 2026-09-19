@@ -16,6 +16,10 @@ run = 'orb info "$(jq -er .name bootstrap/orb/machine.json)" --format json'
 description = "Create or validate the dedicated OrbStack machine"
 run = 'bash "bootstrap/orb/scripts/bootstrap:orb.sh"'
 
+[tasks."bootstrap:ubuntu"]
+description = "Verify the selected Ubuntu host before k0s provisioning"
+run = 'bash "bootstrap/ubuntu/scripts/bootstrap:ubuntu.sh"'
+
 [tasks."orb:adopt"]
 description = "Explicitly adopt the validated existing OrbStack machine"
 run = 'bash "bootstrap/orb/scripts/orb:adopt.sh"'
@@ -39,7 +43,14 @@ run = "bats bootstrap/orb/tests/*.bats"
 
 [tasks.check]
 description = "Run all off-cluster checks"
-run = [{ task = "orb:lint" }, { task = "orb:test" }]
+run = [
+  { task = "orb:lint" },
+  { task = "orb:test" },
+  "shellcheck bootstrap/ubuntu/scripts/*.sh",
+  "shfmt -d -i 2 bootstrap/ubuntu/scripts/*.sh bootstrap/ubuntu/tests/setup.bash bootstrap/ubuntu/tests/fixtures/ssh",
+  "shfmt -d -i 2 -ln bats bootstrap/ubuntu/tests/*.bats",
+  "bats bootstrap/ubuntu/tests/*.bats",
+]
 
 [tasks."hooks:install"]
 description = "Install repository Git hooks through mise"
