@@ -5,8 +5,11 @@ lockfile = true
 bats = "1.14.0"
 hk = "2.0.1"
 jq = "1.8.2"
+k0sctl = "0.33.0"
+kubectl = "1.36.4"
 shellcheck = "0.11.0"
 shfmt = "3.14.1"
+yq = "4.53.6"
 
 [tasks."orb:inspect"]
 description = "Inspect the configured OrbStack machine without changing it"
@@ -19,6 +22,30 @@ run = 'bash "bootstrap/orb/scripts/bootstrap:orb.sh"'
 [tasks."bootstrap:ubuntu"]
 description = "Verify the selected Ubuntu host before k0s provisioning"
 run = 'bash "bootstrap/ubuntu/scripts/bootstrap:ubuntu.sh"'
+
+[tasks."k0s:render"]
+description = "Render the declarative k0sctl contract for the selected host"
+run = 'bash "bootstrap/k0s/scripts/bootstrap:k0s.sh" render'
+
+[tasks."k0s:dry-run"]
+description = "Dry-run the rendered k0sctl configuration"
+run = 'bash "bootstrap/k0s/scripts/bootstrap:k0s.sh" dry-run'
+
+[tasks."k0s:apply"]
+description = "Apply the rendered k0sctl configuration and retrieve kubeconfig"
+run = 'bash "bootstrap/k0s/scripts/bootstrap:k0s.sh" apply'
+
+[tasks."k0s:test"]
+description = "Check the nodes in the applied k0s cluster"
+run = 'state="${FIRMAMENT_K0S_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/k0s}"; kubectl --kubeconfig "${FIRMAMENT_K0S_KUBECONFIG:-$state/admin.kubeconfig}" get nodes --request-timeout=30s'
+
+[tasks."bootstrap:k0s"]
+description = "Verify Ubuntu, dry-run, and apply the first k0s cluster"
+run = [
+  { task = "bootstrap:ubuntu" },
+  { task = "k0s:dry-run" },
+  { task = "k0s:apply" },
+]
 
 [tasks."orb:adopt"]
 description = "Explicitly adopt the validated existing OrbStack machine"
@@ -41,15 +68,26 @@ run = [
 description = "Test OrbStack creation and adoption without a live VM"
 run = "bats bootstrap/orb/tests/*.bats"
 
+[tasks."check:shellcheck"]
+description = "Check all repository shell scripts"
+run = "shellcheck bootstrap/orb/scripts/*.sh bootstrap/orb/tests/fixtures/orb bootstrap/ubuntu/scripts/*.sh bootstrap/ubuntu/tests/fixtures/ssh bootstrap/k0s/scripts/*.sh"
+
+[tasks."check:bats"]
+description = "Run all repository shell tests"
+run = "bats bootstrap/orb/tests/*.bats bootstrap/ubuntu/tests/*.bats bootstrap/k0s/tests/*.bats"
+
 [tasks.check]
 description = "Run all off-cluster checks"
 run = [
   { task = "orb:lint" },
-  { task = "orb:test" },
   "shellcheck bootstrap/ubuntu/scripts/*.sh",
   "shfmt -d -i 2 bootstrap/ubuntu/scripts/*.sh bootstrap/ubuntu/tests/setup.bash bootstrap/ubuntu/tests/fixtures/ssh",
   "shfmt -d -i 2 -ln bats bootstrap/ubuntu/tests/*.bats",
-  "bats bootstrap/ubuntu/tests/*.bats",
+  { task = "check:shellcheck" },
+  "shfmt -d -i 2 bootstrap/k0s/scripts/*.sh bootstrap/k0s/tests/setup.bash",
+  "shfmt -d -i 2 -ln bats bootstrap/k0s/tests/*.bats",
+  "yq -e '.' bootstrap/k0s/k0sctl.yaml >/dev/null",
+  { task = "check:bats" },
 ]
 
 [tasks."hooks:install"]

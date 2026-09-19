@@ -2,10 +2,10 @@ amends "package://github.com/jdx/hk/releases/download/v2.0.1/hk@2.0.1#/Config.pk
 
 steps {
   ["shellcheck"] {
-    check = "mise run orb:shellcheck"
+    check = "mise run check:shellcheck"
   }
   ["bats"] {
-    check = "mise run orb:test"
+    check = "mise run check:bats"
   }
 }
 

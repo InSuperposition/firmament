@@ -116,6 +116,52 @@ url = "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-windows-amd64.
 url_api = "https://api.github.com/repos/jqlang/jq/releases/assets/453012788"
 provenance = "github-attestations"
 
+[[tools.k0sctl]]
+version = "0.33.0"
+backend = "aqua:k0sproject/k0sctl"
+specifiers = ["0.33.0"]
+
+[tools.k0sctl."platforms.linux-arm64"]
+checksum = "sha256:d8a371d20d7a0f0251e937b5735d6437e0b38814d19e0c421d4d736fb72632b2"
+url = "https://github.com/k0sproject/k0sctl/releases/download/v0.33.0/k0sctl-linux-arm64"
+url_api = "https://api.github.com/repos/k0sproject/k0sctl/releases/assets/557337722"
+
+[tools.k0sctl."platforms.linux-x64"]
+checksum = "sha256:031f5cc3fb794028f82954b9e47b4061c484efc880bfa70371111b5d100d41d3"
+url = "https://github.com/k0sproject/k0sctl/releases/download/v0.33.0/k0sctl-linux-amd64"
+url_api = "https://api.github.com/repos/k0sproject/k0sctl/releases/assets/557337718"
+
+[tools.k0sctl."platforms.macos-arm64"]
+checksum = "sha256:29fb473a9f7e87bc3f48883e2536c18b6fc1980bfea0fb9bf5d7dc25f9ea4c42"
+url = "https://github.com/k0sproject/k0sctl/releases/download/v0.33.0/k0sctl-darwin-arm64"
+url_api = "https://api.github.com/repos/k0sproject/k0sctl/releases/assets/557337724"
+
+[tools.k0sctl."platforms.macos-x64"]
+checksum = "sha256:75ed97721cf45527673e57af87c8fe76d48909c4dd945b58070908f3a2e32402"
+url = "https://github.com/k0sproject/k0sctl/releases/download/v0.33.0/k0sctl-darwin-amd64"
+url_api = "https://api.github.com/repos/k0sproject/k0sctl/releases/assets/557337726"
+
+[[tools.kubectl]]
+version = "1.36.4"
+backend = "aqua:kubernetes/kubernetes/kubectl"
+specifiers = ["1.36.4"]
+
+[tools.kubectl."platforms.linux-arm64"]
+checksum = "sha256:0ecf44450ee6063bf19dd166a103ee6df4a9034455c2abce626e6eea657d73fb"
+url = "https://dl.k8s.io/v1.36.4/bin/linux/arm64/kubectl"
+
+[tools.kubectl."platforms.linux-x64"]
+checksum = "sha256:8b8f088da2dab964f853b38464033b1be15ede2839eca751482357c45abdd05a"
+url = "https://dl.k8s.io/v1.36.4/bin/linux/amd64/kubectl"
+
+[tools.kubectl."platforms.macos-arm64"]
+checksum = "sha256:c9e4f713d6fee0043a3d835cca13077cda2bc0973840eb9779360df0b5bdfc69"
+url = "https://dl.k8s.io/v1.36.4/bin/darwin/arm64/kubectl"
+
+[tools.kubectl."platforms.macos-x64"]
+checksum = "sha256:71a3aa7c2ee2c974d9fbb462cba0c5c04a4df2e8d85eee94714fd819ea3c4e63"
+url = "https://dl.k8s.io/v1.36.4/bin/darwin/amd64/kubectl"
+
 [[tools.shellcheck]]
 version = "0.11.0"
 backend = "aqua:koalaman/shellcheck"
@@ -195,3 +241,32 @@ url_api = "https://api.github.com/repos/mvdan/sh/releases/assets/547320946"
 checksum = "sha256:13629ce28442ca80b6b5a819f7574ab39e1c28c6e26734ca816c9714e04851df"
 url = "https://github.com/mvdan/sh/releases/download/v3.14.1/shfmt_v3.14.1_windows_amd64.exe"
 url_api = "https://api.github.com/repos/mvdan/sh/releases/assets/547320827"
+
+[[tools.yq]]
+version = "4.53.6"
+backend = "aqua:mikefarah/yq"
+specifiers = ["4.53.6"]
+
+[tools.yq."platforms.linux-arm64"]
+checksum = "sha256:88a1016bc1d657375a35864e4f44b6f333df8ff97b559f51bba0adcb2169df09"
+url = "https://github.com/mikefarah/yq/releases/download/v4.53.6/yq_linux_arm64"
+url_api = "https://api.github.com/repos/mikefarah/yq/releases/assets/522028007"
+provenance = "cosign"
+
+[tools.yq."platforms.linux-x64"]
+checksum = "sha256:c5f056448f973ae7d39b5401949648a78f2dc1947d6a8eb65be60d5c504b9385"
+url = "https://github.com/mikefarah/yq/releases/download/v4.53.6/yq_linux_amd64"
+url_api = "https://api.github.com/repos/mikefarah/yq/releases/assets/522028022"
+provenance = "cosign"
+
+[tools.yq."platforms.macos-arm64"]
+checksum = "sha256:cceb0b8d71ea5294334121f8429f33f92b920e7217d904a2f9f35443968ac424"
+url = "https://github.com/mikefarah/yq/releases/download/v4.53.6/yq_darwin_arm64"
+url_api = "https://api.github.com/repos/mikefarah/yq/releases/assets/522028033"
+provenance = "cosign"
+
+[tools.yq."platforms.macos-x64"]
+checksum = "sha256:caa513cb04f3804b34d4752f0e0d7904fecb9e7cf1d34081289f83259319a7f6"
+url = "https://github.com/mikefarah/yq/releases/download/v4.53.6/yq_darwin_amd64"
+url_api = "https://api.github.com/repos/mikefarah/yq/releases/assets/522028031"
+provenance = "cosign"
