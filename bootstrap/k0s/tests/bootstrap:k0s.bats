@@ -1,45 +1,54 @@
 #!/usr/bin/env bats
 load setup.bash
 
-@test "renders connection values into the native k0sctl contract" {
-  run bash "$script" render
+resource_after() {
+  plan_json | jq -c '.resource_changes[] | select(.address == "k0sctl_config.firmament") | .change.after'
+}
+
+@test "plans connection values from the environment" {
+  run resource_after
   [ "$status" -eq 0 ]
-  [ "$output" = "$(rendered_config)" ]
-  [ "$(yq -r '.spec.hosts[0].ssh.address' "$(rendered_config)")" = 127.0.0.1 ]
-  [ "$(yq -r '.spec.hosts[0].ssh.user' "$(rendered_config)")" = 'developer@firmament' ]
-  [ "$(yq -r '.spec.hosts[0].ssh.port' "$(rendered_config)")" = 32222 ]
-  [ "$(yq -r '.spec.hosts[0].ssh.keyPath' "$(rendered_config)")" = /tmp/orbstack-test-key ]
-  [ "$(yq -r '.spec.k0s.config.spec.api.externalAddress' "$(rendered_config)")" = firmament.orb.local ]
+  [ "$(jq -r '.spec.host[0].ssh[0].address' <<<"$output")" = 127.0.0.1 ]
+  [ "$(jq -r '.spec.host[0].ssh[0].user' <<<"$output")" = 'developer@firmament' ]
+  [ "$(jq -r '.spec.host[0].ssh[0].port' <<<"$output")" = 32222 ]
+  [ "$(jq -r '.spec.host[0].ssh[0].key_path' <<<"$output")" = /tmp/orbstack-test-key ]
+  [ "$(jq -r '.spec.k0s.config' <<<"$output" | yq -r '.spec.api.externalAddress')" = firmament.orb.local ]
 }
 
 @test "preserves the declarative cluster contract" {
-  run bash "$script" render
+  run resource_after
   [ "$status" -eq 0 ]
-  [ "$(yq -r '.spec.hosts[0].role' "$(rendered_config)")" = 'controller+worker' ]
-  [ "$(yq -r '.spec.k0s.version' "$(rendered_config)")" = '1.36.4+k0s.0' ]
-  [ "$(yq -r '.spec.k0s.config.spec.network.provider' "$(rendered_config)")" = custom ]
-  [ "$(yq -r '.spec.k0s.config.spec.network.podCIDR' "$(rendered_config)")" = 10.244.0.0/16 ]
-  [ "$(yq -r '.spec.k0s.config.spec.network.serviceCIDR' "$(rendered_config)")" = 10.96.0.0/12 ]
-  [ "$(yq -r '.spec.k0s.config.spec.network.kubeProxy.disabled' "$(rendered_config)")" = true ]
+  [ "$(jq -r '.spec.host[0].role' <<<"$output")" = 'controller+worker' ]
+  [ "$(jq -r '.spec.host[0].no_taints' <<<"$output")" = true ]
+  [ "$(jq -r '.spec.k0s.version' <<<"$output")" = '1.36.4+k0s.0' ]
+  config=$(jq -r '.spec.k0s.config' <<<"$output")
+  [ "$(yq -r '.spec.network.provider' <<<"$config")" = custom ]
+  [ "$(yq -r '.spec.network.podCIDR' <<<"$config")" = 10.244.0.0/16 ]
+  [ "$(yq -r '.spec.network.serviceCIDR' <<<"$config")" = 10.96.0.0/12 ]
+  [ "$(yq -r '.spec.network.kubeProxy.disabled' <<<"$config")" = true ]
 }
 
 @test "requires every connection input" {
   unset FIRMAMENT_K0S_SSH_KEY
-  run bash "$script" render
+  run tofu -chdir="$k0s_directory" plan -input=false \
+    -var="ssh_address=$FIRMAMENT_K0S_SSH_ADDRESS" \
+    -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
+    -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
+    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" \
+    -var="state_directory=$BATS_TEST_ROOT"
   [ "$status" -eq 1 ]
-  [[ "$output" == *FIRMAMENT_K0S_SSH_KEY* ]]
+  [[ "$output" == *ssh_key_path* ]]
 }
 
 @test "rejects unsafe connection values" {
   export FIRMAMENT_K0S_SSH_ADDRESS='host with spaces'
-  run bash "$script" render
+  run tofu -chdir="$k0s_directory" plan -input=false \
+    -var="ssh_address=$FIRMAMENT_K0S_SSH_ADDRESS" \
+    -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
+    -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
+    -var="ssh_key_path=$FIRMAMENT_K0S_SSH_KEY" \
+    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" \
+    -var="state_directory=$BATS_TEST_ROOT"
   [ "$status" -eq 1 ]
   [[ "$output" == *'invalid SSH address'* ]]
-}
-
-@test "does not leave a rendered file after a failed mode" {
-  export FIRMAMENT_K0S_API_ADDRESS=''
-  run bash "$script" render
-  [ "$status" -eq 1 ]
-  [ ! -e "$(rendered_config)" ]
 }

@@ -7,6 +7,9 @@ steps {
   ["bats"] {
     check = "mise run check:bats"
   }
+  ["tofu"] {
+    check = "mise run k0s:fmt && mise run k0s:validate"
+  }
 }
 
 hooks {

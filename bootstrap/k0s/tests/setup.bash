@@ -5,12 +5,23 @@ setup() {
   export FIRMAMENT_K0S_SSH_PORT=32222
   export FIRMAMENT_K0S_SSH_KEY=/tmp/orbstack-test-key
   export FIRMAMENT_K0S_API_ADDRESS=firmament.orb.local
-  export FIRMAMENT_K0S_STATE_DIRECTORY="$BATS_TEST_ROOT/state"
-  export PATH="$BATS_TEST_DIRNAME/fixtures:$PATH"
   mkdir -p "$BATS_TEST_ROOT"
-  script="$BATS_TEST_DIRNAME/../scripts/bootstrap:k0s.sh"
+
+  root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../.." && pwd)
+  k0s_directory="$root_directory/bootstrap/k0s"
+
+  tofu -chdir="$k0s_directory" init -input=false -reconfigure \
+    -backend-config="path=$BATS_TEST_ROOT/terraform.tfstate" >/dev/null
 }
 
-rendered_config() {
-  printf '%s/k0sctl.rendered.yaml\n' "$FIRMAMENT_K0S_STATE_DIRECTORY"
+plan_json() {
+  local plan="$BATS_TEST_ROOT/plan.tfplan"
+  tofu -chdir="$k0s_directory" plan -input=false -out="$plan" \
+    -var="ssh_address=$FIRMAMENT_K0S_SSH_ADDRESS" \
+    -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
+    -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
+    -var="ssh_key_path=$FIRMAMENT_K0S_SSH_KEY" \
+    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" \
+    -var="state_directory=$BATS_TEST_ROOT" >/dev/null
+  tofu -chdir="$k0s_directory" show -json "$plan"
 }

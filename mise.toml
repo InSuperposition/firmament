@@ -1,12 +1,15 @@
 [settings]
 lockfile = true
 
+[env]
+KUBECONFIG = "{{ get_env(name='FIRMAMENT_K0S_STATE_DIRECTORY', default=get_env(name='XDG_STATE_HOME', default=env.HOME ~ '/.local/state') ~ '/firmament/targets/firmament/k0s') }}/admin.kubeconfig"
+
 [tools]
 bats = "1.14.0"
 hk = "2.0.1"
 jq = "1.8.2"
-k0sctl = "0.33.0"
 kubectl = "1.36.4"
+opentofu = "1.12.6"
 shellcheck = "0.11.0"
 shfmt = "3.14.1"
 yq = "4.53.6"
@@ -23,17 +26,32 @@ run = 'bash "bootstrap/orb/scripts/bootstrap:orb.sh"'
 description = "Verify the selected Ubuntu host before k0s provisioning"
 run = 'bash "bootstrap/ubuntu/scripts/bootstrap:ubuntu.sh"'
 
-[tasks."k0s:render"]
-description = "Render the declarative k0sctl contract for the selected host"
-run = 'bash "bootstrap/k0s/scripts/bootstrap:k0s.sh" render'
+[tasks."k0s:init"]
+description = "Initialize the k0s OpenTofu backend against the local state directory"
+run = '''
+dir="${FIRMAMENT_K0S_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/k0s}"
+mkdir -p "$dir"
+tofu -chdir=bootstrap/k0s init -input=false -reconfigure -backend-config="path=$dir/terraform.tfstate"
+'''
 
 [tasks."k0s:dry-run"]
-description = "Dry-run the rendered k0sctl configuration"
-run = 'bash "bootstrap/k0s/scripts/bootstrap:k0s.sh" dry-run'
+description = "Plan the k0sctl_config resource against the selected host"
+depends = ["k0s:init"]
+run = '''
+dir="${FIRMAMENT_K0S_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/k0s}"
+export TF_VAR_ssh_address="$FIRMAMENT_K0S_SSH_ADDRESS" TF_VAR_ssh_user="$FIRMAMENT_K0S_SSH_USER" TF_VAR_ssh_port="$FIRMAMENT_K0S_SSH_PORT" TF_VAR_ssh_key_path="$FIRMAMENT_K0S_SSH_KEY" TF_VAR_api_address="$FIRMAMENT_K0S_API_ADDRESS" TF_VAR_state_directory="$dir"
+tofu -chdir=bootstrap/k0s plan -input=false
+'''
 
 [tasks."k0s:apply"]
-description = "Apply the rendered k0sctl configuration and retrieve kubeconfig"
-run = 'bash "bootstrap/k0s/scripts/bootstrap:k0s.sh" apply'
+description = "Apply the k0sctl_config resource and retrieve kubeconfig"
+depends = ["k0s:init"]
+run = '''
+dir="${FIRMAMENT_K0S_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/k0s}"
+export TF_VAR_ssh_address="$FIRMAMENT_K0S_SSH_ADDRESS" TF_VAR_ssh_user="$FIRMAMENT_K0S_SSH_USER" TF_VAR_ssh_port="$FIRMAMENT_K0S_SSH_PORT" TF_VAR_ssh_key_path="$FIRMAMENT_K0S_SSH_KEY" TF_VAR_api_address="$FIRMAMENT_K0S_API_ADDRESS" TF_VAR_state_directory="$dir"
+tofu -chdir=bootstrap/k0s apply -input=false -auto-approve
+kubectl --kubeconfig "$dir/admin.kubeconfig" get nodes --request-timeout=30s
+'''
 
 [tasks."k0s:test"]
 description = "Check the nodes in the applied k0s cluster"
@@ -70,7 +88,18 @@ run = "bats bootstrap/orb/tests/*.bats"
 
 [tasks."check:shellcheck"]
 description = "Check all repository shell scripts"
-run = "shellcheck bootstrap/orb/scripts/*.sh bootstrap/orb/tests/fixtures/orb bootstrap/ubuntu/scripts/*.sh bootstrap/ubuntu/tests/fixtures/ssh bootstrap/k0s/scripts/*.sh"
+run = "shellcheck bootstrap/orb/scripts/*.sh bootstrap/orb/tests/fixtures/orb bootstrap/ubuntu/scripts/*.sh bootstrap/ubuntu/tests/fixtures/ssh"
+
+[tasks."k0s:fmt"]
+description = "Check k0s OpenTofu formatting"
+run = "tofu -chdir=bootstrap/k0s fmt -check -recursive"
+
+[tasks."k0s:validate"]
+description = "Validate the k0s OpenTofu configuration"
+run = '''
+tofu -chdir=bootstrap/k0s init -backend=false -input=false -reconfigure >/dev/null
+tofu -chdir=bootstrap/k0s validate
+'''
 
 [tasks."check:bats"]
 description = "Run all repository shell tests"
@@ -84,9 +113,10 @@ run = [
   "shfmt -d -i 2 bootstrap/ubuntu/scripts/*.sh bootstrap/ubuntu/tests/setup.bash bootstrap/ubuntu/tests/fixtures/ssh",
   "shfmt -d -i 2 -ln bats bootstrap/ubuntu/tests/*.bats",
   { task = "check:shellcheck" },
-  "shfmt -d -i 2 bootstrap/k0s/scripts/*.sh bootstrap/k0s/tests/setup.bash",
+  "shfmt -d -i 2 bootstrap/k0s/tests/setup.bash",
   "shfmt -d -i 2 -ln bats bootstrap/k0s/tests/*.bats",
-  "yq -e '.' bootstrap/k0s/k0sctl.yaml >/dev/null",
+  { task = "k0s:fmt" },
+  { task = "k0s:validate" },
   { task = "check:bats" },
 ]
 
