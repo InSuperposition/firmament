@@ -50,6 +50,30 @@ resource_after() {
   done
 }
 
+@test "rejects changing kube_proxy_replacement after cluster creation" {
+  local state="$BATS_TEST_ROOT/terraform.tfstate"
+  tofu -chdir="$k0s_directory" apply -input=false -auto-approve -state="$state" \
+    -target=terraform_data.kube_proxy_replacement_at_creation \
+    -var="ssh_address=$FIRMAMENT_K0S_SSH_ADDRESS" \
+    -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
+    -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
+    -var="ssh_key_path=$FIRMAMENT_K0S_SSH_KEY" \
+    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" >/dev/null
+
+  run plan_json -state="$state"
+  [ "$status" -eq 0 ]
+
+  run tofu -chdir="$k0s_directory" plan -input=false -state="$state" \
+    -var="ssh_address=$FIRMAMENT_K0S_SSH_ADDRESS" \
+    -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
+    -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
+    -var="ssh_key_path=$FIRMAMENT_K0S_SSH_KEY" \
+    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" \
+    -var='kube_proxy_replacement=false'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'kube_proxy_replacement is fixed at cluster creation'* ]]
+}
+
 @test "renders no extensions without Helm charts" {
   run cluster_config
   [ "$status" -eq 0 ]
@@ -88,6 +112,7 @@ JSON
   [ "$(yq -r '.spec.extensions.helm.charts[0].version' <<<"$output")" = 1.2.3 ]
   [ "$(yq -r '.spec.extensions.helm.charts[0].namespace' <<<"$output")" = kube-system ]
   [ "$(yq -r '.spec.extensions.helm.charts[0].values' <<<"$output" | yq -r '.replicas')" = 1 ]
+  [ "$(yq -r '.spec.extensions.helm.charts[0].forceUpgrade' <<<"$output")" = true ]
 }
 
 @test "shares one repository between charts that come from it" {
@@ -138,6 +163,54 @@ JSON
     -var-file="$BATS_TEST_ROOT/charts.tfvars.json"
   [ "$status" -eq 1 ]
   [[ "$output" == *'each Helm repository name must point at one URL'* ]]
+}
+
+@test "rejects two Helm charts with the same name" {
+  cat >"$BATS_TEST_ROOT/charts.tfvars.json" <<'JSON'
+{
+  "helm_charts": [
+    {
+      "repository": { "name": "example", "url": "https://charts.example.com" },
+      "chart": { "name": "demo", "chartname": "example/demo", "version": "1.0.0", "namespace": "kube-system", "values": "" }
+    },
+    {
+      "repository": { "name": "example", "url": "https://charts.example.com" },
+      "chart": { "name": "demo", "chartname": "example/demo", "version": "1.0.0", "namespace": "default", "values": "" }
+    }
+  ]
+}
+JSON
+  run tofu -chdir="$k0s_directory" plan -input=false \
+    -var="ssh_address=$FIRMAMENT_K0S_SSH_ADDRESS" \
+    -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
+    -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
+    -var="ssh_key_path=$FIRMAMENT_K0S_SSH_KEY" \
+    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" \
+    -var-file="$BATS_TEST_ROOT/charts.tfvars.json"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'each Helm chart name must be unique'* ]]
+}
+
+@test "rejects Helm chart values that are not valid YAML" {
+  cat >"$BATS_TEST_ROOT/charts.tfvars.json" <<'JSON'
+{
+  "helm_charts": [
+    {
+      "repository": { "name": "example", "url": "https://charts.example.com" },
+      "chart": { "name": "demo", "chartname": "example/demo", "version": "1.0.0", "namespace": "kube-system", "values": "replicas: [1\n" }
+    }
+  ]
+}
+JSON
+  run tofu -chdir="$k0s_directory" plan -input=false \
+    -var="ssh_address=$FIRMAMENT_K0S_SSH_ADDRESS" \
+    -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
+    -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
+    -var="ssh_key_path=$FIRMAMENT_K0S_SSH_KEY" \
+    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" \
+    -var-file="$BATS_TEST_ROOT/charts.tfvars.json"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'values must be valid YAML'* ]]
 }
 
 @test "rejects a Helm chart without values" {

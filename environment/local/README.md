@@ -42,7 +42,13 @@ between the two modes for a single node (the only path is
 so changing it on a running cluster means `teardown:local` then
 `bootstrap:local`. It also selects Cilium's pod datapath: netkit with
 BPF masquerading when `true`, veth with iptables masquerading when
-`false`, since netkit requires kube-proxy replacement:
+`false`, since netkit requires kube-proxy replacement.
+
+`modules/orch-k0s` records the value when the cluster is created. Any
+plan with a different value fails with "kube_proxy_replacement is fixed
+at cluster creation" before anything reaches the cluster. On a cluster
+bootstrapped with `false`, pass the same `TF_VAR_kube_proxy_replacement`
+to every later `plan`, `k0s:*` or `bootstrap:local` run:
 
 ```sh
 mise run teardown:local

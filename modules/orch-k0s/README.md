@@ -10,8 +10,13 @@ over the target host — this module has no OrbStack-specific knowledge.
 (required, validated — see `variables.tf`), `cluster_name` (optional,
 default `firmament`), `api_port` (optional, default `6443`; rendered as
 `spec.api.port`), `kube_proxy_replacement` (optional, default `true`;
-fixed at cluster creation), `helm_charts` (optional, default `[]`; each
-item is a `repository` and a `chart`, as `modules/cni-cilium` outputs).
+fixed at cluster creation: the module records it in
+`terraform_data.kube_proxy_replacement_at_creation`, and a plan with a
+different value fails), `helm_charts` (optional, default `[]`; each
+item is a `repository` and a `chart`, as `modules/cni-cilium` outputs;
+`chart.forceUpgrade` is optional and defaults to `true`, as in k0s; chart
+names must be unique, a repository name must point at one URL, and
+`values` must be valid YAML).
 In this repo, [`environment/local`](../../environment/local/README.md)
 supplies all of these by deriving them from `module.vm_orb`'s outputs;
 against a non-OrbStack Ubuntu host, supply its real SSH endpoint and a

@@ -83,6 +83,8 @@ variable "helm_charts" {
       version   = string
       namespace = string
       values    = string
+      # k0s upgrades with --force unless this is false; --force recreates objects that cannot be replaced in place, such as Jobs.
+      forceUpgrade = optional(bool, true)
     })
   }))
   default     = []
@@ -91,5 +93,15 @@ variable "helm_charts" {
   validation {
     condition     = length(distinct([for helm_chart in var.helm_charts : helm_chart.repository.name])) == length(distinct([for helm_chart in var.helm_charts : helm_chart.repository]))
     error_message = "each Helm repository name must point at one URL."
+  }
+
+  validation {
+    condition     = length(distinct([for helm_chart in var.helm_charts : helm_chart.chart.name])) == length(var.helm_charts)
+    error_message = "each Helm chart name must be unique; k0s names the Chart resource and the release after it."
+  }
+
+  validation {
+    condition     = alltrue([for helm_chart in var.helm_charts : trimspace(helm_chart.chart.values) == "" || can(yamldecode(helm_chart.chart.values))])
+    error_message = "each Helm chart's values must be valid YAML."
   }
 }

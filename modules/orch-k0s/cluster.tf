@@ -33,9 +33,26 @@ locals {
   }
 }
 
+# Records kube_proxy_replacement when the cluster is created. ignore_changes keeps
+# that first value, so a later change is caught by the precondition below.
+resource "terraform_data" "kube_proxy_replacement_at_creation" {
+  input = var.kube_proxy_replacement
+
+  lifecycle {
+    ignore_changes = [input]
+  }
+}
+
 resource "k0sctl_config" "this" {
   metadata {
     name = var.cluster_name
+  }
+
+  lifecycle {
+    precondition {
+      condition     = terraform_data.kube_proxy_replacement_at_creation.output == var.kube_proxy_replacement
+      error_message = "kube_proxy_replacement is fixed at cluster creation; switching it in place breaks the pod network. Run teardown, then bootstrap with the new value."
+    }
   }
 
   spec {
