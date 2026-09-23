@@ -11,7 +11,7 @@ setup_stubs() {
   real_mise=$(command -v mise)
   stubs="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$stubs"
-  for tool in tofu cilium kubectl orb bats mise; do
+  for tool in tofu cilium kubectl chainsaw orb bats mise; do
     stub "$tool"
   done
   PATH="$stubs:$PATH"

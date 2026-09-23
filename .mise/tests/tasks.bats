@@ -103,6 +103,70 @@ run_task() {
   [ ! -e "$CALLS" ]
 }
 
+# Builds a stand-in repository with one chainsaw suite for environment "x":
+# the local suite, edited by the given yq expression. Uses the real chainsaw.
+edited_suite_repository() {
+  local repository suite=environment/x/tests/cluster/chainsaw-test.yaml
+  repository=$(make_repository "$suite")
+  yq "$1" "$root_directory/environment/local/tests/cluster/chainsaw-test.yaml" >"$repository/$suite"
+  rm "$stubs/chainsaw"
+  printf '%s\n' "$repository"
+}
+
+@test "chainsaw:lint accepts every environment's cluster suite" {
+  rm "$stubs/chainsaw"
+  run "$root_directory/.mise/tasks/chainsaw/lint.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "chainsaw:lint accepts diagnostics that only read the cluster on failure" {
+  MISE_PROJECT_ROOT=$(edited_suite_repository '.spec.steps[0].catch = [{"podLogs": {"selector": "k8s-app=cilium"}}, {"events": {}}]')
+  run "$root_directory/.mise/tasks/chainsaw/lint.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "chainsaw:lint rejects an operation that changes the cluster" {
+  MISE_PROJECT_ROOT=$(edited_suite_repository '.spec.steps[0].try[1] = {"update": .spec.steps[0].try[1].error}')
+  run "$root_directory/.mise/tasks/chainsaw/lint.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"try may not run update"* ]]
+}
+
+@test "chainsaw:lint rejects a namespace chainsaw would create" {
+  MISE_PROJECT_ROOT=$(edited_suite_repository '.spec.namespace = "e2e"')
+  run "$root_directory/.mise/tasks/chainsaw/lint.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"spec.namespace must be kube-system, not e2e"* ]]
+}
+
+@test "chainsaw:lint rejects a suite without a namespace" {
+  MISE_PROJECT_ROOT=$(edited_suite_repository 'del(.spec.namespace)')
+  run "$root_directory/.mise/tasks/chainsaw/lint.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"spec.namespace must be kube-system, not unset"* ]]
+}
+
+@test "chainsaw:lint rejects a script run on failure" {
+  MISE_PROJECT_ROOT=$(edited_suite_repository '.spec.steps[0].catch = [{"script": {"content": "kubectl get pods"}}]')
+  run "$root_directory/.mise/tasks/chainsaw/lint.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"catch and finally may not run script"* ]]
+}
+
+@test "chainsaw:lint rejects a step that pulls operations from elsewhere" {
+  MISE_PROJECT_ROOT=$(edited_suite_repository '.spec.steps[0] = {"name": "shared steps", "use": {"template": "steps.yaml"}}')
+  run "$root_directory/.mise/tasks/chainsaw/lint.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"step may not declare use"* ]]
+}
+
+@test "chainsaw:lint rejects a suite that is not a valid chainsaw test" {
+  MISE_PROJECT_ROOT=$(edited_suite_repository '.kind = "Tset"')
+  run "$root_directory/.mise/tasks/chainsaw/lint.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not a valid chainsaw test"* ]]
+}
+
 @test "lists mise.toml tasks in alphabetical order" {
   run bash -c "grep -oE '^\[tasks\.[^]]+\]' '$root_directory/mise.toml' | tr -d '\"[]'"
   [ "$status" -eq 0 ]
