@@ -32,8 +32,9 @@ was written, so make the check required only after it has run reliably.
 **Priority:** P2
 **Depends on:** None
 
-The next three items are one plan in three phases, in this order:
-1. `tofu test`: offline and deterministic.
+The next two items finish a three-phase plan, ordered from deterministic
+to destructive:
+1. `tofu test`: offline and deterministic (done; see Completed).
 2. chainsaw: live, read-only.
 3. `env:e2e`: live, destructive.
 
@@ -43,56 +44,6 @@ Each phase depends on the one before it. Each layer owns one concern:
 - chainsaw owns read-only Kubernetes resource state.
 - The `cilium` CLI owns Cilium health and its connectivity suite.
 - `env:e2e` only composes existing tasks.
-
-### Move plan-level module suites to `tofu test`
-
-**What:** Move the cni-cilium and orch-k0s suites from bats + jq + yq
-to `modules/<module>/tests/unit.tftest.hcl`. Run them with a new
-`tofu:test` file task, which joins `test` through `*:test`. For every
-directory holding `tests/*.tftest.hcl`, it runs
-`tofu init -backend=false` then `tofu test`.
-
-**Why:** The suites assert on plans. `tofu test` does that
-declaratively, without the shell that renders a plan and digs through
-its JSON. In a probe, orch-k0s ran in 1 s against 9 s for its bats suite.
-
-**Context:** A probe with OpenTofu 1.12.6 confirmed:
-- `command = plan` asserts on `yamldecode` of outputs and resource
-  attributes;
-- `expect_failures` works on variable validations and on resource
-  preconditions;
-- an `apply` run followed by a flipped-mode `plan` run tests the
-  orch-k0s creation guard without `-target` or a state file. Override
-  only `k0sctl_config` in that apply run, and keep the real provider
-  (offline at plan) for everything else.
-
-Rules for the move:
-- Map every bats scenario and assertion to a run block, one run per
-  input where a bats test loops.
-- Before deleting the bats files, flip one rendered value and one
-  validation bound per module and confirm both suites fail.
-- `expect_failures` accepts only custom conditions, so three tests that
-  assert OpenTofu's own diagnostics stay on bats, in
-  `tests/inputs.bats`:
-  - cni-cilium: a missing `kube_proxy_replacement`;
-  - orch-k0s: a missing `ssh_key_path`;
-  - orch-k0s: a Helm chart object without `values`.
-
-  `cilium:test` and `k0s:test` then run only those files.
-- These suites stay on bats:
-  - os-ubuntu, because of the probe.sh SSH fixture;
-  - vm-orb, because of the no-OrbStack-calls check on PATH;
-  - `environment/local/tests/integration.bats`. A root-level
-    `tofu test` cannot address resources inside nested modules, and
-    `module.orch_k0s.k0s_yaml` is unknown at plan. Moving the suite would
-    need a plan-known rendered-config output from orch-k0s. Add one only
-    when a real consumer needs it.
-- Add `**/*.tftest.hcl` to the hk pre-push `test` glob.
-<https://opentofu.org/docs/cli/commands/test/>
-
-**Effort:** M
-**Priority:** P2
-**Depends on:** None
 
 ### Adopt chainsaw for read-only cluster assertions
 
@@ -135,7 +86,7 @@ resource state as YAML assertions with retries and timeouts.
 
 **Effort:** M
 **Priority:** P2
-**Depends on:** The `tofu test` move above, so `test` is settled first.
+**Depends on:** None
 
 ### Add a live end-to-end test lane for an environment
 
@@ -273,6 +224,23 @@ still undecided.
 **Depends on:** A chosen target.
 
 ## Completed
+
+### Move plan-level module suites to `tofu test`
+
+Done on the `test/tofu-test-module-suites` branch:
+- `tofu:test` runs every `tests/*.tftest.hcl` offline and joins `test`.
+- cni-cilium (`unit.tftest.hcl`) and orch-k0s (`unit.tftest.hcl`, plus
+  `creation.tftest.hcl` for the creation-time kube-proxy guard) moved
+  off bats. A mutation check failed the same tests in both suites before
+  the bats files were deleted.
+- Three tests that assert OpenTofu's own errors stay on bats in
+  `tests/inputs.bats`, because `expect_failures` only matches custom
+  conditions.
+- os-ubuntu, vm-orb and `environment/local/tests/integration.bats` stay
+  on bats. The environment suite would need a plan-known rendered-config
+  output from orch-k0s, since a root-level `tofu test` cannot address
+  resources inside nested modules. Add that output only when a real
+  consumer needs it.
 
 ### Extract multi-line mise task shell into scripts
 
