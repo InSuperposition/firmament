@@ -28,6 +28,46 @@ resource_after() {
   [ "$(yq -r '.spec.network.kubeProxy.disabled' <<<"$config")" = true ]
 }
 
+@test "renders no extensions without Helm charts" {
+  run cluster_config
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.spec | has("extensions")' <<<"$output")" = false ]
+}
+
+@test "runs kube-proxy when the CNI does not replace it" {
+  run cluster_config -var='kube_proxy_replacement=false'
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.spec.network.kubeProxy.disabled' <<<"$output")" = false ]
+}
+
+@test "renders Helm charts into the k0s Helm extension" {
+  cat >"$BATS_TEST_ROOT/charts.tfvars.json" <<'JSON'
+{
+  "helm_charts": [
+    {
+      "repository": { "name": "example", "url": "https://charts.example.com" },
+      "chart": {
+        "name": "demo",
+        "chartname": "example/demo",
+        "version": "1.2.3",
+        "namespace": "kube-system",
+        "values": "replicas: 1\n"
+      }
+    }
+  ]
+}
+JSON
+  run cluster_config -var-file="$BATS_TEST_ROOT/charts.tfvars.json"
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.spec.extensions.helm.repositories[0].name' <<<"$output")" = example ]
+  [ "$(yq -r '.spec.extensions.helm.repositories[0].url' <<<"$output")" = https://charts.example.com ]
+  [ "$(yq -r '.spec.extensions.helm.charts[0].name' <<<"$output")" = demo ]
+  [ "$(yq -r '.spec.extensions.helm.charts[0].chartname' <<<"$output")" = example/demo ]
+  [ "$(yq -r '.spec.extensions.helm.charts[0].version' <<<"$output")" = 1.2.3 ]
+  [ "$(yq -r '.spec.extensions.helm.charts[0].namespace' <<<"$output")" = kube-system ]
+  [ "$(yq -r '.spec.extensions.helm.charts[0].values' <<<"$output" | yq -r '.replicas')" = 1 ]
+}
+
 @test "requires every connection input" {
   unset FIRMAMENT_K0S_SSH_KEY
   run tofu -chdir="$k0s_directory" plan -input=false \

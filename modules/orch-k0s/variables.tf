@@ -53,3 +53,27 @@ variable "api_address" {
     error_message = "invalid API address."
   }
 }
+
+variable "kube_proxy_replacement" {
+  type        = bool
+  default     = true
+  description = "Whether the CNI replaces kube-proxy, so k0s does not run it. Fixed at cluster creation."
+}
+
+variable "helm_charts" {
+  type = list(object({
+    repository = object({
+      name = string
+      url  = string
+    })
+    chart = object({
+      name      = string
+      chartname = string
+      version   = string
+      namespace = string
+      values    = string
+    })
+  }))
+  default     = []
+  description = "Helm charts k0s installs during cluster bring-up, each with the repository it comes from."
+}

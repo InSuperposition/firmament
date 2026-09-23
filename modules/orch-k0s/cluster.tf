@@ -5,18 +5,29 @@ locals {
     metadata = {
       name = var.cluster_name
     }
-    spec = {
-      api = {
-        externalAddress = var.api_address
-      }
-      network = {
-        provider    = "custom"
-        podCIDR     = "10.244.0.0/16"
-        serviceCIDR = "10.96.0.0/12"
-        kubeProxy = {
-          disabled = true
+    spec = merge(
+      {
+        api = {
+          externalAddress = var.api_address
         }
-      }
+        network = {
+          provider    = "custom"
+          podCIDR     = "10.244.0.0/16"
+          serviceCIDR = "10.96.0.0/12"
+          kubeProxy = {
+            disabled = var.kube_proxy_replacement
+          }
+        }
+      },
+      # k0s installs these charts itself and uninstalls any chart removed from this list.
+      { for key, extension in { extensions = local.helm_extension } : key => extension if length(var.helm_charts) > 0 },
+    )
+  }
+
+  helm_extension = {
+    helm = {
+      repositories = distinct([for helm_chart in var.helm_charts : helm_chart.repository])
+      charts       = [for helm_chart in var.helm_charts : helm_chart.chart]
     }
   }
 }
