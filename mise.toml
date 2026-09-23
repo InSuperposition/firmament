@@ -35,8 +35,8 @@ description = "Run every *:format task"
 depends = ["*:format"]
 
 [tasks."k0s:test"]
-description = "Test the orch-k0s module without a live host"
-run = "bats modules/orch-k0s/tests/unit.bats"
+description = "Check that the orch-k0s module requires its inputs, without a live host"
+run = "bats modules/orch-k0s/tests/inputs.bats"
 
 [tasks.lint]
 description = "Run every *:lint task; changes nothing"
