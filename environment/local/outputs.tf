@@ -18,3 +18,8 @@ output "k0s_yaml" {
 output "kubeconfig_path" {
   value = local_sensitive_file.kubeconfig.filename
 }
+
+output "kube_proxy_replacement" {
+  value       = var.kube_proxy_replacement
+  description = "Whether Cilium replaces kube-proxy in this cluster, as applied. The cluster suite reads it to know which mode to expect."
+}

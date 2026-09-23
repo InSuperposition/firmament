@@ -47,3 +47,12 @@ load setup.bash
   [ "$status" -eq 0 ]
   [ "$output" = /keys/id_ed25519 ]
 }
+
+@test "reports the kube-proxy mode it applies" {
+  run planned_output kube_proxy_replacement
+  [ "$status" -eq 0 ]
+  [ "$output" = true ]
+  run planned_output kube_proxy_replacement -var='kube_proxy_replacement=false'
+  [ "$status" -eq 0 ]
+  [ "$output" = false ]
+}

@@ -74,6 +74,16 @@ environment_kubeconfig() {
   environment_output "$1" kubeconfig_path
 }
 
+# Runs chainsaw against an environment's cluster. chainsaw has no kubeconfig
+# flag; it reads KUBECONFIG, set here from the path recorded in state.
+chainsaw_in_environment() {
+  local environment="$1"
+  shift
+  local kubeconfig
+  kubeconfig=$(environment_kubeconfig "$environment") || return
+  KUBECONFIG="$kubeconfig" chainsaw "$@"
+}
+
 # Prints one "<state> <chart>" line per k0s Helm chart, where state is:
 #   ready    k0s installed the current spec;
 #   pending  k0s has not yet reconciled the current spec;

@@ -103,6 +103,34 @@ run_task() {
   [ ! -e "$CALLS" ]
 }
 
+# Replaces the chainsaw stub with one that also records KUBECONFIG.
+record_chainsaw_kubeconfig() {
+  printf '#!/usr/bin/env bash\nprintf "chainsaw %%s | KUBECONFIG=%%s\\n" "$*" "$KUBECONFIG" >>"$CALLS"\n' >"$stubs/chainsaw"
+}
+
+@test "env:verify runs the cluster suite against the environment's kubeconfig, expecting the recorded mode" {
+  record_chainsaw_kubeconfig
+  KUBE_PROXY_REPLACEMENT=false run_task "$root_directory/.mise/tasks/env/verify.sh" local
+  [ "$status" -eq 0 ]
+  run grep '^chainsaw ' "$CALLS"
+  [ "$output" = "chainsaw test --test-dir $root_directory/environment/local/tests/cluster --set kubeProxyReplacement=false | KUBECONFIG=/state/admin.kubeconfig" ]
+}
+
+@test "env:verify refuses to guess the kube-proxy mode when state has none" {
+  KUBE_PROXY_REPLACEMENT= run_task "$root_directory/.mise/tasks/env/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"expected the kube_proxy_replacement output to be true or false, got ''"* ]]
+  ! grep -q '^chainsaw ' "$CALLS"
+}
+
+@test "env:verify fails for an environment without a cluster suite" {
+  MISE_PROJECT_ROOT=$(make_repository environment/bare/main.tf)
+  run_task "$root_directory/.mise/tasks/env/verify.sh" bare
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"environment 'bare' has no cluster suite at $MISE_PROJECT_ROOT/environment/bare/tests/cluster"* ]]
+  [ ! -e "$CALLS" ]
+}
+
 # Builds a stand-in repository with one chainsaw suite for environment "x":
 # the local suite, edited by the given yq expression. Uses the real chainsaw.
 edited_suite_repository() {

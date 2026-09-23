@@ -79,6 +79,7 @@ k0sctl reaches the machine with the SSH key OrbStack creates,
 | `mise run verify` | Run every `*:verify` task below, one at a time |
 | `mise run k0s:verify` | Wait for every node to be Ready, using the kubeconfig path recorded in state |
 | `mise run cilium:verify` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI, using the kubeconfig path recorded in state |
+| `mise run env:verify` | Run the read-only chainsaw suite in `tests/cluster` against the cluster: nodes Ready, and kube-proxy and the Cilium datapath matching the `kube_proxy_replacement` output recorded in state |
 | `mise run env:test` | Test that the modules are wired together (shared API address and port, kube-proxy setting, Cilium chart) against a plan in a temporary state, with no OrbStack calls |
 | `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests (slow, manual only) |
 
