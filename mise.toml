@@ -86,7 +86,7 @@ export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbsta
 tofu -chdir=environment/local destroy -input=false -auto-approve -target=module.vm_orb
 '''
 
-[tasks."orb:unit"]
+[tasks."orb:test:unit"]
 description = "Test the vm-orb module without a live VM"
 run = "bats modules/vm-orb/tests/*.bats"
 
@@ -99,7 +99,7 @@ export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbsta
 tofu -chdir=environment/local plan -input=false -target=module.os_ubuntu
 '''
 
-[tasks."ubuntu:unit"]
+[tasks."ubuntu:test:unit"]
 description = "Test the os-ubuntu module without a live host"
 run = "bats modules/os-ubuntu/tests/*.bats"
 
@@ -128,7 +128,7 @@ kubectl --kubeconfig "$dir/admin.kubeconfig" wait --for=condition=Ready node --a
 description = "Wait for every node in the applied k0s cluster to be Ready"
 run = 'dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"; kubectl --kubeconfig "$dir/admin.kubeconfig" wait --for=condition=Ready node --all --timeout=5m'
 
-[tasks."k0s:unit"]
+[tasks."k0s:test:unit"]
 description = "Test the orch-k0s module without a live host"
 run = "bats modules/orch-k0s/tests/*.bats"
 
@@ -140,7 +140,7 @@ run = "cilium status --wait"
 description = "Run the Cilium connectivity test suite against the live cluster (slow; deploys test workloads)"
 run = "cilium connectivity test --log-check-only-test-time"
 
-[tasks."cilium:unit"]
+[tasks."cilium:test:unit"]
 description = "Test the cni-cilium module without a live cluster"
 run = "bats modules/cni-cilium/tests/*.bats"
 

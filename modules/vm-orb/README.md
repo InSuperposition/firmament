@@ -43,7 +43,7 @@ full task list and how `-target` scopes these to just this module:
 | `mise run orb:dry-run` | Plan without applying |
 | `mise run orb:delete` | Delete the machine, and anything that depends on it |
 | `mise run orb:inspect` | Show the machine's native JSON metadata, unmanaged (bypasses OpenTofu entirely) |
-| `mise run orb:unit` | Run this module's tests against a rendered plan, no live VM |
+| `mise run orb:test:unit` | Run this module's tests against a rendered plan, no live VM |
 
 `mise run orb:create` prints the machine's native `orb info` JSON to
 stdout after applying.

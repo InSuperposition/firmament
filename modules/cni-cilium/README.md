@@ -74,7 +74,7 @@ Run from the repo root:
 
 | Command | Behavior |
 | --- | --- |
-| `mise run cilium:unit` | Run this module's tests against a rendered plan, no cluster |
+| `mise run cilium:test:unit` | Run this module's tests against a rendered plan, no cluster |
 | `mise run cilium:status` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI |
 | `mise run cilium:connectivity` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests (slow, manual only) |
 
