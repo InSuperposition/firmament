@@ -5,6 +5,33 @@ section. Each item carries enough context to pick up cold.
 
 ## Infrastructure
 
+### Run the offline checks in CI
+
+**What:** Add a GitHub Actions workflow that runs `mise run check` on
+every pull request and on pushes to `main`.
+
+**Why:** The only gate today is the local pre-push hook. It runs only in
+clones where `mise install` installed it, can be skipped with
+`--no-verify` or `HK=0`, and checks only the first ref in a multi-ref
+push. A merge can therefore land code that fails `mise run check`.
+
+**Context:** Keep the workflow declarative: one job that installs the
+pinned tools with `jdx/mise-action` (pinned by commit SHA, using
+`mise.lock` through `MISE_LOCKED_SCOPES=project mise install --locked`)
+and runs the one-line step `mise run check`, with no other shell in the
+YAML. Confirm first that every suite runs offline on a Linux runner:
+- the vm-orb suite asserts that planning makes no OrbStack calls, but the
+  OrbStack provider must still install on Linux;
+- the os-ubuntu SSH fixture must work there;
+- `tasks:test` resolves config with the real `mise`.
+Cache `~/.cache/firmament/tofu-plugins` (the shared `TF_PLUGIN_CACHE_DIR`)
+and the mise install directory. GitHub had intermittent outages when this
+was written, so make the check required only after it has run reliably.
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** None
+
 ### Add a live end-to-end test lane for an environment
 
 **What:** Add an `env:e2e [environment]` file task
@@ -116,6 +143,38 @@ Verify the adoption on a disposable local cluster before relying on it.
 **Priority:** P3
 **Depends on:** Cilium installed through `modules/cni-cilium` and the k0s
 Helm extension.
+
+### Add a second environment
+
+**What:** Add a second `environment/<env>/` beside `local`, for whatever
+target comes next.
+
+**Why:** The task layout assumes more than one environment (every
+environment task takes `[environment]`, and KUBECONFIG and state are
+per environment), but only `local` has exercised it. A second
+environment proves that adding one needs no new tasks.
+
+**Context:** Each environment directory must provide what the shared
+tasks rely on:
+- a `state_directory` variable, which `.mise/lib.sh` sets through
+  `TF_VAR_state_directory`;
+- a `kubeconfig_path` output, read by the `verify`, `apply` and
+  `conformance` tasks;
+- a local backend configured by `init_environment`;
+- an `environment/<env>/mise.toml` that sets `KUBECONFIG`, trusted by
+  `mise run repo:setup`;
+- `tests/integration.bats` for `env:test`.
+
+The `orb:*` tasks and `ubuntu:verify` target modules by address
+(`module.vm_orb`, `module.os_ubuntu`), so they only work in environments
+that use those modules. Decide whether component tasks should detect
+that and fail with a clear message. A stub environment could prove the
+contract before a real target exists. The target and its providers are
+still undecided.
+
+**Effort:** M
+**Priority:** P4
+**Depends on:** A chosen target.
 
 ## Completed
 
