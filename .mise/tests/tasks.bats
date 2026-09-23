@@ -76,6 +76,33 @@ run_task() {
   [ "${lines[1]%% |*}" = "mise run k0s:verify local" ]
 }
 
+@test "tofu:test initializes and tests each suite directory, and never applies" {
+  MISE_PROJECT_ROOT=$(make_repository modules/a/tests/unit.tftest.hcl environment/e/tests/wiring.tftest.hcl)
+  run "$root_directory/.mise/tasks/tofu/test.sh"
+  [ "$status" -eq 0 ]
+  run cut -d"|" -f1 "$CALLS"
+  [ "${lines[0]}" = "tofu -chdir=$MISE_PROJECT_ROOT/environment/e init -backend=false -input=false -reconfigure " ]
+  [ "${lines[1]}" = "tofu -chdir=$MISE_PROJECT_ROOT/environment/e test " ]
+  [ "${lines[2]}" = "tofu -chdir=$MISE_PROJECT_ROOT/modules/a init -backend=false -input=false -reconfigure " ]
+  [ "${lines[3]}" = "tofu -chdir=$MISE_PROJECT_ROOT/modules/a test " ]
+  [ "${#lines[@]}" -eq 4 ]
+}
+
+@test "tofu:test stops at the first failing suite" {
+  MISE_PROJECT_ROOT=$(make_repository modules/a/tests/unit.tftest.hcl modules/b/tests/unit.tftest.hcl)
+  printf '#!/usr/bin/env bash\nprintf "tofu %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *" test" ]]\n' >"$stubs/tofu"
+  run "$root_directory/.mise/tasks/tofu/test.sh"
+  [ "$status" -ne 0 ]
+  ! grep -q "modules/b" "$CALLS"
+}
+
+@test "tofu:test runs nothing when no suite exists" {
+  MISE_PROJECT_ROOT=$(make_repository modules/b/tests/unit.bats)
+  run "$root_directory/.mise/tasks/tofu/test.sh"
+  [ "$status" -eq 0 ]
+  [ ! -e "$CALLS" ]
+}
+
 @test "lists mise.toml tasks in alphabetical order" {
   run bash -c "grep -oE '^\[tasks\.[^]]+\]' '$root_directory/mise.toml' | tr -d '\"[]'"
   [ "$status" -eq 0 ]

@@ -31,3 +31,16 @@ exit 0
 STUB
   chmod +x "$stubs/$1"
 }
+
+# Builds a stand-in repository holding the real .mise directory and an empty
+# file at each given path, and prints its root.
+make_repository() {
+  local repository="$BATS_TEST_TMPDIR/repository" path
+  mkdir -p "$repository"
+  ln -sfn "$root_directory/.mise" "$repository/.mise"
+  for path in "$@"; do
+    mkdir -p "$repository/$(dirname -- "$path")"
+    : >"$repository/$path"
+  done
+  printf '%s\n' "$repository"
+}

@@ -136,6 +136,29 @@ chart() {
   [ "$output" = "ready k0s-addon-chart-x" ]
 }
 
+@test "initializes a directory without a backend" {
+  init_offline /modules/a
+  run cat "$CALLS"
+  [ "${output%% |*}" = "tofu -chdir=/modules/a init -backend=false -input=false -reconfigure" ]
+}
+
+@test "finds each module and environment holding an OpenTofu test suite, once" {
+  MISE_PROJECT_ROOT=$(make_repository modules/a/tests/unit.tftest.hcl modules/a/tests/more.tftest.hcl \
+    modules/b/tests/unit.bats environment/e/tests/wiring.tftest.hcl)
+  run tofu_test_directories
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 2 ]
+  [ "${lines[0]}" = "$MISE_PROJECT_ROOT/environment/e" ]
+  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/modules/a" ]
+}
+
+@test "finds no test directories when no suite exists" {
+  MISE_PROJECT_ROOT=$(make_repository modules/b/tests/unit.bats)
+  run tofu_test_directories
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
 @test "stops before tofu when the environment does not exist" {
   run tofu_in_environment nowhere plan
   [ "$status" -ne 0 ]
