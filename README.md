@@ -58,8 +58,9 @@ Each module has its own README with its contract. `mise run bootstrap:local`
 applies the whole environment in dependency order (VM, then the readiness
 check, then k0s, which installs Cilium); `mise run teardown:local`
 reverses it. Narrower tasks
-(`orb:create`, `ubuntu:check`, `k0s:apply`, and their counterparts) operate
-on one module at a time via `tofu -target` against the same shared state —
+(`orb:create`, `ubuntu:check`, `k0s:apply`, and their counterparts) target
+one module via `tofu -target` against the same shared state (`k0s:*` also
+targets the kubeconfig file and renders the Cilium chart it depends on) —
 see `environment/local/README.md` for the full task list and what
 `-target` does and doesn't isolate.
 

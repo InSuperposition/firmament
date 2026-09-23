@@ -10,7 +10,8 @@ section. Each item carries enough context to pick up cold.
 **What:** Move the multi-line `run` blocks in `mise.toml` into
 `scripts/<verb-noun>.sh` files with a shared `scripts/lib.sh`.
 
-**Why:** Ten tasks repeat the same state-directory and `TF_VAR_*` lines,
+**Why:** Every task that drives OpenTofu repeats the same state-directory
+and `TF_VAR_*` lines (and `[env] KUBECONFIG` repeats the same path),
 and shell embedded in TOML cannot be linted by shellcheck or tested by
 bats.
 
@@ -22,6 +23,36 @@ Put that shared setup in `scripts/lib.sh`, give each task one script with
 `#!/usr/bin/env bash` and `set -euo pipefail`, reference the scripts from
 `mise.toml`, and add them to `check:shellcheck`, the `shfmt` checks and
 bats. Keep one-line tasks inline.
+
+**Effort:** M
+**Priority:** P2
+**Depends on:** None
+
+### Add a live end-to-end test lane for the local environment
+
+**What:** Add a `mise run local:e2e` task that runs a bats suite against a
+real OrbStack machine: `teardown:local`, `bootstrap:local`, the readiness
+checks, `cilium:connectivity`, then teardown again.
+
+**Why:** The offline suites (`mise run check`) cover everything that can
+be checked from a plan. They cannot catch regressions that only appear on
+a live cluster, and those paths are currently checked by hand.
+
+**Context:** Paths with no automated test today:
+- the post-apply wait order in `bootstrap:local` and `k0s:apply`
+  (`cilium status --wait` must run before `kubectl wait`, because k0s
+  restarts the API server after apply);
+- `k0s:test`, `cilium:status` and `cilium:connectivity`;
+- `k0s:apply` and `k0s:dry-run` targeting
+  `local_sensitive_file.kubeconfig`;
+- a bootstrap with `TF_VAR_kube_proxy_replacement=false` (kube-proxy
+  runs, Cilium uses veth with iptables masquerading);
+- changing `kube_proxy_replacement` on a live cluster requires teardown
+  and bootstrap;
+- removing Cilium from `helm_charts` makes k0s uninstall it.
+A full run takes about 15 minutes, so keep it out of `check` and the git
+hooks. Run the scripts through `scripts/<verb-noun>.sh` with shellcheck,
+not inline in `mise.toml`.
 
 **Effort:** M
 **Priority:** P2
