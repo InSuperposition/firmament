@@ -84,6 +84,7 @@ that verb for every noun. The verb also says how far a task reaches:
 | `test` | offline; never touches infrastructure | `test` runs every `*:test` |
 | `verify` | reads a live cluster | `verify [environment]` runs every `*:verify`, one at a time |
 | `conformance` | deploys test workloads into a live cluster | none |
+| `e2e` | destroys and rebuilds a live cluster; asks first (`--yes` skips) | none |
 | `plan`, `apply`, `destroy` | drive OpenTofu; `destroy` asks first (`-y` skips) | none |
 
 `mise run check` runs every offline check: `lint` (shellcheck, shfmt,
