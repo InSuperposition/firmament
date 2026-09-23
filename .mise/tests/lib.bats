@@ -94,3 +94,10 @@ EOF
   run env FIRMAMENT_STATE_HOME=/custom mise env --json -C "$root_directory"
   [ "$(jq -r .FIRMAMENT_STATE_HOME <<<"$output")" = /custom ]
 }
+
+@test "points KUBECONFIG at the local cluster from the root and inside environment/local" {
+  root=$(env -u KUBECONFIG mise env --json -C "$root_directory" | jq -r .KUBECONFIG)
+  local_environment=$(env -u KUBECONFIG mise env --json -C "$root_directory/environment/local" | jq -r .KUBECONFIG)
+  [ "$root" = "$FIRMAMENT_STATE_HOME/environment/local/admin.kubeconfig" ]
+  [ "$local_environment" = "$root" ]
+}

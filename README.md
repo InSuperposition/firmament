@@ -20,20 +20,26 @@ into one applied environment with a single shared state.
   repo run through it — there is no supported path that bypasses mise.
 - No mutable state or secrets are committed to Git. OpenTofu state and
   the rendered kubeconfig live under
-  `${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local/`.
+  `$FIRMAMENT_STATE_HOME/environment/<env>/`, which defaults to
+  `${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/<env>/`.
 
 ## Setup
 
 Install [mise](https://mise.jdx.dev/getting-started.html) itself first,
-then install this repo's pinned tools and Git hooks:
+then install this repo's pinned tools:
 
 ```sh
 MISE_LOCKED_SCOPES=project mise install --locked
-mise run hooks:install
 ```
 
+`mise install` then runs `mise run repo:setup`, which installs the Git
+hooks and trusts each `environment/<env>/mise.toml`. Run it again after
+adding an environment.
+
 Make the pinned tools and project environment (including `KUBECONFIG`)
-available in your shell. Either activate mise persistently in your shell
+available in your shell. `KUBECONFIG` points at the `local` cluster at the
+repository root, and at each environment's own cluster inside
+`environment/<env>/`. Either activate mise persistently in your shell
 profile — see mise's
 [shell activation docs](https://mise.jdx.dev/getting-started.html#activate-mise) —
 or, for a one-off shell session:

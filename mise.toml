@@ -1,8 +1,13 @@
 [settings]
 lockfile = true
 
+[hooks]
+postinstall = "mise run repo:setup"
+
 [env]
 FIRMAMENT_STATE_HOME = "{% if env.FIRMAMENT_STATE_HOME %}{{ env.FIRMAMENT_STATE_HOME }}{% elif env.XDG_STATE_HOME %}{{ env.XDG_STATE_HOME }}/firmament{% else %}{{ env.HOME }}/.local/state/firmament{% endif %}"
+# Default cluster at the repository root; each environment/<env>/mise.toml
+# points KUBECONFIG at its own cluster.
 KUBECONFIG = "{{ env.FIRMAMENT_STATE_HOME }}/environment/local/admin.kubeconfig"
 
 [tools]
@@ -64,6 +69,3 @@ run = [
   { task = "test" },
 ]
 
-[tasks."hooks:install"]
-description = "Install repository Git hooks through mise"
-run = "hk install --mise"
