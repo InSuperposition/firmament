@@ -10,6 +10,7 @@ load setup.bash
   [ "$(jq -r '.chart.chartname' <<<"$output")" = cilium/cilium ]
   [ "$(jq -r '.chart.version' <<<"$output")" = 1.20.2 ]
   [ "$(jq -r '.chart.namespace' <<<"$output")" = kube-system ]
+  [ "$(jq -r '.chart.forceUpgrade' <<<"$output")" = false ]
 }
 
 @test "renders the datapath, IPAM and Hubble values" {
@@ -31,6 +32,12 @@ load setup.bash
   [ "$(yq -r '.hubble.relay.rollOutPods' <<<"$output")" = true ]
   [ "$(yq -r '.hubble.ui.rollOutPods' <<<"$output")" = true ]
   [ "$(yq -r '.hubble.tls.auto.method' <<<"$output")" = cronJob ]
+}
+
+@test "limits socket load balancing to the host namespace" {
+  run chart_values
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.socketLB.hostNamespaceOnly' <<<"$output")" = true ]
 }
 
 @test "renders the API endpoint, kube-proxy replacement and operator defaults" {

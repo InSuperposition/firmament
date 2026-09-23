@@ -205,8 +205,10 @@ Major distribution and platform kernels already enable it:
 ### Notes for this repo (not part of the issue)
 
 - Once this ships, remove `--log-check-only-test-time` from
-  `cilium:connectivity` in `mise.toml`, and update the known gap section
-  in [modules/cni-cilium/README.md](../cni-cilium/README.md).
+  `cilium:connectivity` in `mise.toml`, reconsider
+  `socketLB.hostNamespaceOnly` in `modules/cni-cilium`, and update the
+  socket termination section in
+  [modules/cni-cilium/README.md](../cni-cilium/README.md#socket-termination).
 - Unlike `CONFIG_PSI` (#1309, declined for measured performance
   regressions), this option does nothing until a privileged process
   sends a destroy request.

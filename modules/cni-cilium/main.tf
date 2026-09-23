@@ -13,6 +13,8 @@ locals {
       chartname = "cilium/cilium"
       version   = "1.20.2"
       namespace = "kube-system"
+      # The chart's hubble-generate-certs Job cannot be recreated in place, so upgrades must patch.
+      forceUpgrade = false
       values = templatefile("${path.module}/values.yaml.tftpl", {
         api_host               = var.api_host
         api_port               = var.api_port

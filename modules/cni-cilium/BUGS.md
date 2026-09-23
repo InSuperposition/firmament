@@ -263,6 +263,11 @@ lines.
   during the tests still do. Remove the flag once either this fix or the
   [OrbStack kernel request](../vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy)
   lands.
+- Until either fix lands, `modules/cni-cilium` sets
+  `socketLB.hostNamespaceOnly: true`, so pods use per-packet Service
+  translation and follow a replaced backend (verified live with the
+  scenario in step 4). Revisit that setting once socket termination
+  works.
 - Evidence gathered 2026-09-23 with Cilium 1.20.2, OrbStack
   `2.2.3 (2020300)`, macOS 26.6.2 (arm64), Ubuntu 26.04.1, k0s
   `1.36.4+k0s.0`, single node.

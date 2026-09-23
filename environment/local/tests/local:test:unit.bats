@@ -7,6 +7,7 @@ load setup.bash
   [ "$(yq -r '.spec.extensions.helm.repositories[] | select(.name == "cilium") | .url' <<<"$output")" = https://helm.cilium.io ]
   [ "$(yq -r '.spec.extensions.helm.charts[] | select(.name == "cilium") | .chartname' <<<"$output")" = cilium/cilium ]
   [ "$(yq -r '.spec.extensions.helm.charts[] | select(.name == "cilium") | .namespace' <<<"$output")" = kube-system ]
+  [ "$(yq -r '.spec.extensions.helm.charts[] | select(.name == "cilium") | .forceUpgrade' <<<"$output")" = false ]
 }
 
 @test "points Cilium at the API address and port k0s advertises" {

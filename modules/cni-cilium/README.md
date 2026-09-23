@@ -25,7 +25,7 @@ no state, so it can be planned and tested without a cluster.
 | `api_host` | required | Kubernetes API host the agent connects to directly (`k8sServiceHost`) |
 | `api_port` | `6443` | Kubernetes API port (`k8sServicePort`); must match the cluster's API port |
 | `kube_proxy_replacement` | required | Renders `kubeProxyReplacement` and selects the datapath; must match the cluster's kube-proxy setting |
-| `operator_replicas` | `2` | Cilium operator replicas; at least 1 |
+| `operator_replicas` | `2` | Cilium operator replicas; at least 1. The chart requires operator replicas on different nodes, so a single-node cluster needs 1 |
 
 ## Output
 
@@ -37,14 +37,20 @@ rendered from [`values.yaml.tftpl`](values.yaml.tftpl).
 
 | Value | Setting | Reason |
 | --- | --- | --- |
-| `bpf.datapathMode` | `netkit` with kube-proxy replacement, else `veth` | netkit is Cilium's faster pod device, and the agent refuses to start with it unless kube-proxy replacement is on |
+| `bpf.datapathMode` | `netkit` with kube-proxy replacement, else `veth` | netkit is Cilium's faster pod device, and the agent refuses to start with it unless kube-proxy replacement is on. netkit needs a kernel with `CONFIG_NETKIT` (Linux 6.7 or later), which Ubuntu 26.04 and OrbStack both provide |
 | `bpf.masquerade` | `true` with kube-proxy replacement, else `false` | netkit requires BPF masquerading, which also enables BPF host routing |
+| `socketLB.hostNamespaceOnly` | `true` | Pod traffic to Services is translated per packet instead of when the socket connects, so a pod's connected socket follows a replaced backend. See [Socket termination](#socket-termination) |
 | `ipam.mode` | `kubernetes` | Pod IPs come from each node's podCIDR. The chart default pool `10.0.0.0/8` overlaps common LANs and the Service CIDR |
 | `hubble.relay.enabled`, `hubble.ui.enabled` | `true` | Cluster-wide flow visibility through `hubble` and the Hubble UI |
 | `rollOutCiliumPods`, `envoy.rollOutPods`, `operator.rollOutPods`, `hubble.relay.rollOutPods`, `hubble.ui.rollOutPods` | `true` | A values change restarts the affected pods on apply. The chart default (`false`) updates the ConfigMap and leaves running pods on the old configuration |
 | `hubble.tls.auto.method` | `cronJob` | A CronJob renews the Hubble mTLS certificates (valid 365 days) every four months. The chart default (`helm`) renews them only when the chart is upgraded |
 
-## Known gap: socket termination
+The chart declaration also sets `forceUpgrade: false`. k0s upgrades
+charts with `helm upgrade --force` by default, which recreates objects
+instead of patching them. The certificate Job cannot be recreated in
+place, so a forced upgrade fails and k0s retries it indefinitely.
+
+## Socket termination
 
 Cilium logs this error once when the agent starts, and marks the
 socket-termination module degraded:
@@ -61,8 +67,15 @@ backend. On OrbStack this does not happen. OrbStack's kernel lacks
 Cilium 1.20 disables the whole feature, even though its BPF socket
 destroyer works on this kernel. By default only UDP sockets are affected. For
 example, a client that holds a connected UDP socket to a CoreDNS pod
-keeps sending to it after that pod is replaced, until the client
-reconnects.
+would keep sending to it after that pod is replaced.
+
+`socketLB.hostNamespaceOnly: true` avoids this for pods: Cilium
+translates their Service traffic per packet instead of at connect time,
+so there is no stale socket to close. A connected UDP client was checked
+on the live cluster: after its backend pod was replaced, the next reply
+came from the new pod on the same socket, with no timeout or error.
+Processes in the host network namespace still use socket-level load
+balancing and keep the gap.
 
 `cilium:connectivity` passes `--log-check-only-test-time`, so this
 start-up error does not fail the suite; agent errors logged while the
