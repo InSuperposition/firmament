@@ -32,10 +32,10 @@ was written, so make the check required only after it has run reliably.
 **Priority:** P2
 **Depends on:** None
 
-The next two items finish a three-phase plan, ordered from deterministic
+The next item finishes a three-phase plan, ordered from deterministic
 to destructive:
 1. `tofu test`: offline and deterministic (done; see Completed).
-2. chainsaw: live, read-only.
+2. chainsaw: live, read-only (done; see Completed).
 3. `env:e2e`: live, destructive.
 
 Each phase depends on the one before it. Each layer owns one concern:
@@ -44,49 +44,6 @@ Each phase depends on the one before it. Each layer owns one concern:
 - chainsaw owns read-only Kubernetes resource state.
 - The `cilium` CLI owns Cilium health and its connectivity suite.
 - `env:e2e` only composes existing tasks.
-
-### Adopt chainsaw for read-only cluster assertions
-
-**What:** Pin `aqua:kyverno/chainsaw` (0.2.15) in mise `[tools]`. Add
-one read-only suite per environment at
-`environment/<env>/tests/cluster/chainsaw-test.yaml`, run by a new
-`env:verify [environment]` file task, which joins `verify`. It asserts:
-- the nodes are Ready;
-- the kube-proxy DaemonSet exists only when `kube_proxy_replacement` is
-  false;
-- `cilium-config` matches the mode (kube-proxy replacement and
-  datapath).
-
-The expected mode comes from a new environment output,
-`kube_proxy_replacement`, passed with `--set`.
-
-**Why:** Today's live checks are imperative shell. Chainsaw expresses
-resource state as YAML assertions with retries and timeouts.
-
-**Context:**
-- **Read-only.** By default chainsaw creates and deletes an ephemeral
-  namespace for every test, even an assert-only one (seen live). Every
-  suite therefore sets `spec.namespace: kube-system`. A `tasks.bats`
-  allowlist guard parses the operation keys. It allows only `assert` and
-  `error` in `try`, and the read-only `describe`, `events`, `get` and
-  `podLogs` in `catch` and `finally`.
-- **No `--kubeconfig` flag.** chainsaw reads `KUBECONFIG`, so a lib
-  helper exports it from `tofu output kubeconfig_path`.
-- **The chart-reconcile wait stays in `.mise/lib.sh`.** Chainsaw's
-  JMESPath has no `sha256` function, and the check compares
-  `valuesHash` with `sha256(releaseName + values)`.
-- **`k0s:verify` and `cilium:verify` stay unchanged.** `cilium status`
-  and `cilium connectivity test` stay with the `cilium` CLI.
-- **Offline lint.** Add `chainsaw:lint` (`chainsaw lint test`) to
-  `lint`, and to hk for `environment/*/tests/cluster/**/*.yaml`. Add the
-  same glob to the pre-push `test` step, so the guard runs.
-- **Test stubs.** Add a `chainsaw` stub to `.mise/tests/stubs.bash`.
-
-<https://kyverno.github.io/chainsaw/>
-
-**Effort:** M
-**Priority:** P2
-**Depends on:** None
 
 ### Add a live end-to-end test lane for an environment
 
@@ -132,8 +89,7 @@ a live cluster, and those paths are currently checked by hand.
 
 **Effort:** M
 **Priority:** P2
-**Depends on:** chainsaw adoption above (`verify` includes
-`env:verify`).
+**Depends on:** None
 
 ### Test a chart value rollout on a live cluster
 
@@ -199,12 +155,12 @@ tasks rely on:
   `TF_VAR_state_directory`;
 - a `kubeconfig_path` output, read by the `verify`, `apply` and
   `conformance` tasks;
+- a `kube_proxy_replacement` output, read by `env:verify`;
 - a local backend configured by `init_environment`;
 - an `environment/<env>/mise.toml` that sets `KUBECONFIG`, trusted by
   `mise run repo:setup`;
 - `tests/integration.bats` for `env:test`;
-- `tests/cluster/chainsaw-test.yaml` for `env:verify`, once chainsaw is
-  adopted.
+- `tests/cluster/chainsaw-test.yaml` for `env:verify`.
 
 Each environment writing its own cluster suite is a stopgap. Before
 adding the second environment, plan a shared suite that every
@@ -224,6 +180,22 @@ still undecided.
 **Depends on:** A chosen target.
 
 ## Completed
+
+### Adopt chainsaw for read-only cluster assertions
+
+Done on the `test/chainsaw-env-verify` branch:
+- chainsaw 0.2.15 is pinned through mise.
+- `environment/local/tests/cluster/chainsaw-test.yaml` asserts that the
+  nodes are Ready, and that kube-proxy and the Cilium datapath match the
+  new `kube_proxy_replacement` output. `env:verify [environment]` runs
+  it, and it joins `verify`.
+- `chainsaw:lint` checks the schema and a read-only allowlist: the suite
+  must use kube-system (chainsaw otherwise creates a namespace per
+  test), `try` may only assert or expect errors, and `catch`/`finally`
+  may only collect diagnostics. hk runs it when a suite changes.
+- The chart-reconcile wait stays in `.mise/lib.sh`, because chainsaw's
+  JMESPath has no `sha256`. `k0s:verify` and `cilium:verify` are
+  unchanged.
 
 ### Move plan-level module suites to `tofu test`
 
