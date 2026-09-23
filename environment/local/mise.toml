@@ -1,0 +1,4 @@
+# Inside this directory, kubectl, cilium and hubble talk to this
+# environment's cluster.
+[env]
+KUBECONFIG = "{{ env.FIRMAMENT_STATE_HOME }}/environment/local/admin.kubeconfig"

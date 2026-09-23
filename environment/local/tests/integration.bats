@@ -35,3 +35,15 @@ load setup.bash
   [ "$(cilium_values <<<"$output" | yq -r '.kubeProxyReplacement')" = false ]
   [ "$(cilium_values <<<"$output" | yq -r '.bpf.datapathMode')" = veth ]
 }
+
+@test "reaches the machine with OrbStack's own SSH key by default" {
+  run ssh_key_path
+  [ "$status" -eq 0 ]
+  [ "$output" = "$HOME/.orbstack/ssh/id_ed25519" ]
+}
+
+@test "reaches the machine with the SSH key the caller sets" {
+  run ssh_key_path -var='orbstack_ssh_key_path=/keys/id_ed25519'
+  [ "$status" -eq 0 ]
+  [ "$output" = /keys/id_ed25519 ]
+}

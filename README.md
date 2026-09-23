@@ -20,20 +20,26 @@ into one applied environment with a single shared state.
   repo run through it — there is no supported path that bypasses mise.
 - No mutable state or secrets are committed to Git. OpenTofu state and
   the rendered kubeconfig live under
-  `${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local/`.
+  `$FIRMAMENT_STATE_HOME/environment/<env>/`, which defaults to
+  `${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/<env>/`.
 
 ## Setup
 
 Install [mise](https://mise.jdx.dev/getting-started.html) itself first,
-then install this repo's pinned tools and Git hooks:
+then install this repo's pinned tools:
 
 ```sh
 MISE_LOCKED_SCOPES=project mise install --locked
-mise run hooks:install
 ```
 
+`mise install` then runs `mise run repo:setup`, which installs the Git
+hooks and trusts each `environment/<env>/mise.toml`. Run it again after
+adding an environment.
+
 Make the pinned tools and project environment (including `KUBECONFIG`)
-available in your shell. Either activate mise persistently in your shell
+available in your shell. `KUBECONFIG` points at the `local` cluster at the
+repository root, and at each environment's own cluster inside
+`environment/<env>/`. Either activate mise persistently in your shell
 profile — see mise's
 [shell activation docs](https://mise.jdx.dev/getting-started.html#activate-mise) —
 or, for a one-off shell session:
@@ -52,20 +58,45 @@ modules/os-ubuntu/    Ubuntu readiness check (SSH probe + postconditions)
 modules/cni-cilium/   the Cilium and Hubble Helm chart declaration
 modules/orch-k0s/     the k0s controller+worker node, which installs
                       the declared Helm charts
+.mise/tasks/          one executable script per mise task, named
+                      <noun>/<verb>.sh and run as `mise run <noun>:<verb>`
+.mise/lib.sh          helpers the task scripts share (environment lookup,
+                      state paths, post-apply waits), tested in .mise/tests
 ```
 
-Each module has its own README with its contract. `mise run bootstrap:local`
+Each module has its own README with its contract. `mise run env:apply`
 applies the whole environment in dependency order (VM, then the readiness
-check, then k0s, which installs Cilium); `mise run teardown:local`
-reverses it. Narrower tasks
-(`orb:create`, `ubuntu:check`, `k0s:apply`, and their counterparts) target
+check, then k0s, which installs Cilium), and `mise run env:destroy`
+reverses it. Both take an environment name, defaulting to `local`. Narrower tasks
+(`orb:apply`, `ubuntu:verify`, `k0s:apply`, and their counterparts) target
 one module via `tofu -target` against the same shared state (`k0s:*` also
 targets the kubeconfig file and renders the Cilium chart it depends on) —
 see `environment/local/README.md` for the full task list and what
 `-target` does and doesn't isolate.
 
-`mise run check` runs formatting, linting, `tofu validate`, every
-module's test suite, and the `environment/local` wiring tests.
+Task names follow `<noun>:<verb>` for a task that acts on one thing
+(`shell:lint`, `k0s:apply`). A bare `<verb>` is an aggregate that runs
+that verb for every noun. The verb also says how far a task reaches:
+
+| Verb | Reach | Aggregate |
+| --- | --- | --- |
+| `lint`, `format` | files in the repository | `lint`, `format` run every `*:lint` or `*:format` |
+| `test` | offline; never touches infrastructure | `test` runs every `*:test` |
+| `verify` | reads a live cluster | `verify [environment]` runs every `*:verify`, one at a time |
+| `conformance` | deploys test workloads into a live cluster | none |
+| `plan`, `apply`, `destroy` | drive OpenTofu; `destroy` asks first (`-y` skips) | none |
+
+`mise run check` runs every offline check: `lint` (shellcheck, shfmt,
+`tofu fmt`, `mise fmt` and `mise tasks validate`), `tofu:validate` and
+`test` (every module's suite, the environment suites, and the task
+scripts with their shared library). `mise run format` fixes what the
+formatters can. hk defines the lint and format rules; the `*:lint` and
+`*:format` tasks each run one group of its steps.
+
+The Git hooks split the same checks by cost. `pre-commit` lints and
+formats the staged files, fixing and restaging what it can. `pre-push`
+adds `tofu:validate` and `test`, each only when the pushed commits touch
+a file that can change its result.
 
 Deferred work is tracked in [TODOS.md](TODOS.md).
 

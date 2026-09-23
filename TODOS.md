@@ -5,56 +5,25 @@ section. Each item carries enough context to pick up cold.
 
 ## Infrastructure
 
-### Extract multi-line mise task shell into scripts
+### Add a live end-to-end test lane for an environment
 
-**What:** Move the multi-line `run` blocks in `mise.toml` into
-`scripts/<verb-noun>.sh` files with a shared `scripts/lib.sh`.
-
-**Why:** Every task that drives OpenTofu repeats the same state-directory
-and `TF_VAR_*` lines (and `[env] KUBECONFIG` repeats the same path),
-and shell embedded in TOML cannot be linted by shellcheck or tested by
-bats.
-
-**Context:** Tasks such as `plan`, `bootstrap:local`, `teardown:local`,
-`orb:*`, `ubuntu:check` and `k0s:*` each compute
-`dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"`
-and export `TF_VAR_orbstack_ssh_key_path` and `TF_VAR_state_directory`.
-`[env] KUBECONFIG` uses `get_env`, which keeps an empty
-`XDG_STATE_HOME` or `FIRMAMENT_STATE_DIRECTORY` as empty, while the shell
-tasks treat empty as unset; one definition removes that mismatch. When
-`cilium status --wait` fails after apply, the script should also print
-the k0s Chart status
-(`kubectl -n kube-system get charts.helm.k0sproject.io -o yaml`), where
-Helm install errors appear. Wait for the Chart to reconcile the new
-spec before the pod checks: `cilium status` alone passes on the old pods
-while k0s's asynchronous upgrade is pending or rolled back (seen live).
-Compare the Chart's `.status.revision` before and after apply, and fail
-on a non-empty `.status.error`.
-Put that shared setup in `scripts/lib.sh`, give each task one script with
-`#!/usr/bin/env bash` and `set -euo pipefail`, reference the scripts from
-`mise.toml`, and add them to `check:shellcheck`, the `shfmt` checks and
-bats. Keep one-line tasks inline.
-
-**Effort:** M
-**Priority:** P2
-**Depends on:** None
-
-### Add a live end-to-end test lane for the local environment
-
-**What:** Add a `mise run local:e2e` task that runs a bats suite against a
-real OrbStack machine: `teardown:local`, `bootstrap:local`, the readiness
-checks, `cilium:connectivity`, then teardown again.
+**What:** Add an `env:e2e [environment]` file task
+(`.mise/tasks/env/e2e.sh`) that runs a suite against a real OrbStack
+machine: `env:destroy -y`, `env:apply`, `verify`, `cilium:conformance`,
+then `env:destroy -y` again.
 
 **Why:** The offline suites (`mise run check`) cover everything that can
 be checked from a plan. They cannot catch regressions that only appear on
 a live cluster, and those paths are currently checked by hand.
 
 **Context:** Paths with no automated test today:
-- the post-apply wait order in `bootstrap:local` and `k0s:apply`
-  (`cilium status --wait` must run before `kubectl wait`, because k0s
-  restarts the API server after apply);
-- `k0s:test`, `cilium:status` and `cilium:connectivity`;
-- `k0s:apply` and `k0s:dry-run` targeting
+
+- the post-apply wait in `env:apply` and `k0s:apply` against a real
+  cluster (the order and the chart states are unit-tested with stubs in
+  `.mise/tests/lib.bats`);
+- `k0s:verify`, `cilium:verify`, `ubuntu:verify` and
+  `cilium:conformance`;
+- `k0s:apply` and `k0s:plan` targeting
   `local_sensitive_file.kubeconfig`;
 - a bootstrap with `TF_VAR_kube_proxy_replacement=false` (kube-proxy
   runs, Cilium uses veth with iptables masquerading);
@@ -63,12 +32,63 @@ a live cluster, and those paths are currently checked by hand.
 - removing Cilium from `helm_charts` makes k0s uninstall it;
 - changing one chart value and applying rolls the affected pods in
   place, without k0sctl resetting the cluster.
-A full run takes about 15 minutes, so keep it out of `check` and the git
-hooks. Run the scripts through `scripts/<verb-noun>.sh` with shellcheck,
-not inline in `mise.toml`.
+
+A full run takes about 15 minutes, so keep it out of `check`, the `test`
+aggregate and the Git hooks. Name it `e2e`, not `test`, so the `*:test`
+wildcard never selects it. Decide between bats and chainsaw (below)
+before writing it.
 
 **Effort:** M
 **Priority:** P2
+**Depends on:** The chainsaw evaluation below.
+
+### Adopt chainsaw for live cluster tests
+
+**What:** Plan how [chainsaw](https://github.com/kyverno/chainsaw)
+(Kyverno's declarative Kubernetes end-to-end test tool) fits the live
+test verbs: `verify` (read-only assertions on a running cluster),
+`conformance` and `e2e`.
+
+**Why:** Live checks are currently imperative shell (`kubectl wait`,
+`cilium status`). Chainsaw expresses them as YAML assertions on resource
+state, with built-in retries, timeouts and cleanup, which suits the
+end-to-end lane above.
+
+**Context:** Decide which layer owns what: chainsaw for Kubernetes
+resource assertions, the `cilium` CLI for Cilium's own connectivity
+suite, and mise file tasks as the entry points (`env:e2e`,
+`*:verify`). Pin chainsaw through mise `[tools]`, and keep its suites out of the
+`test` aggregate, since they need a live cluster. Needs its own
+planning before any code.
+<https://kyverno.github.io/chainsaw/>
+
+**Effort:** M
+**Priority:** P2
+**Depends on:** None
+
+### Evaluate `tofu test` for the plan-level module suites
+
+**What:** Plan a move of the module suites (`modules/*/tests/unit.bats`)
+and the wiring suite (`environment/local/tests/integration.bats`) from
+bats + jq + yq to OpenTofu's native `tofu test` (`*.tftest.hcl` with
+`command = plan` and `mock_provider`).
+
+**Why:** The suites assert on plans, which `tofu test` does
+declaratively, without the shell that renders a plan and digs through
+its JSON.
+
+**Context:** cni-cilium and orch-k0s assert on rendered values and
+variable validation, and look like direct fits. os-ubuntu runs its
+probe through an SSH fixture on PATH, and vm-orb asserts that planning
+makes no OrbStack calls. Both may need to stay on bats, or need mocks
+that `tofu test` may not support. Check how `tofu test` would run under
+the `test` aggregate and the hk pre-push gate, and whether `hk`'s `tofu`
+builtin covers `*.tftest.hcl` formatting (it globs it already). Needs
+its own planning before any code.
+<https://opentofu.org/docs/cli/commands/test/>
+
+**Effort:** M
+**Priority:** P3
 **Depends on:** None
 
 ### Hand Cilium from the k0s Helm extension to Flux Operator
@@ -98,3 +118,22 @@ Verify the adoption on a disposable local cluster before relying on it.
 Helm extension.
 
 ## Completed
+
+### Extract multi-line mise task shell into scripts
+
+Done on the `refactor/mise-file-tasks` branch:
+- The shell moved into mise file tasks (`.mise/tasks/<noun>/<verb>.sh`)
+  that share `.mise/lib.sh`.
+- `FIRMAMENT_STATE_HOME` is defined once, and each environment directory
+  sets its own `KUBECONFIG`.
+- After apply, the tasks wait for k0s to reconcile every Helm chart. Instead
+  of comparing `.status.revision` before and after, they compare
+  `.status.valuesHash` with the current spec, the same test k0s itself uses.
+
+### Move OrbStack variables out of the shared task library
+
+Done on the `refactor/mise-file-tasks` branch. `environment/local` now
+defaults `orbstack_ssh_key_path` to `~/.orbstack/ssh/id_ed25519` itself
+(`pathexpand` in `main.tf`), and `.mise/lib.sh` passes only the state
+directory. `TF_VAR_orbstack_ssh_key_path` replaces the
+`FIRMAMENT_ORBSTACK_SSH_KEY` override.

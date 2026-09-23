@@ -1,0 +1,16 @@
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+
+[*.{sh,bash,bats}]
+indent_style = space
+indent_size = 2
+
+# shfmt applies this to files it detects as shell by their shebang, such
+# as scripts without an extension.
+[[shell]]
+indent_style = space
+indent_size = 2

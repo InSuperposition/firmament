@@ -28,7 +28,7 @@ like k0sctl that need root and can't use the `@orb` alias).
 - **No adopt/import path.** Importing an existing machine into this
   provider's state leaves `arch`, `image`, and `username` unset, which
   makes the next `plan` want to destroy and recreate the real machine.
-  `mise run orb:create` only creates a machine that doesn't already exist
+  `mise run orb:apply` only creates a machine that doesn't already exist
   under that name; adopting an existing unmarked machine isn't supported.
 
 ## Commands
@@ -39,13 +39,13 @@ full task list and how `-target` scopes these to just this module:
 
 | Command | Behavior |
 | --- | --- |
-| `mise run orb:create` | Create the machine (fails if a same-named machine already exists) |
-| `mise run orb:dry-run` | Plan without applying |
-| `mise run orb:delete` | Delete the machine, and anything that depends on it |
-| `mise run orb:inspect` | Show the machine's native JSON metadata, unmanaged (bypasses OpenTofu entirely) |
-| `mise run orb:test:unit` | Run this module's tests against a rendered plan, no live VM |
+| `mise run orb:apply` | Create the machine (fails if a same-named machine already exists) |
+| `mise run orb:plan` | Plan without applying |
+| `mise run orb:destroy` | Delete the machine, and anything that depends on it |
+| `mise run orb:inspect` | Show the machine's native JSON metadata, read from OrbStack directly; OpenTofu only supplies the machine name from state |
+| `mise run orb:test` | Run this module's tests against a rendered plan, no live VM |
 
-`mise run orb:create` prints the machine's native `orb info` JSON to
+`mise run orb:apply` prints the machine's native `orb info` JSON to
 stdout after applying.
 
 ## Testing

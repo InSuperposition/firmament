@@ -98,7 +98,7 @@ Run `orb report` and paste the output here when filing.
 provider's `orbstack_machine` resource uses the machine's name as its
 `id`, so its delete call takes the name-based path. That is a property of
 the provider, not a deliberate workaround; if the provider ever switches
-to the real OrbStack ID, `teardown:local` would hit this crash.
+to the real OrbStack ID, `env:destroy` would hit this crash.
 
 ## Kernel request: enable CONFIG_INET_DIAG_DESTROY
 
@@ -205,7 +205,7 @@ Major distribution and platform kernels already enable it:
 ### Notes for this repo (not part of the issue)
 
 - Once this ships, remove `--log-check-only-test-time` from
-  `cilium:connectivity` in `mise.toml`, reconsider
+  `cilium:conformance` in `mise.toml`, reconsider
   `socketLB.hostNamespaceOnly` in `modules/cni-cilium`, and update the
   socket termination section in
   [modules/cni-cilium/README.md](../cni-cilium/README.md#socket-termination).

@@ -1,6 +1,7 @@
 variable "orbstack_ssh_key_path" {
   type        = string
-  description = "Absolute path to the SSH private key k0sctl uses to reach the OrbStack machine as root."
+  default     = null
+  description = "Absolute path to the SSH private key k0sctl uses to reach the OrbStack machine as root. Defaults to the key OrbStack creates, ~/.orbstack/ssh/id_ed25519."
 }
 
 variable "state_directory" {

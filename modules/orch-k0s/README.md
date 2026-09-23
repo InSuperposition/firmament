@@ -74,6 +74,6 @@ the full task list:
 | Command | Behavior |
 | --- | --- |
 | `mise run k0s:apply` | Apply the cluster and kubeconfig, then wait for the node to be Ready and Cilium to report healthy |
-| `mise run k0s:dry-run` | Plan without applying |
-| `mise run k0s:test` | Wait for every node to be Ready, using the rendered kubeconfig |
-| `mise run k0s:test:unit` | Run this module's tests against a rendered plan, no live host |
+| `mise run k0s:plan` | Plan without applying |
+| `mise run k0s:verify` | Wait for every node to be Ready, using the rendered kubeconfig |
+| `mise run k0s:test` | Run this module's tests against a rendered plan, no live host |

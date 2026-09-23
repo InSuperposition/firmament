@@ -15,6 +15,8 @@ locals {
   # OrbStack's machine DNS name resolves on both the host and the guest.
   api_address = module.vm_orb.dns_name
   api_port    = 6443
+
+  orbstack_ssh_key_path = coalesce(var.orbstack_ssh_key_path, pathexpand("~/.orbstack/ssh/id_ed25519"))
 }
 
 module "vm_orb" {
@@ -42,7 +44,7 @@ module "orch_k0s" {
   ssh_address  = module.vm_orb.root_ssh.address
   ssh_user     = module.vm_orb.root_ssh.user
   ssh_port     = module.vm_orb.root_ssh.port
-  ssh_key_path = var.orbstack_ssh_key_path
+  ssh_key_path = local.orbstack_ssh_key_path
   api_address  = local.api_address
   api_port     = local.api_port
   cluster_name = module.vm_orb.name
