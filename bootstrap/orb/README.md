@@ -1,22 +1,36 @@
 # OrbStack bootstrap
 
-Abstract: Create the dedicated Ubuntu machine or explicitly adopt an existing
-one. Track ownership by OrbStack machine ID and validate its configuration on
-subsequent runs.
+Abstract: Create or delete the dedicated OrbStack machine through OpenTofu,
+using the `robertdebock/orbstack` provider's `orbstack_machine` resource.
 
 ## Goals
 
-- Declare the machine in `machine.json`, checked by `machine-schema.jq`.
-- Keep creation, inspection, and adoption available through mise.
-- Refuse accidental reuse of an unmarked or replaced machine.
+- Declare the machine directly in `bootstrap/orb/*.tf` — no separate
+  schema file, OpenTofu's own typed resource arguments are the schema.
+- Keep creation and deletion available through mise, matching `orb`'s own
+  CLI vocabulary (`create`/`delete`).
 
 ## Constraints
 
-- OrbStack is optional; existing Ubuntu hosts bypass these tasks.
-- OrbStack must be installed and running. This workflow was checked with 2.2.3.
-- These tasks own VM creation and its local ownership record only. They do not
-  install guest packages, prepare Ubuntu, or provision Kubernetes.
-- No task deletes, resizes, restarts, or reconfigures an existing VM.
+- OrbStack is optional; existing Ubuntu hosts bypass this stage entirely.
+- OrbStack must be installed and running. This workflow was checked with
+  `2.2.3`.
+- **No cpu/memory/disk limits are declared.** The provider has no
+  arguments for any of them — not on `orbstack_machine`, and not
+  per-machine anywhere (its `orbstack_config` resource is app-wide only,
+  and even that throws apply-time errors — see
+  `FIRMAMENT_FINDINGS.md` in the `opentofu-provider-orbstack` fork). A
+  created machine gets whatever OrbStack's own defaults are. This is a
+  real reduction versus the previous bash script's declared 4 CPU /
+  8192 MiB / 40 GiB contract, not an oversight — fixing it is future work
+  on the fork, tracked there.
+- **No adopt/import path.** `tofu import` on this provider leaves `arch`,
+  `image`, and `username` unset in state, which makes the very next
+  `plan` want to destroy and recreate the real machine (verified,
+  documented in the fork's findings, never applied). Until that's fixed
+  upstream, adopting an existing unmarked machine isn't supported here —
+  `mise run orb:create` only creates a machine that doesn't already exist
+  under that name.
 
 ## Commands
 
@@ -29,46 +43,39 @@ mise run hooks:install
 
 | Command | Behavior |
 | --- | --- |
-| `mise run bootstrap:orb` | Create if absent; validate if already owned |
-| `mise run orb:inspect` | Show the configured machine's native JSON metadata |
-| `mise run orb:adopt` | Explicitly validate and record existing VM ownership |
-| `mise run check` | Run formatting, ShellCheck, schema, and Bats checks |
+| `mise run orb:create` | Create the machine (fails if a same-named machine already exists — see the adopt constraint above) |
+| `mise run orb:dry-run` | Plan without applying |
+| `mise run orb:delete` | Delete the machine |
+| `mise run orb:inspect` | Show the machine's native JSON metadata, unmanaged |
+| `mise run check` | Run formatting, ShellCheck, `tofu fmt`/`validate`, and Bats checks |
 | `mise exec -- hk check --all` | Run the hook checks against the checkout |
 
-hk is pinned to 2.0.1. Its pre-commit hook runs ShellCheck and the Bats suite
-through the same mise tasks used interactively. It checks staged content without
-fixing or staging files; hk temporarily saves unstaged work during the hook.
-Installation is repository-scoped and uses mise to resolve pinned tools.
+The declared target is Ubuntu `resolute` on arm64, username `tensor` —
+`bootstrap/orb/machine.tf`. `mise run orb:create` prints the machine's
+native `orb info` JSON to stdout after applying, matching the previous
+script's output shape.
 
-The declared target is Ubuntu `resolute` on arm64 with 4 CPUs, 8192 MiB memory,
-and a 40 GiB disk-usage limit. A configuration mismatch fails without modifying
-the VM. The disk check uses OrbStack's limit, not the guest's shared filesystem
-capacity.
+## State
 
-Successful bootstrap/adoption prints native machine metadata as JSON to stdout.
-Ownership messages and errors go to stderr. Command failures stop the task.
-
-## Ownership and reruns
-
-Ownership lives outside Git at:
+OpenTofu's local state, not an ownership marker file, lives outside Git at:
 
 ```text
-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/orb/ownership.json
+${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/orb/
 ```
 
-The file records the stable machine ID, not its IP address. An unmarked VM or a
-same-name replacement requires explicit `orb:adopt`. Failed validation leaves
-existing ownership unchanged. An owned VM that disappears is not silently
-recreated; inspect the old ownership record before intentionally replacing it.
+OpenTofu's own state lock (held during `plan`/`apply`) is what now
+prevents concurrent runs from sibling worktrees, replacing the previous
+hand-rolled `.lock` directory.
 
-State is private to the local user. Tasks use an atomic ownership-file replacement
-and a shared target lock so sibling worktrees cannot provision simultaneously.
-If a process is forcibly killed, a stale `.lock` directory may remain. Remove
-that empty directory only after confirming no bootstrap/adoption process is active.
+Tests run `tofu plan` and inspect the JSON plan output — no live OrbStack
+calls happen at plan time (verified: a test explicitly runs with `orb`
+removed from `PATH` and still passes). Scripts don't exist for this stage
+anymore; `.tf` files and matching Bats tests are colocated under
+`bootstrap/orb/` and `tests/`, with test basenames matching their primary
+mise task name.
 
-Tests invoke the real scripts against a controlled OrbStack CLI fixture. They
-exercise ownership writes, reruns, rejection paths, and command failures without
-creating a VM. Scripts and matching Bats tests are colocated under `scripts/`
-and `tests/`, with basenames matching their mise task names.
+See `bootstrap/orb/BUGS.md` for a reproduced OrbStack CLI crash found
+while spiking this conversion (`orb delete <ID>` segfaults; `orb delete
+<name>` doesn't — unrelated to the provider, not yet filed upstream).
 
 See the [OrbStack command reference](https://docs.orbstack.dev/machines/commands).
