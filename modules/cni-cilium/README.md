@@ -30,8 +30,8 @@ no state, so it can be planned and tested without a cluster.
 ## Output
 
 `helm_chart`: `repository` (`name`, `url`) and `chart` (`name`,
-`chartname`, `version`, `namespace`, `values`). `values` is the YAML
-rendered from [`values.yaml.tftpl`](values.yaml.tftpl).
+`chartname`, `version`, `namespace`, `forceUpgrade`, `values`). `values`
+is the YAML rendered from [`values.yaml.tftpl`](values.yaml.tftpl).
 
 ## Values
 

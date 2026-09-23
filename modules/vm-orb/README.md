@@ -55,6 +55,8 @@ live OrbStack calls — one test confirms this by removing `orb` from
 `PATH` entirely and still passing.
 
 See `BUGS.md` for a reproduced OrbStack CLI crash
-(`orb delete <ID>` segfaults; `orb delete <name>` doesn't).
+(`orb delete <ID>` segfaults; `orb delete <name>` doesn't) and a kernel
+request to enable `CONFIG_INET_DIAG_DESTROY`, which Cilium needs to close
+sockets to deleted Service backends.
 
 See the [OrbStack command reference](https://docs.orbstack.dev/machines/commands).

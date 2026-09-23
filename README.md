@@ -64,8 +64,10 @@ targets the kubeconfig file and renders the Cilium chart it depends on) —
 see `environment/local/README.md` for the full task list and what
 `-target` does and doesn't isolate.
 
-`mise run check` runs formatting, linting, `tofu validate`, and every
-module's test suite.
+`mise run check` runs formatting, linting, `tofu validate`, every
+module's test suite, and the `environment/local` wiring tests.
+
+Deferred work is tracked in [TODOS.md](TODOS.md).
 
 ## Uninstalling
 
