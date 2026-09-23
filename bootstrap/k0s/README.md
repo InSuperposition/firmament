@@ -44,8 +44,7 @@ directly, `k0s ...` bare fails with `Permission denied`; use
 `sudo k0s kubectl get nodes` (passwordless sudo is already required by
 `bootstrap:ubuntu`'s readiness contract, so this doesn't prompt). Neither
 `kubectl` nor `k0sctl` is installed on the guest — both are operator
-tools that run from your machine against the guest's exposed API, exactly
-as before this stage moved to OpenTofu.
+tools that run from your machine against the guest's exposed API.
 
 ## Contract
 
