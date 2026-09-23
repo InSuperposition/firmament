@@ -16,11 +16,33 @@ yq = "4.53.6"
 
 [tasks."orb:inspect"]
 description = "Inspect the configured OrbStack machine without changing it"
-run = 'orb info "$(jq -er .name bootstrap/orb/machine.json)" --format json'
+run = "orb info firmament --format json"
 
-[tasks."bootstrap:orb"]
-description = "Create or validate the dedicated OrbStack machine"
-run = 'bash "bootstrap/orb/scripts/bootstrap:orb.sh"'
+[tasks."orb:init"]
+description = "Initialize the orb OpenTofu backend against the local state directory"
+run = '''
+dir="${FIRMAMENT_ORB_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/orb}"
+mkdir -p "$dir"
+tofu -chdir=bootstrap/orb init -input=false -reconfigure -backend-config="path=$dir/terraform.tfstate"
+'''
+
+[tasks."orb:dry-run"]
+description = "Plan the orbstack_machine resource"
+depends = ["orb:init"]
+run = "tofu -chdir=bootstrap/orb plan -input=false"
+
+[tasks."orb:create"]
+description = "Create or reconcile the dedicated OrbStack machine"
+depends = ["orb:init"]
+run = '''
+tofu -chdir=bootstrap/orb apply -input=false -auto-approve
+orb info firmament --format json
+'''
+
+[tasks."orb:delete"]
+description = "Delete the dedicated OrbStack machine"
+depends = ["orb:init"]
+run = "tofu -chdir=bootstrap/orb destroy -input=false -auto-approve"
 
 [tasks."bootstrap:ubuntu"]
 description = "Verify the selected Ubuntu host before k0s provisioning"
@@ -65,22 +87,16 @@ run = [
   { task = "k0s:apply" },
 ]
 
-[tasks."orb:adopt"]
-description = "Explicitly adopt the validated existing OrbStack machine"
-run = 'bash "bootstrap/orb/scripts/orb:adopt.sh"'
+[tasks."orb:fmt"]
+description = "Check orb OpenTofu formatting"
+run = "tofu -chdir=bootstrap/orb fmt -check -recursive"
 
-[tasks."orb:shellcheck"]
-description = "Check OrbStack shell scripts"
-run = "shellcheck bootstrap/orb/scripts/*.sh bootstrap/orb/tests/fixtures/orb"
-
-[tasks."orb:lint"]
-description = "Check OrbStack scripts and machine configuration"
-run = [
-  { task = "orb:shellcheck" },
-  "shfmt -d -i 2 bootstrap/orb/scripts/*.sh bootstrap/orb/tests/setup.bash bootstrap/orb/tests/fixtures/orb",
-  "shfmt -d -i 2 -ln bats bootstrap/orb/tests/*.bats",
-  "jq -e -L bootstrap/orb 'include \"machine-schema\"; valid_target' bootstrap/orb/machine.json",
-]
+[tasks."orb:validate"]
+description = "Validate the orb OpenTofu configuration"
+run = '''
+tofu -chdir=bootstrap/orb init -backend=false -input=false -reconfigure >/dev/null
+tofu -chdir=bootstrap/orb validate
+'''
 
 [tasks."orb:test"]
 description = "Test OrbStack creation and adoption without a live VM"
@@ -88,7 +104,7 @@ run = "bats bootstrap/orb/tests/*.bats"
 
 [tasks."check:shellcheck"]
 description = "Check all repository shell scripts"
-run = "shellcheck bootstrap/orb/scripts/*.sh bootstrap/orb/tests/fixtures/orb bootstrap/ubuntu/scripts/*.sh bootstrap/ubuntu/tests/fixtures/ssh"
+run = "shellcheck bootstrap/ubuntu/scripts/*.sh bootstrap/ubuntu/tests/fixtures/ssh"
 
 [tasks."k0s:fmt"]
 description = "Check k0s OpenTofu formatting"
@@ -108,7 +124,8 @@ run = "bats bootstrap/orb/tests/*.bats bootstrap/ubuntu/tests/*.bats bootstrap/k
 [tasks.check]
 description = "Run all off-cluster checks"
 run = [
-  { task = "orb:lint" },
+  { task = "orb:fmt" },
+  { task = "orb:validate" },
   "shellcheck bootstrap/ubuntu/scripts/*.sh",
   "shfmt -d -i 2 bootstrap/ubuntu/scripts/*.sh bootstrap/ubuntu/tests/setup.bash bootstrap/ubuntu/tests/fixtures/ssh",
   "shfmt -d -i 2 -ln bats bootstrap/ubuntu/tests/*.bats",

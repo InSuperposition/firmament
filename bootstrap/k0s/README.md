@@ -76,3 +76,18 @@ preventing concurrent runs from sibling worktrees from corrupting state.
 
 The first apply owns only k0s and its managed containerd. It does not
 install Cilium, Flux, or workloads.
+
+## State and the orb stage
+
+This stage's state is independent of `bootstrap/orb`'s. If the OrbStack
+machine gets deleted and recreated (`orb:delete` + `orb:create`), it comes
+back reachable at the same SSH address/port but with nothing installed —
+`k0sctl_config`'s refresh does not detect this, so `plan`/`apply` report
+"No changes" against a host that no longer has k0s running. Recovery:
+remove this stage's state file and reapply:
+
+```sh
+state="${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/k0s"
+rm -f "$state/terraform.tfstate" "$state/terraform.tfstate.backup"
+mise run bootstrap:k0s
+```

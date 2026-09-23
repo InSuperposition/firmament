@@ -1,20 +1,17 @@
 setup() {
-  export ORB_TEST_ROOT="$BATS_TEST_TMPDIR/orb"
-  export ORB_TEST_FIXTURE="$BATS_TEST_DIRNAME/fixtures/machine.json"
-  export XDG_STATE_HOME="$BATS_TEST_TMPDIR/state with spaces"
-  export PATH="$BATS_TEST_DIRNAME/fixtures:$PATH"
-  mkdir -p "$ORB_TEST_ROOT"
-  bootstrap="$BATS_TEST_DIRNAME/../scripts/bootstrap:orb.sh"
-  adopt="$BATS_TEST_DIRNAME/../scripts/orb:adopt.sh"
-  marker="$XDG_STATE_HOME/firmament/targets/firmament/orb/ownership.json"
+  export BATS_TEST_ROOT="$BATS_TEST_TMPDIR/orb"
+  mkdir -p "$BATS_TEST_ROOT"
+
+  root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../.." && pwd)
+  orb_directory="$root_directory/bootstrap/orb"
+
+  tofu -chdir="$orb_directory" init -input=false -reconfigure \
+    -backend-config="path=$BATS_TEST_ROOT/terraform.tfstate" >/dev/null
 }
 
-existing_machine() {
-  cp "$ORB_TEST_FIXTURE" "$ORB_TEST_ROOT/machine.json"
-}
-
-owned_machine() {
-  existing_machine
-  mkdir -p "$(dirname "$marker")"
-  printf '%s\n' '{"machine_id":"01M2WX3M540GRA73ECJ873RWCA"}' >"$marker"
+resource_after() {
+  local plan="$BATS_TEST_ROOT/plan.tfplan"
+  tofu -chdir="$orb_directory" plan -input=false -out="$plan" >/dev/null
+  tofu -chdir="$orb_directory" show -json "$plan" |
+    jq -c '.resource_changes[] | select(.address == "orbstack_machine.firmament") | .change.after'
 }
