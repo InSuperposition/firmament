@@ -25,6 +25,9 @@ using the `robertdebock/orbstack` provider's `orbstack_machine` resource.
   makes the next `plan` want to destroy and recreate the real machine.
   `mise run orb:create` only creates a machine that doesn't already exist
   under that name; adopting an existing unmarked machine isn't supported.
+- Deleting and recreating the machine invalidates `bootstrap/k0s`'s state
+  without OpenTofu detecting it — see "State and the orb stage" in
+  `bootstrap/k0s/README.md`.
 
 ## Commands
 
