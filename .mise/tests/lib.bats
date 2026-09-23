@@ -1,31 +1,11 @@
 #!/usr/bin/env bats
 
+load stubs.bash
+
 setup() {
-  root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
-  export MISE_PROJECT_ROOT="$root_directory"
-  export FIRMAMENT_STATE_HOME="$BATS_TEST_TMPDIR/state"
-  export CALLS="$BATS_TEST_TMPDIR/calls"
-  stubs="$BATS_TEST_TMPDIR/bin"
-  mkdir -p "$stubs"
-  for tool in tofu cilium kubectl; do
-    stub "$tool"
-  done
-  PATH="$stubs:$PATH"
+  setup_stubs
   # shellcheck source=../lib.sh
   source "$root_directory/.mise/lib.sh"
-}
-
-# Replaces a tool with a script that records its arguments and the
-# TF_VAR_* variables it received.
-stub() {
-  cat >"$stubs/$1" <<EOF
-#!/usr/bin/env bash
-printf '%s %s | state=%s key=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_orbstack_ssh_key_path:-}" >>"\$CALLS"
-[[ "\$*" == *"output -raw kubeconfig_path"* ]] && printf '/state/admin.kubeconfig'
-[[ "\$*" == *"get charts.helm.k0sproject.io -o json"* ]] && cat "\${CHARTS:-/dev/null}"
-exit 0
-EOF
-  chmod +x "$stubs/$1"
 }
 
 @test "resolves an existing environment to its OpenTofu root" {
@@ -52,17 +32,17 @@ EOF
   [[ "$output" == *"FIRMAMENT_STATE_HOME is unset"* ]]
 }
 
-@test "runs tofu in the environment root with the machine-side variables" {
-  FIRMAMENT_ORBSTACK_SSH_KEY=/keys/id tofu_in_environment local plan -input=false
+@test "runs tofu in the environment root with only its state directory" {
+  tofu_in_environment local plan -input=false
   run cat "$CALLS"
-  [ "$output" = "tofu -chdir=$root_directory/environment/local plan -input=false | state=$FIRMAMENT_STATE_HOME/environment/local key=/keys/id" ]
+  [ "$output" = "tofu -chdir=$root_directory/environment/local plan -input=false | state=$FIRMAMENT_STATE_HOME/environment/local" ]
 }
 
-@test "defaults the SSH key to OrbStack's" {
-  unset FIRMAMENT_ORBSTACK_SSH_KEY
-  tofu_in_environment local plan
-  run cat "$CALLS"
-  [[ "$output" == *"key=$HOME/.orbstack/ssh/id_ed25519" ]]
+@test "creates no state directory for an environment that does not exist" {
+  run init_environment nowhere
+  [ "$status" -ne 0 ]
+  [ ! -e "$FIRMAMENT_STATE_HOME/environment/nowhere" ]
+  [ ! -e "$CALLS" ]
 }
 
 @test "points the backend at the environment's state file" {
@@ -163,19 +143,19 @@ chart() {
 }
 
 @test "treats an empty XDG_STATE_HOME as unset" {
-  run env -u FIRMAMENT_STATE_HOME XDG_STATE_HOME= mise env --json -C "$root_directory"
+  run env -u FIRMAMENT_STATE_HOME XDG_STATE_HOME= "$real_mise" env --json -C "$root_directory"
   [ "$status" -eq 0 ]
   [ "$(jq -r .FIRMAMENT_STATE_HOME <<<"$output")" = "$HOME/.local/state/firmament" ]
 }
 
 @test "honors a FIRMAMENT_STATE_HOME set by the caller" {
-  run env FIRMAMENT_STATE_HOME=/custom mise env --json -C "$root_directory"
+  run env FIRMAMENT_STATE_HOME=/custom "$real_mise" env --json -C "$root_directory"
   [ "$(jq -r .FIRMAMENT_STATE_HOME <<<"$output")" = /custom ]
 }
 
 @test "points KUBECONFIG at the local cluster from the root and inside environment/local" {
-  root=$(env -u KUBECONFIG mise env --json -C "$root_directory" | jq -r .KUBECONFIG)
-  local_environment=$(env -u KUBECONFIG mise env --json -C "$root_directory/environment/local" | jq -r .KUBECONFIG)
+  root=$(env -u KUBECONFIG "$real_mise" env --json -C "$root_directory" | jq -r .KUBECONFIG)
+  local_environment=$(env -u KUBECONFIG "$real_mise" env --json -C "$root_directory/environment/local" | jq -r .KUBECONFIG)
   [ "$root" = "$FIRMAMENT_STATE_HOME/environment/local/admin.kubeconfig" ]
   [ "$local_environment" = "$root" ]
 }

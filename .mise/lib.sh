@@ -25,32 +25,36 @@ state_directory() {
   printf '%s/environment/%s\n' "${FIRMAMENT_STATE_HOME:?FIRMAMENT_STATE_HOME is unset; run this through mise}" "$1"
 }
 
-# Runs tofu in an environment's root with the variables every environment
-# takes from the machine rather than from Git.
+# Runs tofu in an environment's root, telling it where its state directory
+# is. Every other input belongs to the environment's own configuration.
 tofu_in_environment() {
   local environment="$1"
   shift
   local directory state
   directory=$(environment_directory "$environment") || return
   state=$(state_directory "$environment") || return
-  TF_VAR_state_directory="$state" \
-    TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbstack/ssh/id_ed25519}" \
-    tofu -chdir="$directory" "$@"
+  TF_VAR_state_directory="$state" tofu -chdir="$directory" "$@"
 }
 
 # Points an environment's OpenTofu backend at its state file.
 init_environment() {
   local environment="$1"
   local state
+  environment_directory "$environment" >/dev/null || return
   state=$(state_directory "$environment") || return
   mkdir -p "$state"
   tofu_in_environment "$environment" init -input=false -reconfigure \
     -backend-config="path=$state/terraform.tfstate" >/dev/null
 }
 
+# Prints one output from an environment's state.
+environment_output() {
+  tofu_in_environment "$1" output -raw "$2"
+}
+
 # Prints the kubeconfig path recorded in an environment's state.
 environment_kubeconfig() {
-  tofu_in_environment "$1" output -raw kubeconfig_path
+  environment_output "$1" kubeconfig_path
 }
 
 # Prints one "<state> <chart>" line per k0s Helm chart, where state is:

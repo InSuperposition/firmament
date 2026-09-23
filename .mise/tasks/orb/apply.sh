@@ -9,4 +9,4 @@ environment="$usage_environment"
 
 init_environment "$environment"
 tofu_in_environment "$environment" apply -input=false -auto-approve -target=module.vm_orb
-orb info firmament --format json
+orb info "$(environment_output "$environment" machine_name)" --format json

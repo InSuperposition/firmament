@@ -60,9 +60,13 @@ cluster network down with it.
 
 ## Commands
 
-Every task below except `env:test` talks to this environment's state or
-machine. Each one takes the environment name as an optional argument,
-defaulting to `local` (`mise run env:plan local`).
+Every task below takes the environment name as an optional argument,
+defaulting to `local` (`mise run env:plan local`). All except `env:test`
+talk to this environment's state or machine.
+
+k0sctl reaches the machine with the SSH key OrbStack creates,
+`~/.orbstack/ssh/id_ed25519`. To use another key, set
+`TF_VAR_orbstack_ssh_key_path` to its absolute path.
 
 | Command | Behavior |
 | --- | --- |
@@ -72,6 +76,7 @@ defaulting to `local` (`mise run env:plan local`).
 | `mise run orb:plan` / `orb:apply` / `orb:destroy` | `-target=module.vm_orb` only |
 | `mise run ubuntu:verify` | `-target=module.os_ubuntu` only |
 | `mise run k0s:plan` / `k0s:apply` | `-target=module.orch_k0s -target=local_sensitive_file.kubeconfig`, which includes the Cilium chart |
+| `mise run verify` | Run every `*:verify` task below, one at a time |
 | `mise run k0s:verify` | Wait for every node to be Ready, using the kubeconfig path recorded in state |
 | `mise run cilium:verify` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI, using the kubeconfig path recorded in state |
 | `mise run env:test` | Test that the modules are wired together (shared API address and port, kube-proxy setting, Cilium chart) against a plan in a temporary state, with no OrbStack calls |

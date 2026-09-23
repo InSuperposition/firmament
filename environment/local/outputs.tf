@@ -1,3 +1,7 @@
+output "machine_name" {
+  value = module.vm_orb.name
+}
+
 output "machine_ip" {
   value = module.vm_orb.ip_address
 }

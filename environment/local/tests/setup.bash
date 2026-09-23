@@ -15,13 +15,20 @@ setup() {
   mkdir -p "$BATS_TEST_ROOT"
 }
 
-cluster_config() {
+k0sctl_config() {
   local plan="$BATS_TEST_ROOT/plan.tfplan"
   tofu -chdir="$environment_directory" plan -input=false -out="$plan" \
-    -var='orbstack_ssh_key_path=/tmp/orbstack-test-key' \
     -var="state_directory=$BATS_TEST_ROOT/state" "$@" >/dev/null
   tofu -chdir="$environment_directory" show -json "$plan" |
-    jq -r '.resource_changes[] | select(.address == "module.orch_k0s.k0sctl_config.this") | .change.after.spec.k0s.config'
+    jq '.resource_changes[] | select(.address == "module.orch_k0s.k0sctl_config.this") | .change.after'
+}
+
+cluster_config() {
+  k0sctl_config "$@" | jq -r '.spec.k0s.config'
+}
+
+ssh_key_path() {
+  k0sctl_config "$@" | jq -r '.spec.host[0].ssh[0].key_path'
 }
 
 cilium_values() {
