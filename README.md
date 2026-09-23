@@ -1,25 +1,26 @@
 # firmament
 
-Abstract: Declarative bootstrap for a dedicated Kubernetes host — from the
-OrbStack VM, through Ubuntu readiness verification, to a running k0s
-cluster. Each stage is documented and tested independently under
-`bootstrap/`.
+Abstract: Declarative bootstrap for a dedicated Kubernetes host — one
+OrbStack VM, verified Ubuntu-ready, running k0s. `environment/local`
+composes three real OpenTofu modules under `modules/` into one applied
+environment with a single shared state.
 
 ## Goals
 
 - Reproducible, idempotent bootstrap of one `firmament` target.
-- Every stage owns only what it declares — no stage reaches ahead into the
-  next one's responsibility.
-- Prefer real declarative tooling (OpenTofu + providers, CUE) over
-  hand-rolled imperative scripts wherever a real fit exists.
+- Real OpenTofu modules, composed from one root config — not standalone
+  scripts wired together by task ordering.
+- Each module stays generic (host-agnostic where the underlying tool
+  allows it); OrbStack-specific wiring lives in `environment/local`, not
+  inside the modules themselves.
 
 ## Constraints
 
 - mise is required. All pinned tool versions, tasks, and checks in this
   repo run through it — there is no supported path that bypasses mise.
-- No mutable state or secrets are committed to Git. Ownership markers,
-  OpenTofu state, and kubeconfigs live under
-  `${XDG_STATE_HOME:-$HOME/.local/state}/firmament/`.
+- No mutable state or secrets are committed to Git. OpenTofu state and
+  the rendered kubeconfig live under
+  `${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local/`.
 
 ## Setup
 
@@ -31,9 +32,9 @@ MISE_LOCKED_SCOPES=project mise install --locked
 mise run hooks:install
 ```
 
-Make the pinned tools and project environment (including `KUBECONFIG` for
-the k0s stage) available in your shell. Either activate mise persistently
-in your shell profile — see mise's
+Make the pinned tools and project environment (including `KUBECONFIG`)
+available in your shell. Either activate mise persistently in your shell
+profile — see mise's
 [shell activation docs](https://mise.jdx.dev/getting-started.html#activate-mise) —
 or, for a one-off shell session:
 
@@ -41,19 +42,26 @@ or, for a one-off shell session:
 eval "$(mise env)"
 ```
 
-## Stages
+## Structure
 
-Run in order; each has its own README with the full contract:
+```text
+environment/local/   root config: composes the three modules below,
+                      owns the one shared state and the kubeconfig file
+modules/vm-orb/       the OrbStack VM
+modules/os-ubuntu/    Ubuntu readiness check (SSH probe + postconditions)
+modules/orch-k0s/     the k0s controller+worker node
+```
 
-1. [`bootstrap/orb`](bootstrap/orb/README.md) — create or adopt the
-   dedicated OrbStack VM.
-2. [`bootstrap/ubuntu`](bootstrap/ubuntu/README.md) — verify the host
-   meets the k0s readiness contract.
-3. [`bootstrap/k0s`](bootstrap/k0s/README.md) — declare and apply the k0s
-   `controller+worker` node via OpenTofu.
+Each module has its own README with its contract. `mise run bootstrap:local`
+applies the whole environment in dependency order (VM, then the readiness
+check, then k0s); `mise run teardown:local` reverses it. Narrower tasks
+(`orb:create`, `ubuntu:check`, `k0s:apply`, and their counterparts) operate
+on one module at a time via `tofu -target` against the same shared state —
+see `environment/local/README.md` for the full task list and what
+`-target` does and doesn't isolate.
 
-`mise run check` runs every stage's formatting, linting, schema, and test
-checks.
+`mise run check` runs formatting, linting, `tofu validate`, and every
+module's test suite.
 
 ## Uninstalling
 

@@ -2,7 +2,7 @@
 load setup.bash
 
 resource_after() {
-  plan_json | jq -c '.resource_changes[] | select(.address == "k0sctl_config.firmament") | .change.after'
+  plan_json | jq -c '.resource_changes[] | select(.address == "k0sctl_config.this") | .change.after'
 }
 
 @test "plans connection values from the environment" {
@@ -34,8 +34,7 @@ resource_after() {
     -var="ssh_address=$FIRMAMENT_K0S_SSH_ADDRESS" \
     -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
     -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
-    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" \
-    -var="state_directory=$BATS_TEST_ROOT"
+    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS"
   [ "$status" -eq 1 ]
   [[ "$output" == *ssh_key_path* ]]
 }
@@ -47,8 +46,7 @@ resource_after() {
     -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
     -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
     -var="ssh_key_path=$FIRMAMENT_K0S_SSH_KEY" \
-    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" \
-    -var="state_directory=$BATS_TEST_ROOT"
+    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS"
   [ "$status" -eq 1 ]
   [[ "$output" == *'invalid SSH address'* ]]
 }

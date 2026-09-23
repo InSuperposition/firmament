@@ -3,7 +3,7 @@ locals {
     apiVersion = "k0s.k0sproject.io/v1beta1"
     kind       = "ClusterConfig"
     metadata = {
-      name = "firmament"
+      name = var.cluster_name
     }
     spec = {
       api = {
@@ -21,9 +21,9 @@ locals {
   }
 }
 
-resource "k0sctl_config" "firmament" {
+resource "k0sctl_config" "this" {
   metadata {
-    name = "firmament"
+    name = var.cluster_name
   }
 
   spec {

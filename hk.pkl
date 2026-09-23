@@ -8,7 +8,7 @@ steps {
     check = "mise run check:bats"
   }
   ["tofu"] {
-    check = "mise run k0s:fmt && mise run k0s:validate"
+    check = "mise run local:fmt && mise run local:validate"
   }
 }
 
