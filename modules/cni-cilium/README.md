@@ -77,7 +77,7 @@ came from the new pod on the same socket, with no timeout or error.
 Processes in the host network namespace still use socket-level load
 balancing and keep the gap.
 
-`cilium:connectivity` passes `--log-check-only-test-time`, so this
+`cilium:conformance` passes `--log-check-only-test-time`, so this
 start-up error does not fail the suite; agent errors logged while the
 tests run still do. The Cilium bug report is in [BUGS.md](BUGS.md), and
 the OrbStack kernel request is in
@@ -90,8 +90,8 @@ Run from the repo root:
 | Command | Behavior |
 | --- | --- |
 | `mise run cilium:test` | Run this module's tests against a rendered plan, no cluster |
-| `mise run cilium:status` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI |
-| `mise run cilium:connectivity` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests (slow, manual only) |
+| `mise run cilium:verify` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI |
+| `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests (slow, manual only) |
 
 To open the Hubble UI or observe flows against the live cluster:
 

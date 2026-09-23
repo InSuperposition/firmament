@@ -15,8 +15,8 @@ and `TF_VAR_*` lines (and `[env] KUBECONFIG` repeats the same path),
 and shell embedded in TOML cannot be linted by shellcheck or tested by
 bats.
 
-**Context:** Tasks such as `plan`, `local:bootstrap`, `local:teardown`,
-`orb:*`, `ubuntu:check` and `k0s:*` each compute
+**Context:** Tasks such as `plan`, `env:apply`, `env:destroy`,
+`orb:*`, `ubuntu:verify` and `k0s:*` each compute
 `dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"`
 and export `TF_VAR_orbstack_ssh_key_path` and `TF_VAR_state_directory`.
 `[env] KUBECONFIG` uses `get_env`, which keeps an empty
@@ -42,8 +42,8 @@ bats. Keep one-line tasks inline.
 ### Add a live end-to-end test lane for the local environment
 
 **What:** Add a `mise run local:e2e` task that runs a bats suite against a
-real OrbStack machine: `local:teardown`, `local:bootstrap`, the readiness
-checks, `cilium:connectivity`, then teardown again.
+real OrbStack machine: `env:destroy`, `env:apply`, the readiness
+checks, `cilium:conformance`, then teardown again.
 
 **Why:** The offline suites (`mise run check`) cover everything that can
 be checked from a plan. They cannot catch regressions that only appear on
@@ -51,11 +51,11 @@ a live cluster, and those paths are currently checked by hand.
 
 **Context:** Paths with no automated test today:
 
-- the post-apply wait order in `local:bootstrap` and `k0s:apply`
+- the post-apply wait order in `env:apply` and `k0s:apply`
   (`cilium status --wait` must run before `kubectl wait`, because k0s
   restarts the API server after apply);
-- `k0s:verify`, `cilium:status` and `cilium:connectivity`;
-- `k0s:apply` and `k0s:dry-run` targeting
+- `k0s:verify`, `cilium:verify` and `cilium:conformance`;
+- `k0s:apply` and `k0s:plan` targeting
   `local_sensitive_file.kubeconfig`;
 - a bootstrap with `TF_VAR_kube_proxy_replacement=false` (kube-proxy
   runs, Cilium uses veth with iptables masquerading);

@@ -54,11 +54,11 @@ modules/orch-k0s/     the k0s controller+worker node, which installs
                       the declared Helm charts
 ```
 
-Each module has its own README with its contract. `mise run local:bootstrap`
+Each module has its own README with its contract. `mise run env:apply`
 applies the whole environment in dependency order (VM, then the readiness
-check, then k0s, which installs Cilium); `mise run local:teardown`
+check, then k0s, which installs Cilium); `mise run env:destroy`
 reverses it. Narrower tasks
-(`orb:create`, `ubuntu:check`, `k0s:apply`, and their counterparts) target
+(`orb:apply`, `ubuntu:verify`, `k0s:apply`, and their counterparts) target
 one module via `tofu -target` against the same shared state (`k0s:*` also
 targets the kubeconfig file and renders the Cilium chart it depends on) —
 see `environment/local/README.md` for the full task list and what
