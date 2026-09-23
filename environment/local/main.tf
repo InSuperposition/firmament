@@ -11,6 +11,11 @@ terraform {
   backend "local" {}
 }
 
+locals {
+  # OrbStack's machine DNS name resolves on both the host and the guest.
+  api_address = module.vm_orb.dns_name
+}
+
 module "vm_orb" {
   source = "../../modules/vm-orb"
 }
@@ -20,6 +25,15 @@ module "os_ubuntu" {
   ssh_target = module.vm_orb.ssh_target
 }
 
+# Reads no orch_k0s output: orch_k0s consumes this chart, so the reverse edge would be a cycle.
+module "cni_cilium" {
+  source = "../../modules/cni-cilium"
+
+  api_host               = local.api_address
+  kube_proxy_replacement = var.kube_proxy_replacement
+  operator_replicas      = 1
+}
+
 module "orch_k0s" {
   source = "../../modules/orch-k0s"
 
@@ -27,8 +41,11 @@ module "orch_k0s" {
   ssh_user     = module.vm_orb.root_ssh.user
   ssh_port     = module.vm_orb.root_ssh.port
   ssh_key_path = var.orbstack_ssh_key_path
-  api_address  = module.vm_orb.dns_name
+  api_address  = local.api_address
   cluster_name = module.vm_orb.name
+
+  kube_proxy_replacement = var.kube_proxy_replacement
+  helm_charts            = [module.cni_cilium.helm_chart]
 
   # os_ubuntu's postconditions must pass before k0s touches the host.
   depends_on = [module.os_ubuntu]

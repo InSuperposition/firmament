@@ -1,0 +1,17 @@
+# netkit requires kube-proxy replacement and BPF masquerading; the agent refuses to start without both.
+bpf:
+  datapathMode: ${kube_proxy_replacement ? "netkit" : "veth"}
+  masquerade: ${kube_proxy_replacement}
+kubeProxyReplacement: ${kube_proxy_replacement}
+k8sServiceHost: ${jsonencode(api_host)}
+k8sServicePort: ${api_port}
+# Pod IPs come from the podCIDR Kubernetes assigns to each node.
+ipam:
+  mode: kubernetes
+operator:
+  replicas: ${operator_replicas}
+hubble:
+  relay:
+    enabled: true
+  ui:
+    enabled: true

@@ -6,6 +6,8 @@ KUBECONFIG = "{{ get_env(name='FIRMAMENT_STATE_DIRECTORY', default=get_env(name=
 
 [tools]
 bats = "1.14.0"
+cilium-cli = "0.20.0"
+cilium-hubble = "1.19.4"
 hk = "2.0.1"
 jq = "1.8.2"
 kubectl = "1.36.4"
@@ -23,7 +25,7 @@ tofu -chdir=environment/local init -input=false -reconfigure -backend-config="pa
 '''
 
 [tasks.plan]
-description = "Plan the full local environment: VM, readiness check, k0s"
+description = "Plan the full local environment: VM, readiness check, k0s, Cilium"
 depends = ["local:init"]
 run = '''
 dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
@@ -32,17 +34,19 @@ tofu -chdir=environment/local plan -input=false
 '''
 
 [tasks."bootstrap:local"]
-description = "Apply the full local environment: VM, readiness check, k0s"
+description = "Apply the full local environment: VM, readiness check, k0s, Cilium"
 depends = ["local:init"]
 run = '''
 dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
 export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbstack/ssh/id_ed25519}" TF_VAR_state_directory="$dir"
 tofu -chdir=environment/local apply -input=false -auto-approve
-kubectl --kubeconfig "$dir/admin.kubeconfig" get nodes --request-timeout=30s
+# cilium retries while k0s restarts the API server after apply; kubectl wait fails on the first refused connection.
+cilium --kubeconfig "$dir/admin.kubeconfig" status --wait --wait-duration=10m --interactive=false
+kubectl --kubeconfig "$dir/admin.kubeconfig" wait --for=condition=Ready node --all --timeout=5m
 '''
 
 [tasks."teardown:local"]
-description = "Destroy the full local environment: k0s, readiness check, VM"
+description = "Destroy the full local environment: Cilium, k0s, readiness check, VM"
 depends = ["local:init"]
 run = '''
 dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
@@ -100,31 +104,45 @@ description = "Test the os-ubuntu module without a live host"
 run = "bats modules/os-ubuntu/tests/*.bats"
 
 [tasks."k0s:dry-run"]
-description = "Plan the k0s cluster only (pulls in vm-orb/os-ubuntu if they don't exist yet)"
+description = "Plan the k0s cluster, its Cilium chart and kubeconfig (pulls in vm-orb/os-ubuntu if they don't exist yet)"
 depends = ["local:init"]
 run = '''
 dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
 export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbstack/ssh/id_ed25519}" TF_VAR_state_directory="$dir"
-tofu -chdir=environment/local plan -input=false -target=module.orch_k0s
+tofu -chdir=environment/local plan -input=false -target=module.orch_k0s -target=local_sensitive_file.kubeconfig
 '''
 
 [tasks."k0s:apply"]
-description = "Apply the k0s cluster only and retrieve kubeconfig (pulls in vm-orb/os-ubuntu if they don't exist yet)"
+description = "Apply the k0s cluster and its Cilium chart, and write the kubeconfig (pulls in vm-orb/os-ubuntu if they don't exist yet)"
 depends = ["local:init"]
 run = '''
 dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
 export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbstack/ssh/id_ed25519}" TF_VAR_state_directory="$dir"
-tofu -chdir=environment/local apply -input=false -auto-approve -target=module.orch_k0s
-kubectl --kubeconfig "$dir/admin.kubeconfig" get nodes --request-timeout=30s
+tofu -chdir=environment/local apply -input=false -auto-approve -target=module.orch_k0s -target=local_sensitive_file.kubeconfig
+# cilium retries while k0s restarts the API server after apply; kubectl wait fails on the first refused connection.
+cilium --kubeconfig "$dir/admin.kubeconfig" status --wait --wait-duration=10m --interactive=false
+kubectl --kubeconfig "$dir/admin.kubeconfig" wait --for=condition=Ready node --all --timeout=5m
 '''
 
 [tasks."k0s:test"]
-description = "Check the nodes in the applied k0s cluster"
-run = 'dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"; kubectl --kubeconfig "$dir/admin.kubeconfig" get nodes --request-timeout=30s'
+description = "Wait for every node in the applied k0s cluster to be Ready"
+run = 'dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"; kubectl --kubeconfig "$dir/admin.kubeconfig" wait --for=condition=Ready node --all --timeout=5m'
 
 [tasks."k0s:unit"]
 description = "Test the orch-k0s module without a live host"
 run = "bats modules/orch-k0s/tests/*.bats"
+
+[tasks."cilium:status"]
+description = "Wait for the Cilium agent, operator, Hubble Relay and Hubble UI to be ready"
+run = "cilium status --wait"
+
+[tasks."cilium:connectivity"]
+description = "Run the Cilium connectivity test suite against the live cluster (slow; deploys test workloads)"
+run = "cilium connectivity test --log-check-only-test-time"
+
+[tasks."cilium:unit"]
+description = "Test the cni-cilium module without a live cluster"
+run = "bats modules/cni-cilium/tests/*.bats"
 
 [tasks."local:fmt"]
 description = "Check OpenTofu formatting across all modules and the local environment"
@@ -143,7 +161,7 @@ run = "shellcheck modules/os-ubuntu/scripts/probe.sh"
 
 [tasks."check:bats"]
 description = "Run all repository shell tests"
-run = "bats modules/vm-orb/tests/*.bats modules/os-ubuntu/tests/*.bats modules/orch-k0s/tests/*.bats"
+run = "bats modules/vm-orb/tests/*.bats modules/os-ubuntu/tests/*.bats modules/orch-k0s/tests/*.bats modules/cni-cilium/tests/*.bats"
 
 [tasks.check]
 description = "Run all off-cluster checks"
@@ -151,8 +169,8 @@ run = [
   { task = "local:fmt" },
   { task = "local:validate" },
   { task = "check:shellcheck" },
-  "shfmt -d -i 2 modules/os-ubuntu/scripts/probe.sh modules/vm-orb/tests/setup.bash modules/os-ubuntu/tests/setup.bash modules/orch-k0s/tests/setup.bash",
-  "shfmt -d -i 2 -ln bats modules/vm-orb/tests/*.bats modules/os-ubuntu/tests/*.bats modules/orch-k0s/tests/*.bats",
+  "shfmt -d -i 2 modules/os-ubuntu/scripts/probe.sh modules/vm-orb/tests/setup.bash modules/os-ubuntu/tests/setup.bash modules/orch-k0s/tests/setup.bash modules/cni-cilium/tests/setup.bash",
+  "shfmt -d -i 2 -ln bats modules/vm-orb/tests/*.bats modules/os-ubuntu/tests/*.bats modules/orch-k0s/tests/*.bats modules/cni-cilium/tests/*.bats",
   { task = "check:bats" },
 ]
 
