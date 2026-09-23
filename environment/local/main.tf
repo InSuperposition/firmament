@@ -14,6 +14,7 @@ terraform {
 locals {
   # OrbStack's machine DNS name resolves on both the host and the guest.
   api_address = module.vm_orb.dns_name
+  api_port    = 6443
 }
 
 module "vm_orb" {
@@ -30,6 +31,7 @@ module "cni_cilium" {
   source = "../../modules/cni-cilium"
 
   api_host               = local.api_address
+  api_port               = local.api_port
   kube_proxy_replacement = var.kube_proxy_replacement
   operator_replicas      = 1
 }
@@ -42,6 +44,7 @@ module "orch_k0s" {
   ssh_port     = module.vm_orb.root_ssh.port
   ssh_key_path = var.orbstack_ssh_key_path
   api_address  = local.api_address
+  api_port     = local.api_port
   cluster_name = module.vm_orb.name
 
   kube_proxy_replacement = var.kube_proxy_replacement

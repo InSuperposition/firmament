@@ -28,7 +28,8 @@ OpenTofu, not by which mise task you happen to run.
 to k0s's built-in Helm installer (`spec.extensions.helm`). k0s installs
 Cilium inside the cluster during bring-up, so this config needs no Helm
 or Kubernetes provider and no kubeconfig at plan time. Both modules read
-`local.api_address` (the machine's OrbStack DNS name); `cni_cilium` reads
+`local.api_address` (the machine's OrbStack DNS name) and `local.api_port`,
+so k0s serves the API where Cilium's agent connects; `cni_cilium` reads
 no `orch_k0s` output, since that edge would form a cycle.
 
 ## Kube-proxy replacement is fixed at creation
@@ -63,6 +64,7 @@ cluster network down with it.
 | `mise run k0s:dry-run` / `k0s:apply` | `-target=module.orch_k0s -target=local_sensitive_file.kubeconfig`, which includes the Cilium chart |
 | `mise run k0s:test` | Wait for every node to be Ready, no Tofu involved |
 | `mise run cilium:status` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI, no Tofu involved |
+| `mise run local:test:unit` | Test that the modules are wired together (shared API address and port, kube-proxy setting, Cilium chart) against a plan in a temporary state, with no OrbStack calls |
 | `mise run cilium:connectivity` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests (slow, manual only) |
 
 ## What `-target` does and doesn't isolate
