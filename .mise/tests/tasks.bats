@@ -103,6 +103,22 @@ run_task() {
   [ ! -e "$CALLS" ]
 }
 
+@test "cilium:conformance removes its test workloads after a passing suite" {
+  run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
+  [ "$status" -eq 0 ]
+  run grep '^cilium ' "$CALLS"
+  [ "${#lines[@]}" -eq 2 ]
+  [ "${lines[0]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --log-check-only-test-time" ]
+  [ "${lines[1]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --cleanup" ]
+}
+
+@test "cilium:conformance keeps the test workloads of a failing suite" {
+  printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *--log-check-only-test-time* ]]\n' >"$stubs/cilium"
+  run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
+  [ "$status" -ne 0 ]
+  ! grep -q -- --cleanup "$CALLS"
+}
+
 # Replaces the chainsaw stub with one that also records KUBECONFIG.
 record_chainsaw_kubeconfig() {
   printf '#!/usr/bin/env bash\nprintf "chainsaw %%s | KUBECONFIG=%%s\\n" "$*" "$KUBECONFIG" >>"$CALLS"\n' >"$stubs/chainsaw"

@@ -92,7 +92,7 @@ Run from the repo root:
 | `mise run tofu:test` | Run `tests/unit.tftest.hcl` (and every other OpenTofu suite) against rendered plans, no cluster |
 | `mise run cilium:test` | Run `tests/inputs.bats`, which checks that OpenTofu refuses a plan without the required inputs |
 | `mise run cilium:verify` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI |
-| `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests (slow, manual only) |
+| `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests, then remove its test workloads; a failed run keeps them for debugging (slow, manual only) |
 
 To open the Hubble UI or observe flows against the live cluster:
 
