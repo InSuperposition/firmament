@@ -27,8 +27,8 @@ description = "Run every offline check: lint, validate and test"
 run = [{ task = "lint" }, { task = "tofu:validate" }, { task = "test" }]
 
 [tasks."cilium:test"]
-description = "Test the cni-cilium module without a live cluster"
-run = "bats modules/cni-cilium/tests/unit.bats"
+description = "Check that the cni-cilium module requires its inputs, without a live cluster"
+run = "bats modules/cni-cilium/tests/inputs.bats"
 
 [tasks.format]
 description = "Run every *:format task"

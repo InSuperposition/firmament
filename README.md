@@ -88,8 +88,11 @@ that verb for every noun. The verb also says how far a task reaches:
 
 `mise run check` runs every offline check: `lint` (shellcheck, shfmt,
 `tofu fmt`, `mise fmt` and `mise tasks validate`), `tofu:validate` and
-`test` (every module's suite, the environment suites, and the task
-scripts with their shared library). `mise run format` fixes what the
+`test` (every module and environment suite, and the task scripts with
+their shared library). Suites that only check OpenTofu logic (rendered
+values, variable validation, preconditions) are `tests/*.tftest.hcl`,
+run by `tofu:test`. Suites that run shell or check OpenTofu's own error
+output stay on bats (`tests/*.bats`). `mise run format` fixes what the
 formatters can. hk defines the lint and format rules; the `*:lint` and
 `*:format` tasks each run one group of its steps.
 
