@@ -33,7 +33,7 @@ export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbsta
 tofu -chdir=environment/local plan -input=false
 '''
 
-[tasks."bootstrap:local"]
+[tasks."local:bootstrap"]
 description = "Apply the full local environment: VM, readiness check, k0s, Cilium"
 depends = ["local:init"]
 run = '''
@@ -45,7 +45,7 @@ cilium --kubeconfig "$dir/admin.kubeconfig" status --wait --wait-duration=10m --
 kubectl --kubeconfig "$dir/admin.kubeconfig" wait --for=condition=Ready node --all --timeout=5m
 '''
 
-[tasks."teardown:local"]
+[tasks."local:teardown"]
 description = "Destroy the full local environment: Cilium, k0s, readiness check, VM"
 depends = ["local:init"]
 run = '''
@@ -86,9 +86,9 @@ export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbsta
 tofu -chdir=environment/local destroy -input=false -auto-approve -target=module.vm_orb
 '''
 
-[tasks."orb:test:unit"]
+[tasks."orb:test"]
 description = "Test the vm-orb module without a live VM"
-run = "bats modules/vm-orb/tests/*.bats"
+run = "bats modules/vm-orb/tests/unit.bats"
 
 [tasks."ubuntu:check"]
 description = "Check Ubuntu readiness on the OrbStack machine (requires it to exist)"
@@ -99,9 +99,9 @@ export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbsta
 tofu -chdir=environment/local plan -input=false -target=module.os_ubuntu
 '''
 
-[tasks."ubuntu:test:unit"]
+[tasks."ubuntu:test"]
 description = "Test the os-ubuntu module without a live host"
-run = "bats modules/os-ubuntu/tests/*.bats"
+run = "bats modules/os-ubuntu/tests/unit.bats"
 
 [tasks."k0s:dry-run"]
 description = "Plan the k0s cluster, its Cilium chart and kubeconfig (pulls in vm-orb/os-ubuntu if they don't exist yet)"
@@ -124,13 +124,13 @@ cilium --kubeconfig "$dir/admin.kubeconfig" status --wait --wait-duration=10m --
 kubectl --kubeconfig "$dir/admin.kubeconfig" wait --for=condition=Ready node --all --timeout=5m
 '''
 
-[tasks."k0s:test"]
+[tasks."k0s:verify"]
 description = "Wait for every node in the applied k0s cluster to be Ready"
 run = "kubectl wait --for=condition=Ready node --all --timeout=5m"
 
-[tasks."k0s:test:unit"]
+[tasks."k0s:test"]
 description = "Test the orch-k0s module without a live host"
-run = "bats modules/orch-k0s/tests/*.bats"
+run = "bats modules/orch-k0s/tests/unit.bats"
 
 [tasks."cilium:status"]
 description = "Wait for the Cilium agent, operator, Hubble Relay and Hubble UI to be ready"
@@ -140,13 +140,13 @@ run = "cilium status --wait"
 description = "Run the Cilium connectivity test suite against the live cluster (slow; deploys test workloads)"
 run = "cilium connectivity test --log-check-only-test-time"
 
-[tasks."cilium:test:unit"]
+[tasks."cilium:test"]
 description = "Test the cni-cilium module without a live cluster"
-run = "bats modules/cni-cilium/tests/*.bats"
+run = "bats modules/cni-cilium/tests/unit.bats"
 
-[tasks."local:test:unit"]
+[tasks."env:test"]
 description = "Test the local environment's module wiring against a plan in a temporary state, without OrbStack"
-run = "bats environment/local/tests/*.bats"
+run = "bats environment/local/tests/integration.bats"
 
 [tasks."local:fmt"]
 description = "Check OpenTofu formatting across all modules and the local environment"
@@ -163,9 +163,9 @@ tofu -chdir=environment/local validate
 description = "Check all repository shell scripts"
 run = "shellcheck modules/os-ubuntu/scripts/probe.sh"
 
-[tasks."check:bats"]
-description = "Run all repository shell tests"
-run = "bats modules/*/tests/*.bats environment/*/tests/*.bats"
+[tasks.test]
+description = "Run every offline test suite; never touches infrastructure"
+depends = ["*:test"]
 
 [tasks.check]
 description = "Run all off-cluster checks"
@@ -175,7 +175,7 @@ run = [
   { task = "check:shellcheck" },
   "shfmt -d -i 2 modules/os-ubuntu/scripts/probe.sh modules/*/tests/setup.bash environment/*/tests/setup.bash",
   "shfmt -d -i 2 -ln bats modules/*/tests/*.bats environment/*/tests/*.bats",
-  { task = "check:bats" },
+  { task = "test" },
 ]
 
 [tasks."hooks:install"]

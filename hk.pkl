@@ -5,7 +5,7 @@ steps {
     check = "mise run check:shellcheck"
   }
   ["bats"] {
-    check = "mise run check:bats"
+    check = "mise run test"
   }
   ["tofu"] {
     check = "mise run local:fmt && mise run local:validate"

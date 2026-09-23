@@ -36,11 +36,11 @@ no `orch_k0s` output, since that edge would form a cycle.
 
 `kube_proxy_replacement` (default `true`) sets both k0s's
 `kubeProxy.disabled` and Cilium's `kubeProxyReplacement`. Choose it
-before the first `bootstrap:local`. Cilium documents no live migration
+before the first `local:bootstrap`. Cilium documents no live migration
 between the two modes for a single node (the only path is
 [per-node configuration](https://docs.cilium.io/en/stable/configuration/per-node-config/)),
 so changing it on a running cluster means `teardown:local` then
-`bootstrap:local`. It also selects Cilium's pod datapath: netkit with
+`local:bootstrap`. It also selects Cilium's pod datapath: netkit with
 BPF masquerading when `true`, veth with iptables masquerading when
 `false`, since netkit requires kube-proxy replacement.
 
@@ -48,11 +48,11 @@ BPF masquerading when `true`, veth with iptables masquerading when
 plan with a different value fails with "kube_proxy_replacement is fixed
 at cluster creation" before anything reaches the cluster. On a cluster
 bootstrapped with `false`, pass the same `TF_VAR_kube_proxy_replacement`
-to every later `plan`, `k0s:*` or `bootstrap:local` run:
+to every later `plan`, `k0s:*` or `local:bootstrap` run:
 
 ```sh
 mise run teardown:local
-TF_VAR_kube_proxy_replacement=false mise run bootstrap:local
+TF_VAR_kube_proxy_replacement=false mise run local:bootstrap
 ```
 
 Removing Cilium from `helm_charts` makes k0s uninstall it, which takes the
@@ -63,14 +63,14 @@ cluster network down with it.
 | Command | Behavior |
 | --- | --- |
 | `mise run plan` | Plan the whole environment |
-| `mise run bootstrap:local` | Apply the whole environment, then wait for the node to be Ready and Cilium to report healthy |
+| `mise run local:bootstrap` | Apply the whole environment, then wait for the node to be Ready and Cilium to report healthy |
 | `mise run teardown:local` | Destroy the whole environment |
 | `mise run orb:dry-run` / `orb:create` / `orb:delete` | `-target=module.vm_orb` only |
 | `mise run ubuntu:check` | `-target=module.os_ubuntu` only |
 | `mise run k0s:dry-run` / `k0s:apply` | `-target=module.orch_k0s -target=local_sensitive_file.kubeconfig`, which includes the Cilium chart |
-| `mise run k0s:test` | Wait for every node to be Ready, no Tofu involved |
+| `mise run k0s:verify` | Wait for every node to be Ready, no Tofu involved |
 | `mise run cilium:status` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI, no Tofu involved |
-| `mise run local:test:unit` | Test that the modules are wired together (shared API address and port, kube-proxy setting, Cilium chart) against a plan in a temporary state, with no OrbStack calls |
+| `mise run env:test` | Test that the modules are wired together (shared API address and port, kube-proxy setting, Cilium chart) against a plan in a temporary state, with no OrbStack calls |
 | `mise run cilium:connectivity` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests (slow, manual only) |
 
 ## What `-target` does and doesn't isolate

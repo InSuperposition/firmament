@@ -43,4 +43,4 @@ full task list:
 | Command | Behavior |
 | --- | --- |
 | `mise run ubuntu:check` | Plan (runs the probe and every postcondition) |
-| `mise run ubuntu:test:unit` | Run this module's tests against a fixture SSH target, no live host |
+| `mise run ubuntu:test` | Run this module's tests against a fixture SSH target, no live host |
