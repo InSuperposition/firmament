@@ -2,7 +2,7 @@
 lockfile = true
 
 [env]
-KUBECONFIG = "{{ get_env(name='FIRMAMENT_K0S_STATE_DIRECTORY', default=get_env(name='XDG_STATE_HOME', default=env.HOME ~ '/.local/state') ~ '/firmament/targets/firmament/k0s') }}/admin.kubeconfig"
+KUBECONFIG = "{{ get_env(name='FIRMAMENT_STATE_DIRECTORY', default=get_env(name='XDG_STATE_HOME', default=env.HOME ~ '/.local/state') ~ '/firmament/environment/local') }}/admin.kubeconfig"
 
 [tools]
 bats = "1.14.0"
@@ -14,126 +14,145 @@ shellcheck = "0.11.0"
 shfmt = "3.14.1"
 yq = "4.53.6"
 
+[tasks."local:init"]
+description = "Initialize the shared OpenTofu backend for the local environment"
+run = '''
+dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
+mkdir -p "$dir"
+tofu -chdir=environment/local init -input=false -reconfigure -backend-config="path=$dir/terraform.tfstate"
+'''
+
+[tasks.plan]
+description = "Plan the full local environment: VM, readiness check, k0s"
+depends = ["local:init"]
+run = '''
+dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
+export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbstack/ssh/id_ed25519}" TF_VAR_state_directory="$dir"
+tofu -chdir=environment/local plan -input=false
+'''
+
+[tasks."bootstrap:local"]
+description = "Apply the full local environment: VM, readiness check, k0s"
+depends = ["local:init"]
+run = '''
+dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
+export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbstack/ssh/id_ed25519}" TF_VAR_state_directory="$dir"
+tofu -chdir=environment/local apply -input=false -auto-approve
+kubectl --kubeconfig "$dir/admin.kubeconfig" get nodes --request-timeout=30s
+'''
+
+[tasks."teardown:local"]
+description = "Destroy the full local environment: k0s, readiness check, VM"
+depends = ["local:init"]
+run = '''
+dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
+export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbstack/ssh/id_ed25519}" TF_VAR_state_directory="$dir"
+tofu -chdir=environment/local destroy -input=false -auto-approve
+'''
+
 [tasks."orb:inspect"]
 description = "Inspect the configured OrbStack machine without changing it"
 run = "orb info firmament --format json"
 
-[tasks."orb:init"]
-description = "Initialize the orb OpenTofu backend against the local state directory"
+[tasks."orb:dry-run"]
+description = "Plan the OrbStack machine only"
+depends = ["local:init"]
 run = '''
-dir="${FIRMAMENT_ORB_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/orb}"
-mkdir -p "$dir"
-tofu -chdir=bootstrap/orb init -input=false -reconfigure -backend-config="path=$dir/terraform.tfstate"
+dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
+export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbstack/ssh/id_ed25519}" TF_VAR_state_directory="$dir"
+tofu -chdir=environment/local plan -input=false -target=module.vm_orb
 '''
 
-[tasks."orb:dry-run"]
-description = "Plan the orbstack_machine resource"
-depends = ["orb:init"]
-run = "tofu -chdir=bootstrap/orb plan -input=false"
-
 [tasks."orb:create"]
-description = "Create or reconcile the dedicated OrbStack machine"
-depends = ["orb:init"]
+description = "Create the OrbStack machine only"
+depends = ["local:init"]
 run = '''
-tofu -chdir=bootstrap/orb apply -input=false -auto-approve
+dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
+export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbstack/ssh/id_ed25519}" TF_VAR_state_directory="$dir"
+tofu -chdir=environment/local apply -input=false -auto-approve -target=module.vm_orb
 orb info firmament --format json
 '''
 
 [tasks."orb:delete"]
-description = "Delete the dedicated OrbStack machine"
-depends = ["orb:init"]
-run = "tofu -chdir=bootstrap/orb destroy -input=false -auto-approve"
-
-[tasks."bootstrap:ubuntu"]
-description = "Verify the selected Ubuntu host before k0s provisioning"
-run = 'bash "bootstrap/ubuntu/scripts/bootstrap:ubuntu.sh"'
-
-[tasks."k0s:init"]
-description = "Initialize the k0s OpenTofu backend against the local state directory"
+description = "Delete the OrbStack machine, and anything that depends on it"
+depends = ["local:init"]
 run = '''
-dir="${FIRMAMENT_K0S_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/k0s}"
-mkdir -p "$dir"
-tofu -chdir=bootstrap/k0s init -input=false -reconfigure -backend-config="path=$dir/terraform.tfstate"
+dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
+export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbstack/ssh/id_ed25519}" TF_VAR_state_directory="$dir"
+tofu -chdir=environment/local destroy -input=false -auto-approve -target=module.vm_orb
 '''
 
-[tasks."k0s:dry-run"]
-description = "Plan the k0sctl_config resource against the selected host"
-depends = ["k0s:init"]
+[tasks."orb:unit"]
+description = "Test the vm-orb module without a live VM"
+run = "bats modules/vm-orb/tests/*.bats"
+
+[tasks."ubuntu:check"]
+description = "Check Ubuntu readiness on the OrbStack machine (requires it to exist)"
+depends = ["local:init"]
 run = '''
-dir="${FIRMAMENT_K0S_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/k0s}"
-export TF_VAR_ssh_address="$FIRMAMENT_K0S_SSH_ADDRESS" TF_VAR_ssh_user="$FIRMAMENT_K0S_SSH_USER" TF_VAR_ssh_port="$FIRMAMENT_K0S_SSH_PORT" TF_VAR_ssh_key_path="$FIRMAMENT_K0S_SSH_KEY" TF_VAR_api_address="$FIRMAMENT_K0S_API_ADDRESS" TF_VAR_state_directory="$dir"
-tofu -chdir=bootstrap/k0s plan -input=false
+dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
+export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbstack/ssh/id_ed25519}" TF_VAR_state_directory="$dir"
+tofu -chdir=environment/local plan -input=false -target=module.os_ubuntu
+'''
+
+[tasks."ubuntu:unit"]
+description = "Test the os-ubuntu module without a live host"
+run = "bats modules/os-ubuntu/tests/*.bats"
+
+[tasks."k0s:dry-run"]
+description = "Plan the k0s cluster only (pulls in vm-orb/os-ubuntu if they don't exist yet)"
+depends = ["local:init"]
+run = '''
+dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
+export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbstack/ssh/id_ed25519}" TF_VAR_state_directory="$dir"
+tofu -chdir=environment/local plan -input=false -target=module.orch_k0s
 '''
 
 [tasks."k0s:apply"]
-description = "Apply the k0sctl_config resource and retrieve kubeconfig"
-depends = ["k0s:init"]
+description = "Apply the k0s cluster only and retrieve kubeconfig (pulls in vm-orb/os-ubuntu if they don't exist yet)"
+depends = ["local:init"]
 run = '''
-dir="${FIRMAMENT_K0S_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/k0s}"
-export TF_VAR_ssh_address="$FIRMAMENT_K0S_SSH_ADDRESS" TF_VAR_ssh_user="$FIRMAMENT_K0S_SSH_USER" TF_VAR_ssh_port="$FIRMAMENT_K0S_SSH_PORT" TF_VAR_ssh_key_path="$FIRMAMENT_K0S_SSH_KEY" TF_VAR_api_address="$FIRMAMENT_K0S_API_ADDRESS" TF_VAR_state_directory="$dir"
-tofu -chdir=bootstrap/k0s apply -input=false -auto-approve
+dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"
+export TF_VAR_orbstack_ssh_key_path="${FIRMAMENT_ORBSTACK_SSH_KEY:-$HOME/.orbstack/ssh/id_ed25519}" TF_VAR_state_directory="$dir"
+tofu -chdir=environment/local apply -input=false -auto-approve -target=module.orch_k0s
 kubectl --kubeconfig "$dir/admin.kubeconfig" get nodes --request-timeout=30s
 '''
 
 [tasks."k0s:test"]
 description = "Check the nodes in the applied k0s cluster"
-run = 'state="${FIRMAMENT_K0S_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/k0s}"; kubectl --kubeconfig "${FIRMAMENT_K0S_KUBECONFIG:-$state/admin.kubeconfig}" get nodes --request-timeout=30s'
+run = 'dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"; kubectl --kubeconfig "$dir/admin.kubeconfig" get nodes --request-timeout=30s'
 
-[tasks."bootstrap:k0s"]
-description = "Verify Ubuntu, dry-run, and apply the first k0s cluster"
-run = [
-  { task = "bootstrap:ubuntu" },
-  { task = "k0s:dry-run" },
-  { task = "k0s:apply" },
-]
+[tasks."k0s:unit"]
+description = "Test the orch-k0s module without a live host"
+run = "bats modules/orch-k0s/tests/*.bats"
 
-[tasks."orb:fmt"]
-description = "Check orb OpenTofu formatting"
-run = "tofu -chdir=bootstrap/orb fmt -check -recursive"
+[tasks."local:fmt"]
+description = "Check OpenTofu formatting across all modules and the local environment"
+run = "tofu fmt -check -recursive modules environment"
 
-[tasks."orb:validate"]
-description = "Validate the orb OpenTofu configuration"
+[tasks."local:validate"]
+description = "Validate the local environment configuration and its modules"
 run = '''
-tofu -chdir=bootstrap/orb init -backend=false -input=false -reconfigure >/dev/null
-tofu -chdir=bootstrap/orb validate
+tofu -chdir=environment/local init -backend=false -input=false -reconfigure >/dev/null
+tofu -chdir=environment/local validate
 '''
-
-[tasks."orb:test"]
-description = "Test OrbStack creation and adoption without a live VM"
-run = "bats bootstrap/orb/tests/*.bats"
 
 [tasks."check:shellcheck"]
 description = "Check all repository shell scripts"
-run = "shellcheck bootstrap/ubuntu/scripts/*.sh bootstrap/ubuntu/tests/fixtures/ssh"
-
-[tasks."k0s:fmt"]
-description = "Check k0s OpenTofu formatting"
-run = "tofu -chdir=bootstrap/k0s fmt -check -recursive"
-
-[tasks."k0s:validate"]
-description = "Validate the k0s OpenTofu configuration"
-run = '''
-tofu -chdir=bootstrap/k0s init -backend=false -input=false -reconfigure >/dev/null
-tofu -chdir=bootstrap/k0s validate
-'''
+run = "shellcheck modules/os-ubuntu/scripts/probe.sh"
 
 [tasks."check:bats"]
 description = "Run all repository shell tests"
-run = "bats bootstrap/orb/tests/*.bats bootstrap/ubuntu/tests/*.bats bootstrap/k0s/tests/*.bats"
+run = "bats modules/vm-orb/tests/*.bats modules/os-ubuntu/tests/*.bats modules/orch-k0s/tests/*.bats"
 
 [tasks.check]
 description = "Run all off-cluster checks"
 run = [
-  { task = "orb:fmt" },
-  { task = "orb:validate" },
-  "shellcheck bootstrap/ubuntu/scripts/*.sh",
-  "shfmt -d -i 2 bootstrap/ubuntu/scripts/*.sh bootstrap/ubuntu/tests/setup.bash bootstrap/ubuntu/tests/fixtures/ssh",
-  "shfmt -d -i 2 -ln bats bootstrap/ubuntu/tests/*.bats",
+  { task = "local:fmt" },
+  { task = "local:validate" },
   { task = "check:shellcheck" },
-  "shfmt -d -i 2 bootstrap/k0s/tests/setup.bash",
-  "shfmt -d -i 2 -ln bats bootstrap/k0s/tests/*.bats",
-  { task = "k0s:fmt" },
-  { task = "k0s:validate" },
+  "shfmt -d -i 2 modules/os-ubuntu/scripts/probe.sh modules/vm-orb/tests/setup.bash modules/os-ubuntu/tests/setup.bash modules/orch-k0s/tests/setup.bash",
+  "shfmt -d -i 2 -ln bats modules/vm-orb/tests/*.bats modules/os-ubuntu/tests/*.bats modules/orch-k0s/tests/*.bats",
   { task = "check:bats" },
 ]
 

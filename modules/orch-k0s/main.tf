@@ -6,11 +6,5 @@ terraform {
       source  = "registry.terraform.io/Mirantis/k0sctl"
       version = "0.0.3"
     }
-    local = {
-      source  = "hashicorp/local"
-      version = "~> 2.5"
-    }
   }
-
-  backend "local" {}
 }

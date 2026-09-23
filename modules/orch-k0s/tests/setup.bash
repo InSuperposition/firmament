@@ -8,10 +8,9 @@ setup() {
   mkdir -p "$BATS_TEST_ROOT"
 
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../.." && pwd)
-  k0s_directory="$root_directory/bootstrap/k0s"
+  k0s_directory="$root_directory/modules/orch-k0s"
 
-  tofu -chdir="$k0s_directory" init -input=false -reconfigure \
-    -backend-config="path=$BATS_TEST_ROOT/terraform.tfstate" >/dev/null
+  tofu -chdir="$k0s_directory" init -backend=false -input=false -reconfigure >/dev/null
 }
 
 plan_json() {
@@ -21,7 +20,6 @@ plan_json() {
     -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
     -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
     -var="ssh_key_path=$FIRMAMENT_K0S_SSH_KEY" \
-    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" \
-    -var="state_directory=$BATS_TEST_ROOT" >/dev/null
+    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" >/dev/null
   tofu -chdir="$k0s_directory" show -json "$plan"
 }

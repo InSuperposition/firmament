@@ -1,15 +1,8 @@
-locals {
-  name     = "firmament"
-  image    = "ubuntu:resolute"
-  arch     = "arm64"
-  username = "tensor"
-}
-
-resource "orbstack_machine" "firmament" {
-  name     = local.name
-  image    = local.image
-  arch     = local.arch
-  username = local.username
+resource "orbstack_machine" "this" {
+  name     = var.name
+  image    = var.image
+  arch     = var.arch
+  username = var.username
 }
 
 # cpu/memory/disk limits are not declared here: orbstack_machine has no

@@ -52,7 +52,7 @@ forms are meant to be supported. Only the name form works.
 
 ## Relevance to this repo
 
-`bootstrap/orb/*.tf` (the `robertdebock/orbstack` OpenTofu provider) sidesteps
+`modules/vm-orb/*.tf` (the `robertdebock/orbstack` OpenTofu provider) sidesteps
 this entirely — its `orbstack_machine` resource's `id` attribute is the
 machine's *name*, not its real OrbStack ULID, so its `Delete` call ends up
 going through the safe name-based path by accident, not by design.

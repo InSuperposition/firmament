@@ -38,9 +38,10 @@ variable "ssh_key_path" {
   }
 }
 
-variable "state_directory" {
+variable "cluster_name" {
   type        = string
-  description = "Directory the rendered kubeconfig is written into."
+  default     = "firmament"
+  description = "k0s cluster name."
 }
 
 variable "api_address" {
