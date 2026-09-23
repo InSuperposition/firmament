@@ -70,8 +70,21 @@ targets the kubeconfig file and renders the Cilium chart it depends on) —
 see `environment/local/README.md` for the full task list and what
 `-target` does and doesn't isolate.
 
-`mise run check` runs formatting, linting, `tofu validate`, every
-module's test suite, and the `environment/local` wiring tests.
+`mise run check` runs every offline check: `lint` (shellcheck, shfmt,
+`tofu fmt` and `mise fmt` through hk), `tofu:validate`, `test` (every
+module's suite, the environment wiring suites and the task library), and
+`mise tasks validate`. `mise run format` fixes what the formatters can.
+
+The Git hooks split the same checks by cost. `pre-commit` lints and
+formats the staged files, fixing and restaging what it can. `pre-push`
+adds `tofu:validate` and `test`, each only when the pushed commits touch
+a file that can change its result.
+
+Task names follow `<noun>:<verb>`. The verb says how far a task reaches:
+`test` never touches infrastructure, `verify` reads a live cluster,
+`conformance` deploys test workloads into it, and `plan`, `apply` and
+`destroy` drive OpenTofu. The `test` and `verify` aggregates run every
+`*:test` or `*:verify` task.
 
 Deferred work is tracked in [TODOS.md](TODOS.md).
 

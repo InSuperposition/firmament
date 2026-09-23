@@ -1,21 +1,40 @@
 amends "package://github.com/jdx/hk/releases/download/v2.0.1/hk@2.0.1#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v2.0.1/hk@2.0.1#/Builtins.pkl"
 
-steps {
-  ["shellcheck"] {
-    check = "mise run check:shellcheck"
+// Per-file linters and formatters. They run on the files a commit touches
+// and fix what they can. shfmt takes its indentation from .editorconfig.
+local fast = new Mapping<String, Step> {
+  ["shellcheck"] = Builtins.shellcheck
+  ["shfmt"] = Builtins.shfmt
+  ["tofu"] = Builtins.tofu
+  ["mise"] = Builtins.mise
+}
+
+// Whole-repository checks, too slow for every commit. Each runs once, and
+// only when a pushed change touches a file that can affect its result.
+local slow = new Mapping<String, Step> {
+  ["tofu-validate"] {
+    glob = List("**/*.tf", "**/.terraform.lock.hcl")
+    check = "mise run tofu:validate"
   }
-  ["bats"] {
+  ["test"] {
+    glob = List("**/*.tf", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml")
     check = "mise run test"
-  }
-  ["tofu"] {
-    check = "mise run local:fmt && mise run local:validate"
   }
 }
 
+steps = fast
+
 hooks {
   ["pre-commit"] {
-    fix = false
-    stage = false
+    fix = true
+    stage = true
     stash = "git"
+  }
+  ["pre-push"] {
+    steps {
+      ...fast
+      ...slow
+    }
   }
 }

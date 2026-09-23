@@ -42,14 +42,6 @@ run = "bats modules/orch-k0s/tests/unit.bats"
 description = "Test the cni-cilium module without a live cluster"
 run = "bats modules/cni-cilium/tests/unit.bats"
 
-[tasks."local:fmt"]
-description = "Check OpenTofu formatting across all modules and the local environment"
-run = "tofu fmt -check -recursive modules environment"
-
-[tasks."check:shellcheck"]
-description = "Check all repository shell scripts"
-run = "shellcheck modules/os-ubuntu/scripts/probe.sh .mise/lib.sh .mise/tasks/*/*.sh"
-
 [tasks."tasks:test"]
 description = "Test the shared task library with stubbed tools"
 run = "bats .mise/tests/lib.bats"
@@ -58,14 +50,31 @@ run = "bats .mise/tests/lib.bats"
 description = "Run every offline test suite; never touches infrastructure"
 depends = ["*:test"]
 
-[tasks.check]
-description = "Run all off-cluster checks"
-run = [
-  { task = "local:fmt" },
-  { task = "tofu:validate" },
-  { task = "check:shellcheck" },
-  "shfmt -d -i 2 modules/os-ubuntu/scripts/probe.sh .mise/lib.sh .mise/tasks/*/*.sh modules/*/tests/setup.bash environment/*/tests/setup.bash",
-  "shfmt -d -i 2 -ln bats modules/*/tests/*.bats environment/*/tests/*.bats .mise/tests/*.bats",
-  { task = "test" },
-]
+[tasks.lint]
+description = "Check formatting and lint every file hk covers, without changing anything"
+run = "hk check --all"
 
+[tasks.format]
+description = "Format every file hk covers"
+run = "hk fix --all"
+
+[tasks."shell:lint"]
+description = "Lint every shell script with shellcheck"
+run = "hk check --all --step shellcheck"
+
+[tasks."shell:format"]
+description = "Format every shell script and bats file with shfmt"
+run = "hk fix --all --step shfmt"
+
+[tasks."tofu:format"]
+description = "Format every OpenTofu file"
+run = "hk fix --all --step tofu"
+
+[tasks.check]
+description = "Run every offline check: lint, validate, tests and the task definitions"
+run = [
+  { task = "lint" },
+  { task = "tofu:validate" },
+  { task = "test" },
+  "mise tasks validate",
+]
