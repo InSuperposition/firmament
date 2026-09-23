@@ -58,12 +58,16 @@ modules/os-ubuntu/    Ubuntu readiness check (SSH probe + postconditions)
 modules/cni-cilium/   the Cilium and Hubble Helm chart declaration
 modules/orch-k0s/     the k0s controller+worker node, which installs
                       the declared Helm charts
+.mise/tasks/          one executable script per mise task, named
+                      <noun>/<verb>.sh and run as `mise run <noun>:<verb>`
+.mise/lib.sh          helpers the task scripts share (environment lookup,
+                      state paths, post-apply waits), tested in .mise/tests
 ```
 
 Each module has its own README with its contract. `mise run env:apply`
 applies the whole environment in dependency order (VM, then the readiness
-check, then k0s, which installs Cilium); `mise run env:destroy`
-reverses it. Narrower tasks
+check, then k0s, which installs Cilium), and `mise run env:destroy`
+reverses it. Both take an environment name, defaulting to `local`. Narrower tasks
 (`orb:apply`, `ubuntu:verify`, `k0s:apply`, and their counterparts) target
 one module via `tofu -target` against the same shared state (`k0s:*` also
 targets the kubeconfig file and renders the Cilium chart it depends on) —
