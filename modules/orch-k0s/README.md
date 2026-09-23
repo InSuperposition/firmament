@@ -8,7 +8,8 @@ over the target host — this module has no OrbStack-specific knowledge.
 
 `ssh_address`, `ssh_user`, `ssh_port`, `ssh_key_path`, `api_address`
 (required, validated — see `variables.tf`), `cluster_name` (optional,
-default `firmament`), `kube_proxy_replacement` (optional, default `true`;
+default `firmament`), `api_port` (optional, default `6443`; rendered as
+`spec.api.port`), `kube_proxy_replacement` (optional, default `true`;
 fixed at cluster creation), `helm_charts` (optional, default `[]`; each
 item is a `repository` and a `chart`, as `modules/cni-cilium` outputs).
 In this repo, [`environment/local`](../../environment/local/README.md)

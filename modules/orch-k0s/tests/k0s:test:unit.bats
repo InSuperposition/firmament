@@ -13,6 +13,7 @@ resource_after() {
   [ "$(jq -r '.spec.host[0].ssh[0].port' <<<"$output")" = 32222 ]
   [ "$(jq -r '.spec.host[0].ssh[0].key_path' <<<"$output")" = /tmp/orbstack-test-key ]
   [ "$(jq -r '.spec.k0s.config' <<<"$output" | yq -r '.spec.api.externalAddress')" = firmament.orb.local ]
+  [ "$(jq -r '.spec.k0s.config' <<<"$output" | yq -r '.spec.api.port')" = 6443 ]
 }
 
 @test "preserves the declarative cluster contract" {
@@ -26,6 +27,27 @@ resource_after() {
   [ "$(yq -r '.spec.network.podCIDR' <<<"$config")" = 10.244.0.0/16 ]
   [ "$(yq -r '.spec.network.serviceCIDR' <<<"$config")" = 10.96.0.0/12 ]
   [ "$(yq -r '.spec.network.kubeProxy.disabled' <<<"$config")" = true ]
+}
+
+@test "serves the API on the configured port" {
+  run cluster_config -var='api_port=16443'
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.spec.api.port' <<<"$output")" = 16443 ]
+}
+
+@test "rejects an API port that is not a whole TCP port number" {
+  local port
+  for port in 0 65536 6443.5; do
+    run tofu -chdir="$k0s_directory" plan -input=false \
+      -var="ssh_address=$FIRMAMENT_K0S_SSH_ADDRESS" \
+      -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
+      -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
+      -var="ssh_key_path=$FIRMAMENT_K0S_SSH_KEY" \
+      -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" \
+      -var="api_port=$port"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *'invalid API port'* ]]
+  done
 }
 
 @test "renders no extensions without Helm charts" {
@@ -66,6 +88,79 @@ JSON
   [ "$(yq -r '.spec.extensions.helm.charts[0].version' <<<"$output")" = 1.2.3 ]
   [ "$(yq -r '.spec.extensions.helm.charts[0].namespace' <<<"$output")" = kube-system ]
   [ "$(yq -r '.spec.extensions.helm.charts[0].values' <<<"$output" | yq -r '.replicas')" = 1 ]
+}
+
+@test "shares one repository between charts that come from it" {
+  cat >"$BATS_TEST_ROOT/charts.tfvars.json" <<'JSON'
+{
+  "helm_charts": [
+    {
+      "repository": { "name": "example", "url": "https://charts.example.com" },
+      "chart": { "name": "first", "chartname": "example/first", "version": "1.0.0", "namespace": "kube-system", "values": "" }
+    },
+    {
+      "repository": { "name": "example", "url": "https://charts.example.com" },
+      "chart": { "name": "second", "chartname": "example/second", "version": "2.0.0", "namespace": "default", "values": "" }
+    }
+  ]
+}
+JSON
+  run cluster_config -var-file="$BATS_TEST_ROOT/charts.tfvars.json"
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.spec.extensions.helm.repositories | length' <<<"$output")" = 1 ]
+  [ "$(yq -r '.spec.extensions.helm.charts | length' <<<"$output")" = 2 ]
+  [ "$(yq -r '.spec.extensions.helm.charts[0].name' <<<"$output")" = first ]
+  [ "$(yq -r '.spec.extensions.helm.charts[1].name' <<<"$output")" = second ]
+  [ "$(yq -r '.spec.extensions.helm.charts[1].namespace' <<<"$output")" = default ]
+}
+
+@test "rejects one repository name pointing at two URLs" {
+  cat >"$BATS_TEST_ROOT/charts.tfvars.json" <<'JSON'
+{
+  "helm_charts": [
+    {
+      "repository": { "name": "example", "url": "https://a.example.com" },
+      "chart": { "name": "first", "chartname": "example/first", "version": "1.0.0", "namespace": "kube-system", "values": "" }
+    },
+    {
+      "repository": { "name": "example", "url": "https://b.example.com" },
+      "chart": { "name": "second", "chartname": "example/second", "version": "1.0.0", "namespace": "kube-system", "values": "" }
+    }
+  ]
+}
+JSON
+  run tofu -chdir="$k0s_directory" plan -input=false \
+    -var="ssh_address=$FIRMAMENT_K0S_SSH_ADDRESS" \
+    -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
+    -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
+    -var="ssh_key_path=$FIRMAMENT_K0S_SSH_KEY" \
+    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" \
+    -var-file="$BATS_TEST_ROOT/charts.tfvars.json"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'each Helm repository name must point at one URL'* ]]
+}
+
+@test "rejects a Helm chart without values" {
+  cat >"$BATS_TEST_ROOT/charts.tfvars.json" <<'JSON'
+{
+  "helm_charts": [
+    {
+      "repository": { "name": "example", "url": "https://charts.example.com" },
+      "chart": { "name": "demo", "chartname": "example/demo", "version": "1.2.3", "namespace": "kube-system" }
+    }
+  ]
+}
+JSON
+  run tofu -chdir="$k0s_directory" plan -input=false \
+    -var="ssh_address=$FIRMAMENT_K0S_SSH_ADDRESS" \
+    -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
+    -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
+    -var="ssh_key_path=$FIRMAMENT_K0S_SSH_KEY" \
+    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" \
+    -var-file="$BATS_TEST_ROOT/charts.tfvars.json"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *var.helm_charts* ]]
+  [[ "$output" == *'"values"'* ]]
 }
 
 @test "requires every connection input" {

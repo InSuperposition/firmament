@@ -9,6 +9,7 @@ locals {
       {
         api = {
           externalAddress = var.api_address
+          port            = var.api_port
         }
         network = {
           provider    = "custom"
@@ -20,7 +21,7 @@ locals {
         }
       },
       # k0s installs these charts itself and uninstalls any chart removed from this list.
-      { for key, extension in { extensions = local.helm_extension } : key => extension if length(var.helm_charts) > 0 },
+      length(var.helm_charts) > 0 ? { extensions = local.helm_extension } : {},
     )
   }
 

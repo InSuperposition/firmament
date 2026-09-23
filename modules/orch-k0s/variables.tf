@@ -54,6 +54,17 @@ variable "api_address" {
   }
 }
 
+variable "api_port" {
+  type        = number
+  default     = 6443
+  description = "Port the k0s API server listens on and advertises."
+
+  validation {
+    condition     = var.api_port >= 1 && var.api_port <= 65535 && floor(var.api_port) == var.api_port
+    error_message = "invalid API port."
+  }
+}
+
 variable "kube_proxy_replacement" {
   type        = bool
   default     = true
@@ -76,4 +87,9 @@ variable "helm_charts" {
   }))
   default     = []
   description = "Helm charts k0s installs during cluster bring-up, each with the repository it comes from."
+
+  validation {
+    condition     = length(distinct([for helm_chart in var.helm_charts : helm_chart.repository.name])) == length(distinct([for helm_chart in var.helm_charts : helm_chart.repository]))
+    error_message = "each Helm repository name must point at one URL."
+  }
 }
