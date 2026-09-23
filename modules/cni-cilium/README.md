@@ -23,7 +23,7 @@ no state, so it can be planned and tested without a cluster.
 | Input | Default | Behavior |
 | --- | --- | --- |
 | `api_host` | required | Kubernetes API host the agent connects to directly (`k8sServiceHost`) |
-| `api_port` | `6443` | Kubernetes API port (`k8sServicePort`) |
+| `api_port` | `6443` | Kubernetes API port (`k8sServicePort`); must match the cluster's API port |
 | `kube_proxy_replacement` | required | Renders `kubeProxyReplacement` and selects the datapath; must match the cluster's kube-proxy setting |
 | `operator_replicas` | `2` | Cilium operator replicas; at least 1 |
 
@@ -41,6 +41,8 @@ rendered from [`values.yaml.tftpl`](values.yaml.tftpl).
 | `bpf.masquerade` | `true` with kube-proxy replacement, else `false` | netkit requires BPF masquerading, which also enables BPF host routing |
 | `ipam.mode` | `kubernetes` | Pod IPs come from each node's podCIDR. The chart default pool `10.0.0.0/8` overlaps common LANs and the Service CIDR |
 | `hubble.relay.enabled`, `hubble.ui.enabled` | `true` | Cluster-wide flow visibility through `hubble` and the Hubble UI |
+| `rollOutCiliumPods`, `envoy.rollOutPods`, `operator.rollOutPods`, `hubble.relay.rollOutPods`, `hubble.ui.rollOutPods` | `true` | A values change restarts the affected pods on apply. The chart default (`false`) updates the ConfigMap and leaves running pods on the old configuration |
+| `hubble.tls.auto.method` | `cronJob` | A CronJob renews the Hubble mTLS certificates (valid 365 days) every four months. The chart default (`helm`) renews them only when the chart is upgraded |
 
 ## Known gap: socket termination
 

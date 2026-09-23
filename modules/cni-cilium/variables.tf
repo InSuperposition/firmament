@@ -14,7 +14,7 @@ variable "api_port" {
   description = "Kubernetes API server port."
 
   validation {
-    condition     = var.api_port >= 1 && var.api_port <= 65535
+    condition     = var.api_port >= 1 && var.api_port <= 65535 && floor(var.api_port) == var.api_port
     error_message = "invalid API port."
   }
 }

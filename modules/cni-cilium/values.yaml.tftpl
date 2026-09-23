@@ -8,10 +8,21 @@ k8sServicePort: ${api_port}
 # Pod IPs come from the podCIDR Kubernetes assigns to each node.
 ipam:
   mode: kubernetes
+# Restart pods when their configuration changes, so a values change takes effect on apply.
+rollOutCiliumPods: true
+envoy:
+  rollOutPods: true
 operator:
   replicas: ${operator_replicas}
+  rollOutPods: true
 hubble:
   relay:
     enabled: true
+    rollOutPods: true
   ui:
     enabled: true
+    rollOutPods: true
+  # A CronJob renews the Hubble mTLS certificates before their one-year validity ends.
+  tls:
+    auto:
+      method: cronJob
