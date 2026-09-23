@@ -74,21 +74,29 @@ targets the kubeconfig file and renders the Cilium chart it depends on) —
 see `environment/local/README.md` for the full task list and what
 `-target` does and doesn't isolate.
 
+Task names follow `<noun>:<verb>` for a task that acts on one thing
+(`shell:lint`, `k0s:apply`). A bare `<verb>` is an aggregate that runs
+that verb for every noun. The verb also says how far a task reaches:
+
+| Verb | Reach | Aggregate |
+| --- | --- | --- |
+| `lint`, `format` | files in the repository | `lint`, `format` run every `*:lint` or `*:format` |
+| `test` | offline; never touches infrastructure | `test` runs every `*:test` |
+| `verify` | reads a live cluster | `verify [environment]` runs every `*:verify`, one at a time |
+| `conformance` | deploys test workloads into a live cluster | none |
+| `plan`, `apply`, `destroy` | drive OpenTofu; `destroy` asks first (`-y` skips) | none |
+
 `mise run check` runs every offline check: `lint` (shellcheck, shfmt,
-`tofu fmt` and `mise fmt` through hk), `tofu:validate`, `test` (every
-module's suite, the environment wiring suites and the task library), and
-`mise tasks validate`. `mise run format` fixes what the formatters can.
+`tofu fmt`, `mise fmt` and `mise tasks validate`), `tofu:validate` and
+`test` (every module's suite, the environment suites, and the task
+scripts with their shared library). `mise run format` fixes what the
+formatters can. hk defines the lint and format rules; the `*:lint` and
+`*:format` tasks each run one group of its steps.
 
 The Git hooks split the same checks by cost. `pre-commit` lints and
 formats the staged files, fixing and restaging what it can. `pre-push`
 adds `tofu:validate` and `test`, each only when the pushed commits touch
 a file that can change its result.
-
-Task names follow `<noun>:<verb>`. The verb says how far a task reaches:
-`test` never touches infrastructure, `verify` reads a live cluster,
-`conformance` deploys test workloads into it, and `plan`, `apply` and
-`destroy` drive OpenTofu. The `test` and `verify` aggregates run every
-`*:test` or `*:verify` task.
 
 Deferred work is tracked in [TODOS.md](TODOS.md).
 

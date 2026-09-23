@@ -42,7 +42,7 @@ full task list and how `-target` scopes these to just this module:
 | `mise run orb:apply` | Create the machine (fails if a same-named machine already exists) |
 | `mise run orb:plan` | Plan without applying |
 | `mise run orb:destroy` | Delete the machine, and anything that depends on it |
-| `mise run orb:inspect` | Show the machine's native JSON metadata, unmanaged (bypasses OpenTofu entirely) |
+| `mise run orb:inspect` | Show the machine's native JSON metadata, read from OrbStack directly; OpenTofu only supplies the machine name from state |
 | `mise run orb:test` | Run this module's tests against a rendered plan, no live VM |
 
 `mise run orb:apply` prints the machine's native `orb info` JSON to

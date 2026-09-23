@@ -9,8 +9,8 @@ section. Each item carries enough context to pick up cold.
 
 **What:** Add an `env:e2e [environment]` file task
 (`.mise/tasks/env/e2e.sh`) that runs a suite against a real OrbStack
-machine: `env:destroy -y`, `env:apply`, `verify` (every `*:verify`
-task), `cilium:conformance`, then `env:destroy -y` again.
+machine: `env:destroy -y`, `env:apply`, `verify`, `cilium:conformance`,
+then `env:destroy -y` again.
 
 **Why:** The offline suites (`mise run check`) cover everything that can
 be checked from a plan. They cannot catch regressions that only appear on
@@ -91,25 +91,6 @@ its own planning before any code.
 **Priority:** P3
 **Depends on:** None
 
-### Move OrbStack variables out of the shared task library
-
-**What:** `.mise/lib.sh` exports `TF_VAR_orbstack_ssh_key_path` for
-every environment. Move it to the environments that declare it once a
-second environment exists.
-
-**Why:** Each environment should own its machine-specific inputs. The
-variable is harmless today (OpenTofu ignores `TF_VAR_*` for undeclared
-variables), but it ties the generic library to OrbStack.
-
-**Context:** Candidates: an `environment/<env>/mise.toml` `[env]` entry
-(declarative, next to that environment's `KUBECONFIG`), or a
-`terraform.tfvars` that reads nothing from the machine. Keep the
-`FIRMAMENT_ORBSTACK_SSH_KEY` override working.
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** A second environment.
-
 ### Hand Cilium from the k0s Helm extension to Flux Operator
 
 **What:** Move ownership of the Cilium Helm release from k0s
@@ -148,3 +129,11 @@ Done on the `refactor/mise-file-tasks` branch:
 - After apply, the tasks wait for k0s to reconcile every Helm chart. Instead
   of comparing `.status.revision` before and after, they compare
   `.status.valuesHash` with the current spec, the same test k0s itself uses.
+
+### Move OrbStack variables out of the shared task library
+
+Done on the `refactor/mise-file-tasks` branch. `environment/local` now
+defaults `orbstack_ssh_key_path` to `~/.orbstack/ssh/id_ed25519` itself
+(`pathexpand` in `main.tf`), and `.mise/lib.sh` passes only the state
+directory. `TF_VAR_orbstack_ssh_key_path` replaces the
+`FIRMAMENT_ORBSTACK_SSH_KEY` override.

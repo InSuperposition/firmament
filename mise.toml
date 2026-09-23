@@ -22,59 +22,62 @@ shellcheck = "0.11.0"
 shfmt = "3.14.1"
 yq = "4.53.6"
 
-[tasks."orb:inspect"]
-description = "Inspect the configured OrbStack machine without changing it"
-run = "orb info firmament --format json"
-
-[tasks."orb:test"]
-description = "Test the vm-orb module without a live VM"
-run = "bats modules/vm-orb/tests/unit.bats"
-
-[tasks."ubuntu:test"]
-description = "Test the os-ubuntu module without a live host"
-run = "bats modules/os-ubuntu/tests/unit.bats"
-
-[tasks."k0s:test"]
-description = "Test the orch-k0s module without a live host"
-run = "bats modules/orch-k0s/tests/unit.bats"
+[tasks.check]
+description = "Run every offline check: lint, validate and test"
+run = [{ task = "lint" }, { task = "tofu:validate" }, { task = "test" }]
 
 [tasks."cilium:test"]
 description = "Test the cni-cilium module without a live cluster"
 run = "bats modules/cni-cilium/tests/unit.bats"
 
-[tasks."tasks:test"]
-description = "Test the shared task library with stubbed tools"
-run = "bats .mise/tests/lib.bats"
+[tasks.format]
+description = "Run every *:format task"
+depends = ["*:format"]
 
-[tasks.test]
-description = "Run every offline test suite; never touches infrastructure"
-depends = ["*:test"]
+[tasks."k0s:test"]
+description = "Test the orch-k0s module without a live host"
+run = "bats modules/orch-k0s/tests/unit.bats"
 
 [tasks.lint]
-description = "Check formatting and lint every file hk covers, without changing anything"
-run = "hk check --all"
+description = "Run every *:lint task; changes nothing"
+depends = ["*:lint"]
 
-[tasks.format]
-description = "Format every file hk covers"
-run = "hk fix --all"
+[tasks."mise:format"]
+description = "Format mise.toml"
+run = "hk fix --all --step mise"
 
-[tasks."shell:lint"]
-description = "Lint every shell script with shellcheck"
-run = "hk check --all --step shellcheck"
+[tasks."mise:lint"]
+description = "Check mise.toml formatting and validate every task definition"
+run = ["hk check --all --step mise", "mise tasks validate"]
+
+[tasks."orb:test"]
+description = "Test the vm-orb module without a live VM"
+run = "bats modules/vm-orb/tests/unit.bats"
 
 [tasks."shell:format"]
 description = "Format every shell script and bats file with shfmt"
 run = "hk fix --all --step shfmt"
 
+[tasks."shell:lint"]
+description = "Lint every shell script with shellcheck and check its shfmt formatting"
+run = "hk check --all --step shellcheck --step shfmt"
+
+[tasks."tasks:test"]
+description = "Test the task scripts and their shared library with stubbed tools"
+run = "bats .mise/tests"
+
+[tasks.test]
+description = "Run every *:test task; never touches infrastructure"
+depends = ["*:test"]
+
 [tasks."tofu:format"]
 description = "Format every OpenTofu file"
 run = "hk fix --all --step tofu"
 
-[tasks.check]
-description = "Run every offline check: lint, validate, tests and the task definitions"
-run = [
-  { task = "lint" },
-  { task = "tofu:validate" },
-  { task = "test" },
-  "mise tasks validate",
-]
+[tasks."tofu:lint"]
+description = "Check the formatting of every OpenTofu file"
+run = "hk check --all --step tofu"
+
+[tasks."ubuntu:test"]
+description = "Test the os-ubuntu module without a live host"
+run = "bats modules/os-ubuntu/tests/unit.bats"
