@@ -53,3 +53,55 @@ variable "api_address" {
     error_message = "invalid API address."
   }
 }
+
+variable "api_port" {
+  type        = number
+  default     = 6443
+  description = "Port the k0s API server listens on and advertises."
+
+  validation {
+    condition     = var.api_port >= 1 && var.api_port <= 65535 && floor(var.api_port) == var.api_port
+    error_message = "invalid API port."
+  }
+}
+
+variable "kube_proxy_replacement" {
+  type        = bool
+  default     = true
+  description = "Whether the CNI replaces kube-proxy, so k0s does not run it. Fixed at cluster creation."
+}
+
+variable "helm_charts" {
+  type = list(object({
+    repository = object({
+      name = string
+      url  = string
+    })
+    chart = object({
+      name      = string
+      chartname = string
+      version   = string
+      namespace = string
+      values    = string
+      # k0s upgrades with --force unless this is false; --force recreates objects that cannot be replaced in place, such as Jobs.
+      forceUpgrade = optional(bool, true)
+    })
+  }))
+  default     = []
+  description = "Helm charts k0s installs during cluster bring-up, each with the repository it comes from."
+
+  validation {
+    condition     = length(distinct([for helm_chart in var.helm_charts : helm_chart.repository.name])) == length(distinct([for helm_chart in var.helm_charts : helm_chart.repository]))
+    error_message = "each Helm repository name must point at one URL."
+  }
+
+  validation {
+    condition     = length(distinct([for helm_chart in var.helm_charts : helm_chart.chart.name])) == length(var.helm_charts)
+    error_message = "each Helm chart name must be unique; k0s names the Chart resource and the release after it."
+  }
+
+  validation {
+    condition     = alltrue([for helm_chart in var.helm_charts : trimspace(helm_chart.chart.values) == "" || can(yamldecode(helm_chart.chart.values))])
+    error_message = "each Helm chart's values must be valid YAML."
+  }
+}

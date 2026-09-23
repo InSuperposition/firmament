@@ -1,0 +1,32 @@
+# netkit requires kube-proxy replacement and BPF masquerading; the agent refuses to start without both.
+bpf:
+  datapathMode: ${kube_proxy_replacement ? "netkit" : "veth"}
+  masquerade: ${kube_proxy_replacement}
+kubeProxyReplacement: ${kube_proxy_replacement}
+# Pod traffic to Services is translated per packet, not per socket, so a pod's connected
+# UDP socket follows a replaced backend on kernels that cannot destroy sockets.
+socketLB:
+  hostNamespaceOnly: true
+k8sServiceHost: ${jsonencode(api_host)}
+k8sServicePort: ${api_port}
+# Pod IPs come from the podCIDR Kubernetes assigns to each node.
+ipam:
+  mode: kubernetes
+# Restart pods when their configuration changes, so a values change takes effect on apply.
+rollOutCiliumPods: true
+envoy:
+  rollOutPods: true
+operator:
+  replicas: ${operator_replicas}
+  rollOutPods: true
+hubble:
+  relay:
+    enabled: true
+    rollOutPods: true
+  ui:
+    enabled: true
+    rollOutPods: true
+  # A CronJob renews the Hubble mTLS certificates before their one-year validity ends.
+  tls:
+    auto:
+      method: cronJob

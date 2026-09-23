@@ -1,9 +1,9 @@
 # firmament
 
 Abstract: Declarative bootstrap for a dedicated Kubernetes host — one
-OrbStack VM, verified Ubuntu-ready, running k0s. `environment/local`
-composes three real OpenTofu modules under `modules/` into one applied
-environment with a single shared state.
+OrbStack VM, verified Ubuntu-ready, running k0s with Cilium and Hubble.
+`environment/local` composes four real OpenTofu modules under `modules/`
+into one applied environment with a single shared state.
 
 ## Goals
 
@@ -45,23 +45,29 @@ eval "$(mise env)"
 ## Structure
 
 ```text
-environment/local/   root config: composes the three modules below,
+environment/local/    root config: composes the four modules below,
                       owns the one shared state and the kubeconfig file
 modules/vm-orb/       the OrbStack VM
 modules/os-ubuntu/    Ubuntu readiness check (SSH probe + postconditions)
-modules/orch-k0s/     the k0s controller+worker node
+modules/cni-cilium/   the Cilium and Hubble Helm chart declaration
+modules/orch-k0s/     the k0s controller+worker node, which installs
+                      the declared Helm charts
 ```
 
 Each module has its own README with its contract. `mise run bootstrap:local`
 applies the whole environment in dependency order (VM, then the readiness
-check, then k0s); `mise run teardown:local` reverses it. Narrower tasks
-(`orb:create`, `ubuntu:check`, `k0s:apply`, and their counterparts) operate
-on one module at a time via `tofu -target` against the same shared state —
+check, then k0s, which installs Cilium); `mise run teardown:local`
+reverses it. Narrower tasks
+(`orb:create`, `ubuntu:check`, `k0s:apply`, and their counterparts) target
+one module via `tofu -target` against the same shared state (`k0s:*` also
+targets the kubeconfig file and renders the Cilium chart it depends on) —
 see `environment/local/README.md` for the full task list and what
 `-target` does and doesn't isolate.
 
-`mise run check` runs formatting, linting, `tofu validate`, and every
-module's test suite.
+`mise run check` runs formatting, linting, `tofu validate`, every
+module's test suite, and the `environment/local` wiring tests.
+
+Deferred work is tracked in [TODOS.md](TODOS.md).
 
 ## Uninstalling
 

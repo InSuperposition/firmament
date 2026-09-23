@@ -20,6 +20,10 @@ plan_json() {
     -var="ssh_user=$FIRMAMENT_K0S_SSH_USER" \
     -var="ssh_port=$FIRMAMENT_K0S_SSH_PORT" \
     -var="ssh_key_path=$FIRMAMENT_K0S_SSH_KEY" \
-    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" >/dev/null
+    -var="api_address=$FIRMAMENT_K0S_API_ADDRESS" "$@" >/dev/null
   tofu -chdir="$k0s_directory" show -json "$plan"
+}
+
+cluster_config() {
+  plan_json "$@" | jq -r '.resource_changes[] | select(.address == "k0sctl_config.this") | .change.after.spec.k0s.config'
 }

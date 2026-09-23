@@ -8,7 +8,16 @@ over the target host — this module has no OrbStack-specific knowledge.
 
 `ssh_address`, `ssh_user`, `ssh_port`, `ssh_key_path`, `api_address`
 (required, validated — see `variables.tf`), `cluster_name` (optional,
-default `firmament`). In this repo, [`environment/local`](../../environment/local/README.md)
+default `firmament`), `api_port` (optional, default `6443`; rendered as
+`spec.api.port`), `kube_proxy_replacement` (optional, default `true`;
+fixed at cluster creation: the module records it in
+`terraform_data.kube_proxy_replacement_at_creation`, and a plan with a
+different value fails), `helm_charts` (optional, default `[]`; each
+item is a `repository` and a `chart`, as `modules/cni-cilium` outputs;
+`chart.forceUpgrade` is optional and defaults to `true`, as in k0s; chart
+names must be unique, a repository name must point at one URL, and
+`values` must be valid YAML).
+In this repo, [`environment/local`](../../environment/local/README.md)
 supplies all of these by deriving them from `module.vm_orb`'s outputs;
 against a non-OrbStack Ubuntu host, supply its real SSH endpoint and a
 reachable API address instead.
@@ -22,7 +31,8 @@ it; this module doesn't write files itself).
 ## Contract
 
 `cluster.tf` is the source of truth for the cluster: k0s version,
-single-node role, custom CNI, kube-proxy replacement, Pod/Service CIDRs.
+single-node role, custom CNI, kube-proxy setting, Pod/Service CIDRs, and
+the Helm extension.
 There is no separate render step — `plan` is the preview; the rendered
 `k0sctl.yaml` equivalent is only known after `apply` (the `k0s_yaml`
 output) since the provider builds it internally during `Create`, not
@@ -33,8 +43,11 @@ k0s is pinned to `1.36.4+k0s.0` in `cluster.tf`. The provider is pinned to
 published to the Terraform Registry (the GitHub repo's `v0.0.4` tag
 exists but was never released there).
 
-The first apply owns only k0s and its managed containerd. It does not
-install Cilium, Flux, or workloads.
+The apply owns k0s, its managed containerd, and the charts in
+`helm_charts`. k0s installs each chart through its Helm extension
+(`spec.extensions.helm`) with `--atomic --wait`, and uninstalls any chart
+later removed from the list. With `helm_charts = []` the config has no
+`extensions` key. This module does not install Flux or workloads.
 
 ## Reading the cluster
 
@@ -60,7 +73,7 @@ the full task list:
 
 | Command | Behavior |
 | --- | --- |
-| `mise run k0s:apply` | Apply the cluster and print node status |
+| `mise run k0s:apply` | Apply the cluster and kubeconfig, then wait for the node to be Ready and Cilium to report healthy |
 | `mise run k0s:dry-run` | Plan without applying |
-| `mise run k0s:test` | `kubectl get nodes` against the rendered kubeconfig |
-| `mise run k0s:unit` | Run this module's tests against a rendered plan, no live host |
+| `mise run k0s:test` | Wait for every node to be Ready, using the rendered kubeconfig |
+| `mise run k0s:test:unit` | Run this module's tests against a rendered plan, no live host |

@@ -43,7 +43,7 @@ full task list and how `-target` scopes these to just this module:
 | `mise run orb:dry-run` | Plan without applying |
 | `mise run orb:delete` | Delete the machine, and anything that depends on it |
 | `mise run orb:inspect` | Show the machine's native JSON metadata, unmanaged (bypasses OpenTofu entirely) |
-| `mise run orb:unit` | Run this module's tests against a rendered plan, no live VM |
+| `mise run orb:test:unit` | Run this module's tests against a rendered plan, no live VM |
 
 `mise run orb:create` prints the machine's native `orb info` JSON to
 stdout after applying.
@@ -55,6 +55,8 @@ live OrbStack calls — one test confirms this by removing `orb` from
 `PATH` entirely and still passing.
 
 See `BUGS.md` for a reproduced OrbStack CLI crash
-(`orb delete <ID>` segfaults; `orb delete <name>` doesn't).
+(`orb delete <ID>` segfaults; `orb delete <name>` doesn't) and a kernel
+request to enable `CONFIG_INET_DIAG_DESTROY`, which Cilium needs to close
+sockets to deleted Service backends.
 
 See the [OrbStack command reference](https://docs.orbstack.dev/machines/commands).
