@@ -1,6 +1,6 @@
 output "id" {
   value       = orbstack_machine.firmament.id
-  description = "orb's identity for this resource — the machine NAME, not its real internal ULID. See FIRMAMENT_FINDINGS.md in the opentofu-provider-orbstack fork."
+  description = "The machine name, not OrbStack's internal ULID — this provider does not surface the ULID."
 }
 
 output "ip_address" {

@@ -54,10 +54,8 @@ forms are meant to be supported. Only the name form works.
 
 `bootstrap/orb/*.tf` (the `robertdebock/orbstack` OpenTofu provider) sidesteps
 this entirely — its `orbstack_machine` resource's `id` attribute is the
-machine's *name*, not its real OrbStack ULID (a separate, undocumented
-limitation — see `FIRMAMENT_FINDINGS.md` in the `opentofu-provider-orbstack`
-fork), so its `Delete` call ends up going through the safe name-based path
-by accident, not by design.
+machine's *name*, not its real OrbStack ULID, so its `Delete` call ends up
+going through the safe name-based path by accident, not by design.
 
 ## Status
 

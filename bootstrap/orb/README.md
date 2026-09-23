@@ -15,22 +15,16 @@ using the `robertdebock/orbstack` provider's `orbstack_machine` resource.
 - OrbStack is optional; existing Ubuntu hosts bypass this stage entirely.
 - OrbStack must be installed and running. This workflow was checked with
   `2.2.3`.
-- **No cpu/memory/disk limits are declared.** The provider has no
-  arguments for any of them — not on `orbstack_machine`, and not
-  per-machine anywhere (its `orbstack_config` resource is app-wide only,
-  and even that throws apply-time errors — see
-  `FIRMAMENT_FINDINGS.md` in the `opentofu-provider-orbstack` fork). A
-  created machine gets whatever OrbStack's own defaults are. This is a
-  real reduction versus the previous bash script's declared 4 CPU /
-  8192 MiB / 40 GiB contract, not an oversight — fixing it is future work
-  on the fork, tracked there.
-- **No adopt/import path.** `tofu import` on this provider leaves `arch`,
-  `image`, and `username` unset in state, which makes the very next
-  `plan` want to destroy and recreate the real machine (verified,
-  documented in the fork's findings, never applied). Until that's fixed
-  upstream, adopting an existing unmarked machine isn't supported here —
+- **No cpu/memory/disk limits are declared.** `orbstack_machine` has no
+  arguments for any of them, and the provider's only other relevant
+  resource, `orbstack_config`, is app-wide (not per-machine) and reports
+  an apply-time error on every apply. A created machine gets whatever
+  OrbStack's own defaults are.
+- **No adopt/import path.** Importing an existing machine into this
+  provider's state leaves `arch`, `image`, and `username` unset, which
+  makes the next `plan` want to destroy and recreate the real machine.
   `mise run orb:create` only creates a machine that doesn't already exist
-  under that name.
+  under that name; adopting an existing unmarked machine isn't supported.
 
 ## Commands
 
@@ -52,30 +46,25 @@ mise run hooks:install
 
 The declared target is Ubuntu `resolute` on arm64, username `tensor` —
 `bootstrap/orb/machine.tf`. `mise run orb:create` prints the machine's
-native `orb info` JSON to stdout after applying, matching the previous
-script's output shape.
+native `orb info` JSON to stdout after applying.
 
 ## State
 
-OpenTofu's local state, not an ownership marker file, lives outside Git at:
+OpenTofu's local state lives outside Git at:
 
 ```text
 ${XDG_STATE_HOME:-$HOME/.local/state}/firmament/targets/firmament/orb/
 ```
 
-OpenTofu's own state lock (held during `plan`/`apply`) is what now
-prevents concurrent runs from sibling worktrees, replacing the previous
-hand-rolled `.lock` directory.
+OpenTofu's own state lock, held during `plan`/`apply`, prevents concurrent
+runs from sibling worktrees.
 
-Tests run `tofu plan` and inspect the JSON plan output — no live OrbStack
-calls happen at plan time (verified: a test explicitly runs with `orb`
-removed from `PATH` and still passes). Scripts don't exist for this stage
-anymore; `.tf` files and matching Bats tests are colocated under
-`bootstrap/orb/` and `tests/`, with test basenames matching their primary
-mise task name.
+Tests run `tofu plan` and inspect the JSON plan output. Plan makes no
+live OrbStack calls. `.tf` files and matching Bats tests are colocated
+under `bootstrap/orb/` and `tests/`, with test basenames matching their
+primary mise task name.
 
-See `bootstrap/orb/BUGS.md` for a reproduced OrbStack CLI crash found
-while spiking this conversion (`orb delete <ID>` segfaults; `orb delete
-<name>` doesn't — unrelated to the provider, not yet filed upstream).
+See `bootstrap/orb/BUGS.md` for a reproduced OrbStack CLI crash
+(`orb delete <ID>` segfaults; `orb delete <name>` doesn't).
 
 See the [OrbStack command reference](https://docs.orbstack.dev/machines/commands).
