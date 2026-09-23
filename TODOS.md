@@ -32,65 +32,6 @@ was written, so make the check required only after it has run reliably.
 **Priority:** P2
 **Depends on:** None
 
-The next item finishes a three-phase plan, ordered from deterministic
-to destructive:
-1. `tofu test`: offline and deterministic (done; see Completed).
-2. chainsaw: live, read-only (done; see Completed).
-3. `env:e2e`: live, destructive.
-
-Each phase depends on the one before it. Each layer owns one concern:
-- `tofu test` owns HCL logic.
-- bats owns shell, process and CLI behavior.
-- chainsaw owns read-only Kubernetes resource state.
-- The `cilium` CLI owns Cilium health and its connectivity suite.
-- `env:e2e` only composes existing tasks.
-
-### Add a live end-to-end test lane for an environment
-
-**What:** Add an `env:e2e [environment]` file task
-(`.mise/tasks/env/e2e.sh`, with `#MISE confirm`) that rebuilds the
-cluster twice and composes existing tasks only:
-
-```text
-pass 1  TF_VAR_kube_proxy_replacement=true
-  env:destroy -y, env:apply, check output, verify, cilium:conformance,
-  flip guard (env:plan with the mode false must fail with
-  "fixed at cluster creation"), env:destroy -y
-pass 2  TF_VAR_kube_proxy_replacement=false
-  env:apply, check output, verify, cilium:conformance, env:destroy -y
-```
-
-**Why:** The offline suites cannot catch regressions that only appear on
-a live cluster, and those paths are currently checked by hand.
-
-**Context:**
-- **Paths it covers:**
-  - the post-apply chart wait;
-  - every `*:verify` task and `cilium:conformance`;
-  - the kube-proxy-off bootstrap and its veth datapath;
-  - the creation-time guard on a live cluster.
-- **Mode per pass.** Set `TF_VAR_kube_proxy_replacement` explicitly in
-  each pass, and check the `kube_proxy_replacement` output after each
-  apply, so an inherited value cannot make both passes test the same
-  mode.
-- **Failure handling.** On failure, stop, print the failed step and
-  `mise run env:destroy -y <env>`, and leave the cluster up for
-  debugging. There is no trap; the next run starts with a destroy.
-  `cilium:conformance` runs `cilium connectivity test --cleanup` only
-  after a passing suite.
-- **Duration.** A run takes about 30 to 40 minutes, so keep it out of
-  `check`, `test` and the Git hooks. `env:e2e local` destroys the only
-  local cluster; the confirm text says so.
-- **Tests.**
-  - The "read-only tasks never apply or destroy" test in
-    `.mise/tests/tasks.bats` only greps tofu calls. Skip `e2e.sh` there
-    by name, and add a stubbed sequence test for it.
-  - Test the kube-proxy mode with an opposing inherited value.
-
-**Effort:** M
-**Priority:** P2
-**Depends on:** None
-
 ### Test a chart value rollout on a live cluster
 
 **What:** Add an `env:e2e` pass that changes one Helm chart value,
@@ -107,7 +48,7 @@ real chart-value input.
 
 **Effort:** S
 **Priority:** P4
-**Depends on:** The e2e lane, and a real chart-value input.
+**Depends on:** A real chart-value input.
 
 ### Hand Cilium from the k0s Helm extension to Flux Operator
 
@@ -180,6 +121,30 @@ still undecided.
 **Depends on:** A chosen target.
 
 ## Completed
+
+### Add a live end-to-end test lane for an environment
+
+Done on the `test/env-e2e` branch. `env:e2e [environment]` destroys the
+cluster, then rebuilds it once per kube-proxy mode. Each pass runs
+`verify` and `cilium:conformance`. The first pass also checks that the
+live cluster refuses a mode switch. The lane stops at the first failure
+and leaves the cluster up. `cilium:conformance` now removes its test
+workloads after a passing run.
+
+First live run (2026-09-23): 33 minutes.
+- Pass 1 (kube-proxy replaced): 79/79 tests (311 actions).
+- Pass 2 (kube-proxy running, veth): 79/79 tests (309 actions).
+
+An earlier attempt stopped at the first `env:apply`, because an internet
+outage made image pulls from quay.io time out on DNS. The lane left the
+cluster up with the cause visible in the pod events, as designed.
+
+Layers, from deterministic to destructive:
+- `tofu test` owns HCL logic.
+- bats owns shell, process and CLI behavior.
+- chainsaw owns read-only Kubernetes resource state.
+- The `cilium` CLI owns Cilium health and its connectivity suite.
+- `env:e2e` only composes these.
 
 ### Adopt chainsaw for read-only cluster assertions
 
