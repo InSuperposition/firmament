@@ -19,6 +19,17 @@ bats.
 `orb:*`, `ubuntu:check` and `k0s:*` each compute
 `dir="${FIRMAMENT_STATE_DIRECTORY:-${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/local}"`
 and export `TF_VAR_orbstack_ssh_key_path` and `TF_VAR_state_directory`.
+`[env] KUBECONFIG` uses `get_env`, which keeps an empty
+`XDG_STATE_HOME` or `FIRMAMENT_STATE_DIRECTORY` as empty, while the shell
+tasks treat empty as unset; one definition removes that mismatch. When
+`cilium status --wait` fails after apply, the script should also print
+the k0s Chart status
+(`kubectl -n kube-system get charts.helm.k0sproject.io -o yaml`), where
+Helm install errors appear. Wait for the Chart to reconcile the new
+spec before the pod checks: `cilium status` alone passes on the old pods
+while k0s's asynchronous upgrade is pending or rolled back (seen live).
+Compare the Chart's `.status.revision` before and after apply, and fail
+on a non-empty `.status.error`.
 Put that shared setup in `scripts/lib.sh`, give each task one script with
 `#!/usr/bin/env bash` and `set -euo pipefail`, reference the scripts from
 `mise.toml`, and add them to `check:shellcheck`, the `shfmt` checks and
@@ -49,7 +60,9 @@ a live cluster, and those paths are currently checked by hand.
   runs, Cilium uses veth with iptables masquerading);
 - changing `kube_proxy_replacement` on a live cluster requires teardown
   and bootstrap;
-- removing Cilium from `helm_charts` makes k0s uninstall it.
+- removing Cilium from `helm_charts` makes k0s uninstall it;
+- changing one chart value and applying rolls the affected pods in
+  place, without k0sctl resetting the cluster.
 A full run takes about 15 minutes, so keep it out of `check` and the git
 hooks. Run the scripts through `scripts/<verb-noun>.sh` with shellcheck,
 not inline in `mise.toml`.
