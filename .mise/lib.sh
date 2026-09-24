@@ -105,11 +105,13 @@ tofu_test_directories() {
 }
 
 # Prints one output from an environment's state. Fails when the state has no
-# value for it, as after a destroy: tofu output then prints nothing and
-# still exits 0.
+# value for it, as after a destroy. It reads the JSON form: with no outputs,
+# `tofu output -raw` prints a warning to stdout and still exits 0, while the
+# JSON form prints an empty object.
 environment_output() {
-  local value
-  value=$(tofu_in_environment "$1" output -raw "$2") || return
+  local outputs value
+  outputs=$(tofu_in_environment "$1" output -json) || return
+  value=$(jq -r --arg name "$2" '.[$name].value // empty' <<<"$outputs") || return
   if [[ -z "$value" ]]; then
     fail "environment '$1' has no $2 in its state; apply it first"
     return

@@ -29,10 +29,10 @@ stub() {
 #!/usr/bin/env bash
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
-  *"output -raw "*) [[ -n "\${NO_OUTPUTS:-}" ]] || case "\$*" in
-    *"output -raw kubeconfig_path"*) printf '/state/admin.kubeconfig' ;;
-    *"output -raw machine_name"*) printf 'firmament' ;;
-    esac ;;
+  *"output -json"*)
+    if [[ -n "\${NO_OUTPUTS:-}" ]]; then printf '{}'; else
+      printf '{"kubeconfig_path":{"value":"/state/admin.kubeconfig"},"machine_name":{"value":"firmament"}}'
+    fi ;;
   *"state list"*) printf '%s' "\${STATE_LIST:-}" ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;
   *"get charts.helm.k0sproject.io"*)
