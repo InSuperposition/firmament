@@ -120,10 +120,19 @@ local_state() {
   ! grep -q ' apply -input=false' "$CALLS"
 }
 
+@test "env:apply refuses an environment whose state it cannot read" {
+  OUTPUT_ERROR="Error: Failed to load state: lock held" run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Failed to load state: lock held"* ]]
+  ! grep -q ' apply -input=false' "$CALLS"
+}
+
 @test "env:apply applies a destroyed environment without asking it for k0s charts" {
   # The stub keeps printing no outputs after the apply, so the wait that
-  # follows fails here; only the apply itself matters.
+  # follows fails, and only there.
   NO_OUTPUTS=1 run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"environment 'local' has no kubeconfig_path in its state"* ]]
   grep -q ' apply -input=false -auto-approve ' "$CALLS"
   ! grep -q 'get charts.helm.k0sproject.io' "$CALLS"
 }

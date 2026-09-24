@@ -7,7 +7,7 @@
 # `kubectl get pods` prints, and $K0S_CHARTS is what `kubectl get
 # charts.helm.k0sproject.io` prints; $K0S_CHARTS_ERROR makes it fail with
 # that message instead. $NO_OUTPUTS makes `tofu output` print nothing, as
-# after a destroy.
+# after a destroy, and $OUTPUT_ERROR makes it fail with that message.
 setup_stubs() {
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
   export MISE_PROJECT_ROOT="$root_directory"
@@ -30,6 +30,7 @@ stub() {
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
   *"output -json"*)
+    if [[ -n "\${OUTPUT_ERROR:-}" ]]; then printf '%s\\n' "\$OUTPUT_ERROR" >&2; exit 1; fi
     if [[ -n "\${NO_OUTPUTS:-}" ]]; then printf '{}'; else
       printf '{"kubeconfig_path":{"value":"/state/admin.kubeconfig"},"machine_name":{"value":"firmament"}}'
     fi ;;

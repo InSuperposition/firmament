@@ -104,14 +104,22 @@ tofu_test_directories() {
   done | sort -u
 }
 
-# Prints one output from an environment's state. Fails when the state has no
-# value for it, as after a destroy. It reads the JSON form: with no outputs,
-# `tofu output -raw` prints a warning to stdout and still exits 0, while the
-# JSON form prints an empty object.
-environment_output() {
-  local outputs value
+# Prints one output from an environment's state, or nothing when the state
+# has no value for it, as after a destroy. Fails only when the state cannot
+# be read. It reads the JSON form: with no outputs, `tofu output -raw` prints
+# a warning to stdout and still exits 0, while the JSON form prints an empty
+# object.
+environment_output_or_empty() {
+  local outputs
   outputs=$(tofu_in_environment "$1" output -json) || return
-  value=$(jq -r --arg name "$2" '.[$name].value // empty' <<<"$outputs") || return
+  jq -r --arg name "$2" '.[$name].value // empty' <<<"$outputs"
+}
+
+# Prints one output from an environment's state. Fails when the state has no
+# value for it, as after a destroy, or cannot be read.
+environment_output() {
+  local value
+  value=$(environment_output_or_empty "$1" "$2") || return
   if [[ -z "$value" ]]; then
     fail "environment '$1' has no $2 in its state; apply it first"
     return
@@ -201,11 +209,15 @@ forget_bootstrap() {
 # Fails when the environment's cluster has Helm charts that k0s installs.
 # k0s uninstalls a chart once it leaves its configuration, and this
 # configuration installs none, so applying over such a cluster would remove
-# its Cilium. Passes when the state records no cluster yet; fails when a
-# recorded cluster cannot answer, since that says nothing about its charts.
+# its Cilium. Passes when the state records no cluster yet; fails when the
+# state cannot be read or a recorded cluster cannot answer, since either
+# says nothing about its charts.
 refuse_k0s_charts() {
   local kubeconfig charts errors
-  kubeconfig=$(environment_output "$1" kubeconfig_path 2>/dev/null) || return 0
+  kubeconfig=$(environment_output_or_empty "$1" kubeconfig_path) || return
+  if [[ -z "$kubeconfig" ]]; then
+    return 0
+  fi
   errors=$(mktemp)
   if ! charts=$(kubectl --kubeconfig "$kubeconfig" get charts.helm.k0sproject.io -A -o name --request-timeout=10s 2>"$errors"); then
     fail "cannot tell whether k0s installs Helm charts on this cluster:"$'\n'"$(cat "$errors")"$'\n'"Start the machine, or rebuild it: mise run --yes env:destroy $1, then mise run env:apply $1"
