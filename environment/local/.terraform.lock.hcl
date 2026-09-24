@@ -40,7 +40,7 @@ provider "registry.opentofu.org/hashicorp/external" {
 
 provider "registry.opentofu.org/hashicorp/helm" {
   version     = "3.3.0"
-  constraints = "~> 3.3"
+  constraints = ">= 3.0.0, ~> 3.3"
   hashes = [
     "h1:0zhsz9jzK+UxFNFYNJN904Hq1QYs9VMG4xPSumkKw/4=",
     "h1:3iVzjHzAq+YMymNbTq90zF20PeZu+ds1URRxhnoVRpg=",
@@ -77,7 +77,7 @@ provider "registry.opentofu.org/hashicorp/helm" {
 
 provider "registry.opentofu.org/hashicorp/kubernetes" {
   version     = "3.2.1"
-  constraints = "~> 3.2"
+  constraints = ">= 3.0.0, ~> 3.2"
   hashes = [
     "h1:+VM77HEd3CgzxwQ0PtfOc5tQrRQ2FZ9YJj1ShiMTsoI=",
     "h1:32YYVAK/LUIheXfaxxnwL4qzf6QgWaMVkByneQH8EpA=",
@@ -154,6 +154,7 @@ provider "registry.terraform.io/mirantis/k0sctl" {
   constraints = "0.0.3"
   hashes = [
     "h1:VC6mn8BdK+0mvlQC1xCkPCldjjtZo8GA45tR52ZNHSg=",
+    "h1:y9vFZB2/euhTBD9L8r6dp4ephzwrbwgtMuZ1cSyv8oA=",
     "zh:0416a868f7fa84be9d6a3288f762b908b08274c373de9b32c32b39a16dbe2d96",
     "zh:06844ae8f1023ab0124c49dc6e2a4f9755200198b6c8bf3b5e76afb5c67d2797",
     "zh:0f48c20672e31e9ff0986e17cbab88600c8fbf49e8cd63f6782e0dd26cebb33a",
@@ -176,6 +177,7 @@ provider "registry.terraform.io/robertdebock/orbstack" {
   version     = "3.1.2"
   constraints = "3.1.2"
   hashes = [
+    "h1:7PqKtRoFDubBeWxfPznn2A+LZYOiw+BwNs0yd1fQQ9Y=",
     "h1:bliKbzZq9+QAE1htuuXxhDjiAPPB9BP3yFKdlH7jjJU=",
     "zh:54606793c8a416897c641a9d7b840bde1de3da565b292f3ad66167a0f8bd4dce",
     "zh:b57bdcae8dad385c7f85e1c521f10e8f588ead4d519198cc4d27ec9395a194ce",

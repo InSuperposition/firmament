@@ -5,7 +5,10 @@ provider "registry.terraform.io/mirantis/k0sctl" {
   version     = "0.0.3"
   constraints = "0.0.3"
   hashes = [
+    "h1:AQ4mKYQ5CKTDAxg0xcwKufKs1EB0a3kX9TL65DsKT9Q=",
+    "h1:REIJ9hBnZmqt2JEaRUw+WDF/PUZ0nWyjKVWf+YbMRW0=",
     "h1:VC6mn8BdK+0mvlQC1xCkPCldjjtZo8GA45tR52ZNHSg=",
+    "h1:y9vFZB2/euhTBD9L8r6dp4ephzwrbwgtMuZ1cSyv8oA=",
     "zh:0416a868f7fa84be9d6a3288f762b908b08274c373de9b32c32b39a16dbe2d96",
     "zh:06844ae8f1023ab0124c49dc6e2a4f9755200198b6c8bf3b5e76afb5c67d2797",
     "zh:0f48c20672e31e9ff0986e17cbab88600c8fbf49e8cd63f6782e0dd26cebb33a",

@@ -71,7 +71,7 @@ setup() {
   init_environment local
   [ -d "$FIRMAMENT_STATE_HOME/environment/local" ]
   run cat "$CALLS"
-  [[ "$output" == *"init -input=false -reconfigure -backend-config=path=$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"* ]]
+  [[ "$output" == *"init -input=false -reconfigure -lockfile=readonly -backend-config=path=$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"* ]]
 }
 
 @test "waits for Cilium, then Flux and the Cilium release, then Cilium again, then the nodes" {
@@ -100,7 +100,7 @@ setup() {
 @test "initializes a directory without a backend" {
   init_offline /modules/a
   run cat "$CALLS"
-  [ "${output%% |*}" = "tofu -chdir=/modules/a init -backend=false -input=false -reconfigure" ]
+  [ "${output%% |*}" = "tofu -chdir=/modules/a init -backend=false -input=false -reconfigure -lockfile=readonly" ]
 }
 
 @test "finds each module and environment holding an OpenTofu test suite, once" {

@@ -50,21 +50,23 @@ tofu_in_environment() {
   TF_VAR_state_directory="$state" TF_VAR_git_branch="$branch" tofu -chdir="$directory" "$@"
 }
 
-# Points an environment's OpenTofu backend at its state file.
+# Points an environment's OpenTofu backend at its state file. Providers
+# install only as the committed lock file records them.
 init_environment() {
   local environment="$1"
   local state
   environment_directory "$environment" >/dev/null || return
   state=$(state_directory "$environment") || return
   mkdir -p "$state"
-  tofu_in_environment "$environment" init -input=false -reconfigure \
+  tofu_in_environment "$environment" init -input=false -reconfigure -lockfile=readonly \
     -backend-config="path=$state/terraform.tfstate" >/dev/null
 }
 
 # Initializes an OpenTofu root or module without a backend, for checks that
-# never read or write state.
+# never read or write state. Providers install only as the committed lock
+# file records them.
 init_offline() {
-  tofu -chdir="$1" init -backend=false -input=false -reconfigure >/dev/null
+  tofu -chdir="$1" init -backend=false -input=false -reconfigure -lockfile=readonly >/dev/null
 }
 
 # Prints each module or environment directory that holds an OpenTofu test
