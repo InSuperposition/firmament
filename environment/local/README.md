@@ -32,28 +32,16 @@ or Kubernetes provider and no kubeconfig at plan time. Both modules read
 so k0s serves the API where Cilium's agent connects; `cni_cilium` reads
 no `orch_k0s` output, since that edge would form a cycle.
 
-## Kube-proxy replacement is fixed at creation
+## Cilium replaces kube-proxy
 
-`kube_proxy_replacement` (default `true`) sets both k0s's
-`kubeProxy.disabled` and Cilium's `kubeProxyReplacement`. Choose it
-before the first `env:apply`. Cilium documents no live migration
-between the two modes for a single node (the only path is
-[per-node configuration](https://docs.cilium.io/en/stable/configuration/per-node-config/)),
-so changing it on a running cluster means `env:destroy` then
-`env:apply`. It also selects Cilium's pod datapath: netkit with
-BPF masquerading when `true`, veth with iptables masquerading when
-`false`, since netkit requires kube-proxy replacement.
-
-`modules/orch-k0s` records the value when the cluster is created. Any
-plan with a different value fails with "kube_proxy_replacement is fixed
-at cluster creation" before anything reaches the cluster. On a cluster
-bootstrapped with `false`, pass the same `TF_VAR_kube_proxy_replacement`
-to every later `env:plan`, `k0s:*` or `env:apply` run:
-
-```sh
-mise run env:destroy
-TF_VAR_kube_proxy_replacement=false mise run env:apply
-```
+This environment always runs without kube-proxy: `main.tf` sets
+`kube_proxy_replacement = true` for both k0s (`kubeProxy.disabled`) and
+Cilium (`kubeProxyReplacement`), which also selects Cilium's netkit pod
+datapath with BPF masquerading. It is not a variable, because no
+environment runs kube-proxy. Both modules still accept `false` (veth with
+iptables masquerading, kube-proxy run by k0s), and `modules/orch-k0s`
+refuses to change the value on an existing cluster, since Cilium
+documents no live migration between the two modes for a single node.
 
 Removing Cilium from `helm_charts` makes k0s uninstall it, which takes the
 cluster network down with it.
@@ -79,7 +67,7 @@ k0sctl reaches the machine with the SSH key OrbStack creates,
 | `mise run verify` | Run every `*:verify` task below, one at a time |
 | `mise run k0s:verify` | Wait for every node to be Ready, using the kubeconfig path recorded in state |
 | `mise run cilium:verify` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI, using the kubeconfig path recorded in state |
-| `mise run env:verify` | Run the read-only chainsaw suite in `tests/cluster` against the cluster: nodes Ready, and kube-proxy and the Cilium datapath matching the `kube_proxy_replacement` output recorded in state |
+| `mise run env:verify` | Run the read-only chainsaw suite in `tests/cluster` against the cluster: nodes Ready, no kube-proxy, and Cilium replacing it on the netkit datapath |
 | `mise run env:test` | Test that the modules are wired together (shared API address and port, kube-proxy setting, Cilium chart) against a plan in a temporary state, with no OrbStack calls |
 | `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests, then remove its test workloads; a failed run keeps them for debugging (slow, manual only) |
 | `mise run env:e2e` | Destroy the cluster, rebuild it from scratch, run `verify` and `cilium:conformance` against it, then destroy it again. Stops at the first failure and leaves the cluster up for inspection. Asks first; about 17 minutes |

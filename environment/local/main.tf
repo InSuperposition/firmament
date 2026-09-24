@@ -16,6 +16,10 @@ locals {
   api_address = module.vm_orb.dns_name
   api_port    = 6443
 
+  # Cilium replaces kube-proxy, on the netkit datapath. Both modules must
+  # agree, and orch_k0s fixes the value when the cluster is created.
+  kube_proxy_replacement = true
+
   orbstack_ssh_key_path = coalesce(var.orbstack_ssh_key_path, pathexpand("~/.orbstack/ssh/id_ed25519"))
 }
 
@@ -34,7 +38,7 @@ module "cni_cilium" {
 
   api_host               = local.api_address
   api_port               = local.api_port
-  kube_proxy_replacement = var.kube_proxy_replacement
+  kube_proxy_replacement = local.kube_proxy_replacement
   operator_replicas      = 1
 }
 
@@ -49,7 +53,7 @@ module "orch_k0s" {
   api_port     = local.api_port
   cluster_name = module.vm_orb.name
 
-  kube_proxy_replacement = var.kube_proxy_replacement
+  kube_proxy_replacement = local.kube_proxy_replacement
   helm_charts            = [module.cni_cilium.helm_chart]
 
   # os_ubuntu's postconditions must pass before k0s touches the host.

@@ -159,19 +159,12 @@ record_chainsaw_kubeconfig() {
   printf '#!/usr/bin/env bash\nprintf "chainsaw %%s | KUBECONFIG=%%s\\n" "$*" "$KUBECONFIG" >>"$CALLS"\n' >"$stubs/chainsaw"
 }
 
-@test "env:verify runs the cluster suite against the environment's kubeconfig, expecting the recorded mode" {
+@test "env:verify runs the cluster suite against the environment's kubeconfig" {
   record_chainsaw_kubeconfig
-  KUBE_PROXY_REPLACEMENT=false run_task "$root_directory/.mise/tasks/env/verify.sh" local
+  run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -eq 0 ]
   run grep '^chainsaw ' "$CALLS"
-  [ "$output" = "chainsaw test --test-dir $root_directory/environment/local/tests/cluster --set kubeProxyReplacement=false | KUBECONFIG=/state/admin.kubeconfig" ]
-}
-
-@test "env:verify refuses to guess the kube-proxy mode when state has none" {
-  KUBE_PROXY_REPLACEMENT= run_task "$root_directory/.mise/tasks/env/verify.sh" local
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"expected the kube_proxy_replacement output to be true or false, got ''"* ]]
-  ! grep -q '^chainsaw ' "$CALLS"
+  [ "$output" = "chainsaw test --test-dir $root_directory/environment/local/tests/cluster | KUBECONFIG=/state/admin.kubeconfig" ]
 }
 
 @test "env:verify fails for an environment without a cluster suite" {

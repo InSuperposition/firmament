@@ -34,11 +34,3 @@ ssh_key_path() {
 cilium_values() {
   yq -r '.spec.extensions.helm.charts[] | select(.name == "cilium") | .values'
 }
-
-planned_output() {
-  local name="$1" plan="$BATS_TEST_ROOT/plan.tfplan"
-  shift
-  tofu -chdir="$environment_directory" plan -input=false -out="$plan" \
-    -var="state_directory=$BATS_TEST_ROOT/state" "$@" >/dev/null
-  tofu -chdir="$environment_directory" show -json "$plan" | jq -r --arg name "$name" '.planned_values.outputs[$name].value'
-}

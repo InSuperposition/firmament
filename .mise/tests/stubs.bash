@@ -2,8 +2,6 @@
 # first on PATH. Each call is appended to $CALLS as
 # "<tool> <arguments> | state=<TF_VAR_state_directory>". $real_mise keeps
 # the real mise for tests that read the resolved configuration.
-# KUBE_PROXY_REPLACEMENT sets the kube-proxy mode tofu reports (default:
-# TF_VAR_kube_proxy_replacement, then true).
 setup_stubs() {
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
   export MISE_PROJECT_ROOT="$root_directory"
@@ -26,7 +24,6 @@ printf '%s %s | state=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" >>"\$CALLS
 case "\$*" in
   *"output -raw kubeconfig_path"*) printf '/state/admin.kubeconfig' ;;
   *"output -raw machine_name"*) printf 'firmament' ;;
-  *"output -raw kube_proxy_replacement"*) printf "%s" "\${KUBE_PROXY_REPLACEMENT-\${TF_VAR_kube_proxy_replacement:-true}}" ;;
   *"get charts.helm.k0sproject.io -o json"*) cat "\${CHARTS:-/dev/null}" ;;
   "tasks ls --name-only") printf '%s\\n' a:verify b:test k0s:verify ;;
 esac

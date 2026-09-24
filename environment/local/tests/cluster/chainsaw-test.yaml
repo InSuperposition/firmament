@@ -1,6 +1,6 @@
-# Read-only assertions on a running local cluster. Run with
-# --set kubeProxyReplacement=<true|false>, the mode recorded in state.
-# The namespace is set so chainsaw uses kube-system instead of creating one.
+# Read-only assertions on a running local cluster, where Cilium replaces
+# kube-proxy on the netkit datapath. The namespace is set so chainsaw uses
+# kube-system instead of creating one.
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -22,16 +22,15 @@ spec:
               kind: Node
               status:
                 (conditions[?type == 'Ready'] | [0].status != 'True'): true
-    - name: kube-proxy runs only when Cilium does not replace it
+    - name: kube-proxy does not run
       try:
-        - assert:
+        - error:
             resource:
-              apiVersion: v1
-              kind: Namespace
+              apiVersion: apps/v1
+              kind: DaemonSet
               metadata:
-                name: kube-system
-              (x_k8s_exists($client, 'apps/v1', 'DaemonSet', 'kube-system', 'kube-proxy')): ($values.kubeProxyReplacement == `false`)
-    - name: Cilium runs the datapath for the kube-proxy mode
+                name: kube-proxy
+    - name: Cilium replaces kube-proxy on the netkit datapath
       try:
         - assert:
             resource:
@@ -40,6 +39,5 @@ spec:
               metadata:
                 name: cilium-config
               data:
-                kube-proxy-replacement: (to_string($values.kubeProxyReplacement))
-                # netkit with kube-proxy replacement, veth without it.
-                datapath-mode: (($values.kubeProxyReplacement && 'netkit') || 'veth')
+                kube-proxy-replacement: "true"
+                datapath-mode: netkit
