@@ -131,6 +131,12 @@ setup() {
   [[ "$output" == *"no node registered with the API server within 0s"* ]]
 }
 
+@test "fails for an output the state has no value for, instead of printing nothing" {
+  NO_OUTPUTS=1 run environment_output local kubeconfig_path
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"environment 'local' has no kubeconfig_path in its state; apply it first"* ]]
+}
+
 @test "initializes a directory without a backend" {
   init_offline /modules/a
   run cat "$CALLS"

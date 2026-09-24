@@ -104,9 +104,17 @@ tofu_test_directories() {
   done | sort -u
 }
 
-# Prints one output from an environment's state.
+# Prints one output from an environment's state. Fails when the state has no
+# value for it, as after a destroy: tofu output then prints nothing and
+# still exits 0.
 environment_output() {
-  tofu_in_environment "$1" output -raw "$2"
+  local value
+  value=$(tofu_in_environment "$1" output -raw "$2") || return
+  if [[ -z "$value" ]]; then
+    fail "environment '$1' has no $2 in its state; apply it first"
+    return
+  fi
+  printf '%s' "$value"
 }
 
 # Prints the kubeconfig path recorded in an environment's state.

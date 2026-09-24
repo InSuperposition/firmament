@@ -120,6 +120,14 @@ local_state() {
   ! grep -q ' apply -input=false' "$CALLS"
 }
 
+@test "env:apply applies a destroyed environment without asking it for k0s charts" {
+  # The stub keeps printing no outputs after the apply, so the wait that
+  # follows fails here; only the apply itself matters.
+  NO_OUTPUTS=1 run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  grep -q ' apply -input=false -auto-approve ' "$CALLS"
+  ! grep -q 'get charts.helm.k0sproject.io' "$CALLS"
+}
+
 @test "env:apply applies a cluster where k0s installs no charts" {
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ]

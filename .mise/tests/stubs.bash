@@ -6,7 +6,8 @@
 # `kubectl get nodes -o name` prints, $PODS names the file whose JSON
 # `kubectl get pods` prints, and $K0S_CHARTS is what `kubectl get
 # charts.helm.k0sproject.io` prints; $K0S_CHARTS_ERROR makes it fail with
-# that message instead.
+# that message instead. $NO_OUTPUTS makes `tofu output` print nothing, as
+# after a destroy.
 setup_stubs() {
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
   export MISE_PROJECT_ROOT="$root_directory"
@@ -28,8 +29,10 @@ stub() {
 #!/usr/bin/env bash
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
-  *"output -raw kubeconfig_path"*) printf '/state/admin.kubeconfig' ;;
-  *"output -raw machine_name"*) printf 'firmament' ;;
+  *"output -raw "*) [[ -n "\${NO_OUTPUTS:-}" ]] || case "\$*" in
+    *"output -raw kubeconfig_path"*) printf '/state/admin.kubeconfig' ;;
+    *"output -raw machine_name"*) printf 'firmament' ;;
+    esac ;;
   *"state list"*) printf '%s' "\${STATE_LIST:-}" ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;
   *"get charts.helm.k0sproject.io"*)
