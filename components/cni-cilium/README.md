@@ -104,7 +104,7 @@ Run from the repo root:
 | --- | --- |
 | `mise run cilium:test` | Run `tests/values.bats`: renders `values.yaml` with `flux envsubst --strict` and checks the release, source and values, no cluster |
 | `mise run cilium:verify` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI |
-| `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests and every flow through a Hubble Relay port-forward (`--hubble-port`, default 4245; fails if that port is taken), then remove its test workloads; a failed run keeps them for debugging (slow, manual only) |
+| `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests, and logging flow mismatches seen through a Hubble Relay port-forward as warnings (`--hubble-port`, default 4245; fails if that port is taken or Relay is unreachable; see [BUGS.md](BUGS.md#connectivity-test-flow-validation-cannot-match-service-replies)), then remove its test workloads; a failed run keeps them for debugging (slow, manual only) |
 
 To open the Hubble UI or observe flows against the live cluster:
 

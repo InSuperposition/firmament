@@ -212,3 +212,11 @@ Major distribution and platform kernels already enable it:
 - Unlike `CONFIG_PSI` (#1309, declined for measured performance
   regressions), this option does nothing until a privileged process
   sends a destroy request.
+- `socketLB.hostNamespaceOnly: true`, the workaround this request would
+  remove, also shapes how Hubble reports Service replies. It is not the
+  cause of the `cilium:conformance` flow-validation failures, which are a
+  cilium-cli bug on any platform; see
+  [cni-cilium/BUGS.md](../../components/cni-cilium/BUGS.md#connectivity-test-flow-validation-cannot-match-service-replies).
+  No OrbStack issue mentions Cilium, Hubble or netkit tracing (searched
+  2026-09-24 for `cilium`, `cilium hubble`, `cilium netkit`, `ebpf netkit`,
+  `kube-proxy replacement`).

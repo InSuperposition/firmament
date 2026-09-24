@@ -271,3 +271,165 @@ lines.
 - Evidence gathered 2026-09-23 with Cilium 1.20.2, OrbStack
   `2.2.3 (2020300)`, macOS 26.6.2 (arm64), Ubuntu 26.04.1, k0s
   `1.36.4+k0s.0`, single node.
+
+## Connectivity test flow validation cannot match service replies
+
+| Field | Value |
+| --- | --- |
+| Repository | [cilium/cilium](https://github.com/cilium/cilium/issues/new?template=bug_report.yaml) (cilium-cli lives in `cilium-cli/`) |
+| Form | Bug report (`kind/community-report`, `kind/bug`, `needs/triage`) |
+| Status | Not filed |
+| Duplicate search | 2026-09-24, see below |
+
+**Title:** `cilium-cli: --flow-validation never matches the SYN-ACK of pod-to-service when the reply is reverse-NATed in bpf_lxc (Hubble reports it in SourceXlated)`
+
+### Is there an existing issue for this?
+
+- [x] I have searched the existing issues
+
+Searched on 2026-09-24 in cilium/cilium and cilium/cilium-cli for
+`"flow validation failed"`, `flow-validation strict`, `SourceXlated
+connectivity`, `missing SYN-ACK`, `pod-to-service flow validation` and
+`orbstack`. Related but not the same:
+
+- cilium/cilium-cli#3255 (closed as stale, not planned, 2026-09-02): the
+  same test fails with socket LB on (Talos, Cilium 1.19.5). There the
+  SYN to the ClusterIP never appears, because the socket hook translates
+  before any packet exists. This report is the tc-level LB case.
+- cilium/cilium-cli#419 (closed as stale): a missing SYN-ACK on
+  `pod-to-local-nodeport`.
+- cilium/cilium-cli#52 (closed as stale): asks the test to fail when
+  monitor aggregation is not `none`.
+- cilium/cilium#16392, #16291 (2021, closed): CI flakes on the same test
+  with older code.
+
+### Version
+
+equal or higher than 1.20.2 and lower than v1.21.0
+
+### What happened?
+
+`cilium connectivity test --flow-validation strict` fails
+`no-policies`, `allow-all-except-world` and `pod-to-itself-via-service`
+on their pod-to-service actions, although every request succeeds. The
+SYN-ACK requirement is never met:
+
+```text
+ℹ️  SYN-ACK and(ip(src=10.105.75.67,dst=10.244.0.253),tcp(srcPort=8080),tcpflags(syn,ack)) not found
+```
+
+The reply is in Hubble, with the ClusterIP in the translated field:
+
+1. `ipv4_policy()` in `bpf/bpf_lxc.c` saves `orig_sip`, reverse-NATs
+   the reply to the ClusterIP with `lb4_rev_nat()`, then emits
+   `TRACE_TO_LXC` with `orig_sip`, the backend address
+   ([bpf_lxc.c#L2181](https://github.com/cilium/cilium/blob/v1.20.2/bpf/bpf_lxc.c#L2181),
+   [#L2224](https://github.com/cilium/cilium/blob/v1.20.2/bpf/bpf_lxc.c#L2224),
+   [#L2315](https://github.com/cilium/cilium/blob/v1.20.2/bpf/bpf_lxc.c#L2315)).
+2. The Hubble parser puts that `OrigIP` in `IP.Source` and moves the
+   header's source, the ClusterIP, to `IP.SourceXlated`
+   ([parser.go#L252-L263](https://github.com/cilium/cilium/blob/v1.20.2/pkg/hubble/parser/threefour/parser.go#L252-L263)).
+3. The CLI's IP filter compares only `ip.Source`
+   ([filters.go#L387](https://github.com/cilium/cilium/blob/ef5d47de14d0/cilium-cli/connectivity/filters/filters.go#L387)),
+   and the service scenarios pass no `AltDstIP` for the backend
+   ([service.go#L62](https://github.com/cilium/cilium/blob/ef5d47de14d0/cilium-cli/connectivity/tests/service.go#L62)).
+
+So no reply flow can ever match `src=<ClusterIP>`. A second, smaller
+cause: with the chart's default `bpf.monitorAggregation: medium`,
+`emit_trace_notify()` drops every `TRACE_FROM_*` event
+([trace.h#L179-L194](https://github.com/cilium/cilium/blob/v1.20.2/bpf/lib/trace.h#L179-L194)),
+so the pre-DNAT SYN (`from-endpoint`) is not reported either. With
+`monitor-aggregation none` the SYN matches and only the SYN-ACK fails.
+
+The same run also fails `to-fqdns` for a different reason: the test
+expects an HTTP GET flow
+([to_fqdns.go#L48](https://github.com/cilium/cilium/blob/ef5d47de14d0/cilium-cli/connectivity/builder/to_fqdns.go#L48),
+checked in [action.go#L757](https://github.com/cilium/cilium/blob/ef5d47de14d0/cilium-cli/connectivity/check/action.go#L757)),
+but its policy `client-egress-to-fqdns.yaml` has no `http` rules, so the
+traffic is never redirected to Envoy. Hubble shows
+`policy-verdict:L3-L4` then `to-network`, which matches the policy.
+
+Expected: the IP filter also accepts `IP.SourceXlated` (and
+`DestinationXlated`) for service destinations, and `to-fqdns` expects an
+HTTP flow only when its policy has an L7 rule.
+
+### How can we reproduce the issue?
+
+1. Install Cilium 1.20.2 with `kubeProxyReplacement: true` and
+   `socketLB.hostNamespaceOnly: true`, so pods use tc-level Service
+   translation. We use k0s 1.36.4 on one node, `bpf.datapathMode:
+   netkit`, `bpf.masquerade: true`, Hubble Relay enabled.
+2. `cilium hubble port-forward &`
+3. `cilium connectivity test --hubble-server localhost:4245 --flow-validation strict --test no-policies,allow-all-except-world,pod-to-itself-via-service,to-fqdns`
+
+### Cilium Version
+
+```text
+cilium-cli: v0.20.0 compiled with go1.27.0 on darwin/arm64
+cilium image (running): v1.20.2
+```
+
+### Kernel Version
+
+```text
+Linux firmament 7.0.14-orbstack-00380-ga7e0a2dc9535 #1 SMP PREEMPT Fri Aug  7 03:48:40 UTC 2026 aarch64 GNU/Linux
+```
+
+### Kubernetes Version
+
+```text
+Client Version: v1.36.4
+Server Version: v1.36.4+k0s
+```
+
+### Regression
+
+Unknown. Cilium's CI runs the connectivity test with
+`--flow-validation=disabled` unless a job opts in
+([cli-test-config/action.yaml](https://github.com/cilium/cilium/blob/main/.github/actions/cli-test-config/action.yaml)),
+so these expectations are not exercised.
+
+### Sysdump
+
+Not attached. Available on request.
+
+### Relevant log output
+
+```text
+❌ 4/79 tests failed (7/311 actions), 58 tests skipped, 0 scenarios skipped:
+  🟥 no-policies/pod-to-service:curl-ipv4-0: ... Flow validation failed
+  🟥 allow-all-except-world/pod-to-service:curl-ipv4-0: ... Flow validation failed
+  🟥 pod-to-itself-via-service/pod-to-itself-via-service:curl-ipv4-0: ... Flow validation failed
+  🟥 to-fqdns/pod-to-world:http-to-one.one.one.one.-ipv4-0: ... Flow validation failed
+```
+
+### Anything else?
+
+The traffic in every failing action is correct: each connection
+completes (`FORWARDED` SYN, SYN-ACK, data and FIN), and the same run
+with `--flow-validation warning` passes all 79 tests.
+
+### Cilium Users Document
+
+- [ ] Are you a user of Cilium? Please add yourself to the [Users doc](https://github.com/cilium/cilium/blob/main/USERS.md)
+
+### Code of Conduct
+
+- [x] I agree to follow this project's Code of Conduct
+
+### Notes for this repo (not part of the issue)
+
+- `mise run cilium:conformance` runs `--flow-validation warning`: Hubble
+  Relay must be reachable, and flow mismatches are logged in the run's
+  output instead of failing it. Switch to `strict` once cilium-cli
+  matches translated addresses and fixes the `to-fqdns` expectation.
+- OrbStack is not the cause: #3255 fails the same test on Talos, and the
+  mismatch is in the parser and CLI code above. It is linked to
+  OrbStack only through `socketLB.hostNamespaceOnly: true`, which this
+  repo sets because of the
+  [OrbStack kernel request](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy).
+  With socket LB on in pods the test still fails, as in #3255.
+- `strict` would also need `bpf.monitorAggregation: none`, which raises
+  event volume on every node; not worth it for a test alone.
+- Evidence gathered 2026-09-24 with the versions above, OrbStack
+  `2.2.3 (2020300)`, macOS 26.6.2 (arm64), Ubuntu 26.04.1.
