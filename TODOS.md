@@ -32,6 +32,47 @@ was written, so make the check required only after it has run reliably.
 **Priority:** P2
 **Depends on:** None
 
+### Shorten the single-pass e2e lane
+
+**What:** Plan how to cut `env:e2e` below its current ~17 minutes,
+starting from where the time goes.
+
+**Why:** A shorter lane gets run more often, and fewer fresh image
+pulls make it less exposed to network outages. The first live attempt
+failed because an internet drop made pulls from quay.io time out on DNS.
+
+**Context:** Approximate times for one pass, from the 2026-09-23 run
+(two passes, 33 minutes):
+
+| Step | Time |
+| --- | --- |
+| `env:destroy` (init, plan, k0s reset 29s to 1m) | ~45s to 1m15s |
+| `env:apply`: VM create | ~15s |
+| `env:apply`: k0s install through k0sctl | 2m11s |
+| Post-apply wait: `cilium status`, charts, node | ~2 min |
+| `verify` (Cilium, chainsaw, node, Ubuntu probe) | ~20s |
+| `cilium:conformance` + cleanup (79 of 137 tests, serial) | ~9 to 11 min |
+
+Every rebuild starts from a fresh VM, so k0s and every image (Cilium,
+Envoy, Hubble, CoreDNS) are downloaded again. Ideas to evaluate:
+- a pull-through registry cache on the host for quay.io and docker.io,
+  which would also let the lane survive internet drops;
+- a k0s airgap image bundle that k0sctl uploads, kept in step with the
+  pinned Cilium version;
+- a conformance subset (`--test`) or `--test-concurrency`, weighed
+  against what each skipped test covers;
+- keeping the VM between the two destroys and resetting only k0s,
+  weighed against no longer testing a fresh machine.
+
+Also check why conformance reports "Unable to contact Hubble Relay,
+disabling Hubble telescope and flow validation": the suite runs from
+the host, which cannot reach the Relay without a port-forward, so flow
+validation is skipped on every run.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** None
+
 ### Test a chart value rollout on a live cluster
 
 **What:** Add an `env:e2e` pass that changes one Helm chart value,
@@ -96,7 +137,6 @@ tasks rely on:
   `TF_VAR_state_directory`;
 - a `kubeconfig_path` output, read by the `verify`, `apply` and
   `conformance` tasks;
-- a `kube_proxy_replacement` output, read by `env:verify`;
 - a local backend configured by `init_environment`;
 - an `environment/<env>/mise.toml` that sets `KUBECONFIG`, trusted by
   `mise run repo:setup`;
@@ -125,15 +165,16 @@ still undecided.
 ### Add a live end-to-end test lane for an environment
 
 Done on the `test/env-e2e` branch. `env:e2e [environment]` destroys the
-cluster, then rebuilds it once per kube-proxy mode. Each pass runs
-`verify` and `cilium:conformance`. The first pass also checks that the
-live cluster refuses a mode switch. The lane stops at the first failure
-and leaves the cluster up. `cilium:conformance` now removes its test
-workloads after a passing run.
+cluster, rebuilds it, runs `verify` and `cilium:conformance`, then
+destroys it again (about 17 minutes). The lane stops at the first
+failure and leaves the cluster up. `cilium:conformance` now removes its
+test workloads after a passing run.
 
-First live run (2026-09-23): 33 minutes.
-- Pass 1 (kube-proxy replaced): 79/79 tests (311 actions).
-- Pass 2 (kube-proxy running, veth): 79/79 tests (309 actions).
+The first version rebuilt the cluster twice, once per kube-proxy mode.
+It passed its first live run on 2026-09-23 in 33 minutes, with
+conformance at 79/79 in both modes. No environment runs kube-proxy, so
+`environment/local` now fixes `kube_proxy_replacement = true`, and the
+lane runs one pass. Both modules keep the input and its offline tests.
 
 An earlier attempt stopped at the first `env:apply`, because an internet
 outage made image pulls from quay.io time out on DNS. The lane left the
@@ -151,9 +192,9 @@ Layers, from deterministic to destructive:
 Done on the `test/chainsaw-env-verify` branch:
 - chainsaw 0.2.15 is pinned through mise.
 - `environment/local/tests/cluster/chainsaw-test.yaml` asserts that the
-  nodes are Ready, and that kube-proxy and the Cilium datapath match the
-  new `kube_proxy_replacement` output. `env:verify [environment]` runs
-  it, and it joins `verify`.
+  nodes are Ready, that kube-proxy does not run, and that Cilium replaces
+  it on the netkit datapath. `env:verify [environment]` runs it, and it
+  joins `verify`.
 - `chainsaw:lint` checks the schema and a read-only allowlist: the suite
   must use kube-system (chainsaw otherwise creates a namespace per
   test), `try` may only assert or expect errors, and `catch`/`finally`
