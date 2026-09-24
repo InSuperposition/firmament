@@ -25,15 +25,29 @@ state_directory() {
   printf '%s/environment/%s\n' "${FIRMAMENT_STATE_HOME:?FIRMAMENT_STATE_HOME is unset; run this through mise}" "$1"
 }
 
+# Prints the branch of this repository that Flux follows: FIRMAMENT_GIT_BRANCH
+# when the caller sets it, otherwise the checked-out branch. A detached HEAD
+# names no branch, so it fails instead of guessing one.
+git_branch() {
+  if [[ -n "${FIRMAMENT_GIT_BRANCH:-}" ]]; then
+    printf '%s\n' "$FIRMAMENT_GIT_BRANCH"
+    return
+  fi
+  git -C "${MISE_PROJECT_ROOT:?run this through mise}" symbolic-ref --short -q HEAD ||
+    fail "HEAD is detached; set FIRMAMENT_GIT_BRANCH to the branch Flux should follow"
+}
+
 # Runs tofu in an environment's root, telling it where its state directory
-# is. Every other input belongs to the environment's own configuration.
+# is and which branch Flux follows. Every other input belongs to the
+# environment's own configuration.
 tofu_in_environment() {
   local environment="$1"
   shift
-  local directory state
+  local directory state branch
   directory=$(environment_directory "$environment") || return
   state=$(state_directory "$environment") || return
-  TF_VAR_state_directory="$state" tofu -chdir="$directory" "$@"
+  branch=$(git_branch) || return
+  TF_VAR_state_directory="$state" TF_VAR_git_branch="$branch" tofu -chdir="$directory" "$@"
 }
 
 # Points an environment's OpenTofu backend at its state file.

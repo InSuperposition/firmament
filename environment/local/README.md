@@ -4,7 +4,8 @@ Abstract: Composes `modules/vm-orb`, `modules/os-ubuntu`,
 `modules/cni-cilium`, and `modules/orch-k0s` into one applied environment
 with a single shared OpenTofu state — the OrbStack machine, the readiness
 check that gates provisioning it, and the k0s cluster on top of it with
-Cilium and Hubble as its network.
+Cilium and Hubble as its network — then bootstraps Flux, which manages
+itself from `components/gitops-flux`.
 
 ## Composition
 
@@ -26,11 +27,32 @@ OpenTofu, not by which mise task you happen to run.
 
 `cni_cilium` renders the Cilium chart declaration and `orch_k0s` hands it
 to k0s's built-in Helm installer (`spec.extensions.helm`). k0s installs
-Cilium inside the cluster during bring-up, so this config needs no Helm
-or Kubernetes provider and no kubeconfig at plan time. Both modules read
+Cilium inside the cluster during bring-up. Both modules read
 `local.api_address` (the machine's OrbStack DNS name) and `local.api_port`,
 so k0s serves the API where Cilium's agent connects; `cni_cilium` reads
 no `orch_k0s` output, since that edge would form a cycle.
+
+## Flux
+
+`bootstrap.tf` calls the upstream
+[flux-operator-bootstrap](https://github.com/controlplaneio-fluxcd/terraform-kubernetes-flux-operator-bootstrap)
+module, pinned by commit. Its Job installs Flux Operator and the
+`FluxInstance` once; from then on Flux reconciles both from
+`components/gitops-flux`, through `flux/kustomization.yaml`. The bootstrap
+reads the chart digest, the operator values and the `FluxInstance` from
+that component, so both install the same bytes. Increment
+`bootstrap_revision` only to rerun the Job on purpose.
+
+`providers.tf` configures the Helm and Kubernetes providers from the
+kubeconfig `orch_k0s` returns. On a fresh environment that kubeconfig is
+unknown at plan time, and one apply still builds the machine, the cluster
+and the bootstrap.
+
+Flux follows a branch of the public repository, so commits reach the
+cluster only after they are pushed. The tasks pass the checked-out branch
+as `git_branch`; set `FIRMAMENT_GIT_BRANCH` to follow another, and on a
+detached HEAD. `env:destroy` forgets the bootstrap's state before
+destroying, since its objects go with the machine.
 
 ## Cilium replaces kube-proxy
 

@@ -23,7 +23,7 @@ local slow = new Mapping<String, Step> {
     check = "mise run tofu:validate"
   }
   ["test"] {
-    glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "environment/*/tests/cluster/**/*.yaml")
+    glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "environment/*/tests/cluster/**/*.yaml", "components/**", "environment/*/flux/**")
     check = "mise run test"
   }
 }

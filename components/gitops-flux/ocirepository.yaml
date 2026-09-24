@@ -1,0 +1,16 @@
+# The Flux Operator chart, pinned by digest. The bootstrap installs the same
+# digest, read from this file.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: flux-operator
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator
+  ref:
+    # chart 0.60.0
+    digest: sha256:493f296b479246570a214249bda2e02a884533674904a1b22b954c5c98df452e
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy

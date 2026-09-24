@@ -1,12 +1,14 @@
 # Puts recording stand-ins for the external tools the task scripts call
 # first on PATH. Each call is appended to $CALLS as
-# "<tool> <arguments> | state=<TF_VAR_state_directory>". $real_mise keeps
-# the real mise for tests that read the resolved configuration.
+# "<tool> <arguments> | state=<TF_VAR_state_directory> branch=<TF_VAR_git_branch>".
+# $real_mise keeps the real mise for tests that read the resolved
+# configuration. $STATE_LIST is what `tofu state list` prints.
 setup_stubs() {
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
   export MISE_PROJECT_ROOT="$root_directory"
   export FIRMAMENT_STATE_HOME="$BATS_TEST_TMPDIR/state"
   export CALLS="$BATS_TEST_TMPDIR/calls"
+  export FIRMAMENT_GIT_BRANCH=feature/test
   export real_mise
   real_mise=$(command -v mise)
   stubs="$BATS_TEST_TMPDIR/bin"
@@ -20,10 +22,11 @@ setup_stubs() {
 stub() {
   cat >"$stubs/$1" <<STUB
 #!/usr/bin/env bash
-printf '%s %s | state=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" >>"\$CALLS"
+printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
   *"output -raw kubeconfig_path"*) printf '/state/admin.kubeconfig' ;;
   *"output -raw machine_name"*) printf 'firmament' ;;
+  *"state list"*) printf '%s' "\${STATE_LIST:-}" ;;
   *"get charts.helm.k0sproject.io -o json"*) cat "\${CHARTS:-/dev/null}" ;;
   "tasks ls --name-only") printf '%s\\n' a:verify b:test k0s:verify ;;
 esac

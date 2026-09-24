@@ -60,6 +60,22 @@ run_task() {
   done
 }
 
+@test "env:destroy forgets the Flux bootstrap before destroying the rest" {
+  STATE_LIST=$'module.bootstrap_flux.helm_release.this\nmodule.vm_orb.orbstack_machine.this' run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  [ "$status" -eq 0 ]
+  run grep -E '^tofu .* (state rm|destroy) ' "$CALLS"
+  [ "${#lines[@]}" -eq 2 ]
+  [[ "${lines[0]}" == *" state rm -backup=$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate.bootstrap.backup module.bootstrap_flux "* ]]
+  [[ "${lines[1]}" == *" destroy -input=false -auto-approve "* ]]
+}
+
+@test "env:destroy destroys without touching state when there is no bootstrap" {
+  STATE_LIST=module.vm_orb.orbstack_machine.this run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  [ "$status" -eq 0 ]
+  ! grep -q ' state rm ' "$CALLS"
+  grep -q ' destroy -input=false -auto-approve ' "$CALLS"
+}
+
 @test "apply tasks wait for the cluster only after applying" {
   run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
   [ "$status" -eq 0 ]

@@ -1,0 +1,5 @@
+# What Flux reconciles in the local environment.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../components/gitops-flux

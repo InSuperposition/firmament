@@ -52,12 +52,15 @@ eval "$(mise env)"
 
 ```text
 environment/local/    root config: composes the four modules below,
-                      owns the one shared state and the kubeconfig file
+                      bootstraps Flux, owns the one shared state and
+                      the kubeconfig file
 modules/vm-orb/       the OrbStack VM
 modules/os-ubuntu/    Ubuntu readiness check (SSH probe + postconditions)
 modules/cni-cilium/   the Cilium and Hubble Helm chart declaration
 modules/orch-k0s/     the k0s controller+worker node, which installs
                       the declared Helm charts
+components/           packages Flux reconciles in the cluster (plain
+                      Kustomize); components/gitops-flux is Flux itself
 .mise/tasks/          one executable script per mise task, named
                       <noun>/<verb>.sh and run as `mise run <noun>:<verb>`
 .mise/lib.sh          helpers the task scripts share (environment lookup,

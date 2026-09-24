@@ -32,10 +32,32 @@ setup() {
   [[ "$output" == *"FIRMAMENT_STATE_HOME is unset"* ]]
 }
 
-@test "runs tofu in the environment root with only its state directory" {
+@test "runs tofu in the environment root with its state directory and branch" {
   tofu_in_environment local plan -input=false
   run cat "$CALLS"
-  [ "$output" = "tofu -chdir=$root_directory/environment/local plan -input=false | state=$FIRMAMENT_STATE_HOME/environment/local" ]
+  [ "$output" = "tofu -chdir=$root_directory/environment/local plan -input=false | state=$FIRMAMENT_STATE_HOME/environment/local branch=feature/test" ]
+}
+
+@test "follows the checked-out branch when the caller names none" {
+  unset FIRMAMENT_GIT_BRANCH
+  MISE_PROJECT_ROOT="$BATS_TEST_TMPDIR/repository"
+  git init -q -b feature/checked-out "$MISE_PROJECT_ROOT"
+  run git_branch
+  [ "$status" -eq 0 ]
+  [ "$output" = feature/checked-out ]
+}
+
+@test "refuses to guess a branch on a detached HEAD" {
+  unset FIRMAMENT_GIT_BRANCH
+  MISE_PROJECT_ROOT="$BATS_TEST_TMPDIR/repository"
+  git init -q "$MISE_PROJECT_ROOT"
+  git -C "$MISE_PROJECT_ROOT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m start
+  git -C "$MISE_PROJECT_ROOT" checkout -q --detach
+  mkdir -p "$MISE_PROJECT_ROOT/environment/local"
+  run tofu_in_environment local plan
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"HEAD is detached; set FIRMAMENT_GIT_BRANCH"* ]]
+  [ ! -e "$CALLS" ]
 }
 
 @test "creates no state directory for an environment that does not exist" {
