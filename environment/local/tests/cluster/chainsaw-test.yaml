@@ -1,0 +1,43 @@
+# Read-only assertions on a running local cluster, where Cilium replaces
+# kube-proxy on the netkit datapath. The namespace is set so chainsaw uses
+# kube-system instead of creating one.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cluster
+spec:
+  namespace: kube-system
+  steps:
+    - name: every node is ready
+      try:
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Node
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+        - error:
+            resource:
+              apiVersion: v1
+              kind: Node
+              status:
+                (conditions[?type == 'Ready'] | [0].status != 'True'): true
+    - name: kube-proxy does not run
+      try:
+        - error:
+            resource:
+              apiVersion: apps/v1
+              kind: DaemonSet
+              metadata:
+                name: kube-proxy
+    - name: Cilium replaces kube-proxy on the netkit datapath
+      try:
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: cilium-config
+              data:
+                kube-proxy-replacement: "true"
+                datapath-mode: netkit

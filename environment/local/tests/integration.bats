@@ -20,20 +20,12 @@ load setup.bash
   [ "$(cilium_values <<<"$output" | yq -r '.operator.replicas')" = 1 ]
 }
 
-@test "replaces kube-proxy with Cilium by default" {
+@test "replaces kube-proxy with Cilium on the netkit datapath" {
   run cluster_config
   [ "$status" -eq 0 ]
   [ "$(yq -r '.spec.network.kubeProxy.disabled' <<<"$output")" = true ]
   [ "$(cilium_values <<<"$output" | yq -r '.kubeProxyReplacement')" = true ]
   [ "$(cilium_values <<<"$output" | yq -r '.bpf.datapathMode')" = netkit ]
-}
-
-@test "runs kube-proxy alongside veth Cilium when replacement is off" {
-  run cluster_config -var='kube_proxy_replacement=false'
-  [ "$status" -eq 0 ]
-  [ "$(yq -r '.spec.network.kubeProxy.disabled' <<<"$output")" = false ]
-  [ "$(cilium_values <<<"$output" | yq -r '.kubeProxyReplacement')" = false ]
-  [ "$(cilium_values <<<"$output" | yq -r '.bpf.datapathMode')" = veth ]
 }
 
 @test "reaches the machine with OrbStack's own SSH key by default" {

@@ -8,6 +8,11 @@ local fast = new Mapping<String, Step> {
   ["shfmt"] = Builtins.shfmt
   ["tofu"] = Builtins.tofu
   ["mise"] = Builtins.mise
+  // Schema and read-only rules for the live cluster suites.
+  ["chainsaw"] {
+    glob = List("environment/*/tests/cluster/**/*.yaml")
+    check = "mise run chainsaw:lint"
+  }
 }
 
 // Whole-repository checks, too slow for every commit. Each runs once, and
@@ -18,7 +23,7 @@ local slow = new Mapping<String, Step> {
     check = "mise run tofu:validate"
   }
   ["test"] {
-    glob = List("**/*.tf", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml")
+    glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "environment/*/tests/cluster/**/*.yaml")
     check = "mise run test"
   }
 }

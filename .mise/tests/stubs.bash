@@ -11,7 +11,7 @@ setup_stubs() {
   real_mise=$(command -v mise)
   stubs="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$stubs"
-  for tool in tofu cilium kubectl orb bats mise; do
+  for tool in tofu cilium kubectl chainsaw orb bats mise; do
     stub "$tool"
   done
   PATH="$stubs:$PATH"
@@ -30,4 +30,17 @@ esac
 exit 0
 STUB
   chmod +x "$stubs/$1"
+}
+
+# Builds a stand-in repository holding the real .mise directory and an empty
+# file at each given path, and prints its root.
+make_repository() {
+  local repository="$BATS_TEST_TMPDIR/repository" path
+  mkdir -p "$repository"
+  ln -sfn "$root_directory/.mise" "$repository/.mise"
+  for path in "$@"; do
+    mkdir -p "$repository/$(dirname -- "$path")"
+    : >"$repository/$path"
+  done
+  printf '%s\n' "$repository"
 }

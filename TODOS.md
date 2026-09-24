@@ -5,91 +5,91 @@ section. Each item carries enough context to pick up cold.
 
 ## Infrastructure
 
-### Add a live end-to-end test lane for an environment
+### Run the offline checks in CI
 
-**What:** Add an `env:e2e [environment]` file task
-(`.mise/tasks/env/e2e.sh`) that runs a suite against a real OrbStack
-machine: `env:destroy -y`, `env:apply`, `verify`, `cilium:conformance`,
-then `env:destroy -y` again.
+**What:** Add a GitHub Actions workflow that runs `mise run check` on
+every pull request and on pushes to `main`.
 
-**Why:** The offline suites (`mise run check`) cover everything that can
-be checked from a plan. They cannot catch regressions that only appear on
-a live cluster, and those paths are currently checked by hand.
+**Why:** The only gate today is the local pre-push hook. It runs only in
+clones where `mise install` installed it, can be skipped with
+`--no-verify` or `HK=0`, and checks only the first ref in a multi-ref
+push. A merge can therefore land code that fails `mise run check`.
 
-**Context:** Paths with no automated test today:
+**Context:** Keep the workflow declarative: one job that installs the
+pinned tools with `jdx/mise-action` (pinned by commit SHA, using
+`mise.lock` through `MISE_LOCKED_SCOPES=project mise install --locked`)
+and runs the one-line step `mise run check`, with no other shell in the
+YAML. Confirm first that every suite runs offline on a Linux runner:
+- the vm-orb suite asserts that planning makes no OrbStack calls, but the
+  OrbStack provider must still install on Linux;
+- the os-ubuntu SSH fixture must work there;
+- `tasks:test` resolves config with the real `mise`.
+Cache `~/.cache/firmament/tofu-plugins` (the shared `TF_PLUGIN_CACHE_DIR`)
+and the mise install directory. GitHub had intermittent outages when this
+was written, so make the check required only after it has run reliably.
 
-- the post-apply wait in `env:apply` and `k0s:apply` against a real
-  cluster (the order and the chart states are unit-tested with stubs in
-  `.mise/tests/lib.bats`);
-- `k0s:verify`, `cilium:verify`, `ubuntu:verify` and
-  `cilium:conformance`;
-- `k0s:apply` and `k0s:plan` targeting
-  `local_sensitive_file.kubeconfig`;
-- a bootstrap with `TF_VAR_kube_proxy_replacement=false` (kube-proxy
-  runs, Cilium uses veth with iptables masquerading);
-- changing `kube_proxy_replacement` on a live cluster requires teardown
-  and bootstrap;
-- removing Cilium from `helm_charts` makes k0s uninstall it;
-- changing one chart value and applying rolls the affected pods in
-  place, without k0sctl resetting the cluster.
-
-A full run takes about 15 minutes, so keep it out of `check`, the `test`
-aggregate and the Git hooks. Name it `e2e`, not `test`, so the `*:test`
-wildcard never selects it. Decide between bats and chainsaw (below)
-before writing it.
-
-**Effort:** M
-**Priority:** P2
-**Depends on:** The chainsaw evaluation below.
-
-### Adopt chainsaw for live cluster tests
-
-**What:** Plan how [chainsaw](https://github.com/kyverno/chainsaw)
-(Kyverno's declarative Kubernetes end-to-end test tool) fits the live
-test verbs: `verify` (read-only assertions on a running cluster),
-`conformance` and `e2e`.
-
-**Why:** Live checks are currently imperative shell (`kubectl wait`,
-`cilium status`). Chainsaw expresses them as YAML assertions on resource
-state, with built-in retries, timeouts and cleanup, which suits the
-end-to-end lane above.
-
-**Context:** Decide which layer owns what: chainsaw for Kubernetes
-resource assertions, the `cilium` CLI for Cilium's own connectivity
-suite, and mise file tasks as the entry points (`env:e2e`,
-`*:verify`). Pin chainsaw through mise `[tools]`, and keep its suites out of the
-`test` aggregate, since they need a live cluster. Needs its own
-planning before any code.
-<https://kyverno.github.io/chainsaw/>
-
-**Effort:** M
+**Effort:** S
 **Priority:** P2
 **Depends on:** None
 
-### Evaluate `tofu test` for the plan-level module suites
+### Shorten the single-pass e2e lane
 
-**What:** Plan a move of the module suites (`modules/*/tests/unit.bats`)
-and the wiring suite (`environment/local/tests/integration.bats`) from
-bats + jq + yq to OpenTofu's native `tofu test` (`*.tftest.hcl` with
-`command = plan` and `mock_provider`).
+**What:** Plan how to cut `env:e2e` below its current ~17 minutes,
+starting from where the time goes.
 
-**Why:** The suites assert on plans, which `tofu test` does
-declaratively, without the shell that renders a plan and digs through
-its JSON.
+**Why:** A shorter lane gets run more often, and fewer fresh image
+pulls make it less exposed to network outages. The first live attempt
+failed because an internet drop made pulls from quay.io time out on DNS.
 
-**Context:** cni-cilium and orch-k0s assert on rendered values and
-variable validation, and look like direct fits. os-ubuntu runs its
-probe through an SSH fixture on PATH, and vm-orb asserts that planning
-makes no OrbStack calls. Both may need to stay on bats, or need mocks
-that `tofu test` may not support. Check how `tofu test` would run under
-the `test` aggregate and the hk pre-push gate, and whether `hk`'s `tofu`
-builtin covers `*.tftest.hcl` formatting (it globs it already). Needs
-its own planning before any code.
-<https://opentofu.org/docs/cli/commands/test/>
+**Context:** Approximate times for one pass, from the 2026-09-23 run
+(two passes, 33 minutes):
+
+| Step | Time |
+| --- | --- |
+| `env:destroy` (init, plan, k0s reset 29s to 1m) | ~45s to 1m15s |
+| `env:apply`: VM create | ~15s |
+| `env:apply`: k0s install through k0sctl | 2m11s |
+| Post-apply wait: `cilium status`, charts, node | ~2 min |
+| `verify` (Cilium, chainsaw, node, Ubuntu probe) | ~20s |
+| `cilium:conformance` + cleanup (79 of 137 tests, serial) | ~9 to 11 min |
+
+Every rebuild starts from a fresh VM, so k0s and every image (Cilium,
+Envoy, Hubble, CoreDNS) are downloaded again. Ideas to evaluate:
+- a pull-through registry cache on the host for quay.io and docker.io,
+  which would also let the lane survive internet drops;
+- a k0s airgap image bundle that k0sctl uploads, kept in step with the
+  pinned Cilium version;
+- a conformance subset (`--test`) or `--test-concurrency`, weighed
+  against what each skipped test covers;
+- keeping the VM between the two destroys and resetting only k0s,
+  weighed against no longer testing a fresh machine.
+
+Also check why conformance reports "Unable to contact Hubble Relay,
+disabling Hubble telescope and flow validation": the suite runs from
+the host, which cannot reach the Relay without a port-forward, so flow
+validation is skipped on every run.
 
 **Effort:** M
 **Priority:** P3
 **Depends on:** None
+
+### Test a chart value rollout on a live cluster
+
+**What:** Add an `env:e2e` pass that changes one Helm chart value,
+applies it, and asserts that only the affected pods roll, with no k0sctl
+cluster reset.
+
+**Why:** k0s upgrades charts in place (`forceUpgrade: false`), and
+Cilium rolls pods on configuration changes. That path is untested live.
+
+**Context:** `environment/local` has no input that changes a chart
+value (`operator_replicas = 1` is fixed in `main.tf`). Adding a variable
+only for a test was rejected. Do this item when an environment gains a
+real chart-value input.
+
+**Effort:** S
+**Priority:** P4
+**Depends on:** A real chart-value input.
 
 ### Hand Cilium from the k0s Helm extension to Flux Operator
 
@@ -111,13 +111,114 @@ supports prerequisite charts with `flux_adoption_check`:
 <https://github.com/controlplaneio-fluxcd/terraform-kubernetes-flux-operator-bootstrap>
 and <https://fluxcd.io/blog/2026/04/terraform-flux-operator-bootstrap/>.
 Verify the adoption on a disposable local cluster before relying on it.
+The uninstall path (removing Cilium from `helm_charts` makes k0s
+uninstall it) has no live test yet. Add one as an `env:e2e` pass with a
+chainsaw `error` assertion on the Cilium DaemonSet, as part of this
+work.
 
 **Effort:** L
 **Priority:** P3
 **Depends on:** Cilium installed through `modules/cni-cilium` and the k0s
 Helm extension.
 
+### Add a second environment
+
+**What:** Add a second `environment/<env>/` beside `local`, for whatever
+target comes next.
+
+**Why:** The task layout assumes more than one environment (every
+environment task takes `[environment]`, and KUBECONFIG and state are
+per environment), but only `local` has exercised it. A second
+environment proves that adding one needs no new tasks.
+
+**Context:** Each environment directory must provide what the shared
+tasks rely on:
+- a `state_directory` variable, which `.mise/lib.sh` sets through
+  `TF_VAR_state_directory`;
+- a `kubeconfig_path` output, read by the `verify`, `apply` and
+  `conformance` tasks;
+- a local backend configured by `init_environment`;
+- an `environment/<env>/mise.toml` that sets `KUBECONFIG`, trusted by
+  `mise run repo:setup`;
+- `tests/integration.bats` for `env:test`;
+- `tests/cluster/chainsaw-test.yaml` for `env:verify`.
+
+Each environment writing its own cluster suite is a stopgap. Before
+adding the second environment, plan a shared suite that every
+environment runs with its own values (for example, a chainsaw suite
+parameterized by `--values` from environment outputs), so the suites
+are not copied from environment to environment.
+
+The `orb:*` tasks and `ubuntu:verify` target modules by address
+(`module.vm_orb`, `module.os_ubuntu`), so they only work in environments
+that use those modules. Decide whether component tasks should detect
+that and fail with a clear message. A stub environment could prove the
+contract before a real target exists. The target and its providers are
+still undecided.
+
+**Effort:** M
+**Priority:** P4
+**Depends on:** A chosen target.
+
 ## Completed
+
+### Add a live end-to-end test lane for an environment
+
+Done on the `test/env-e2e` branch. `env:e2e [environment]` destroys the
+cluster, rebuilds it, runs `verify` and `cilium:conformance`, then
+destroys it again (about 17 minutes). The lane stops at the first
+failure and leaves the cluster up. `cilium:conformance` now removes its
+test workloads after a passing run.
+
+The first version rebuilt the cluster twice, once per kube-proxy mode.
+It passed its first live run on 2026-09-23 in 33 minutes, with
+conformance at 79/79 in both modes. No environment runs kube-proxy, so
+`environment/local` now fixes `kube_proxy_replacement = true`, and the
+lane runs one pass. Both modules keep the input and its offline tests.
+
+An earlier attempt stopped at the first `env:apply`, because an internet
+outage made image pulls from quay.io time out on DNS. The lane left the
+cluster up with the cause visible in the pod events, as designed.
+
+Layers, from deterministic to destructive:
+- `tofu test` owns HCL logic.
+- bats owns shell, process and CLI behavior.
+- chainsaw owns read-only Kubernetes resource state.
+- The `cilium` CLI owns Cilium health and its connectivity suite.
+- `env:e2e` only composes these.
+
+### Adopt chainsaw for read-only cluster assertions
+
+Done on the `test/chainsaw-env-verify` branch:
+- chainsaw 0.2.15 is pinned through mise.
+- `environment/local/tests/cluster/chainsaw-test.yaml` asserts that the
+  nodes are Ready, that kube-proxy does not run, and that Cilium replaces
+  it on the netkit datapath. `env:verify [environment]` runs it, and it
+  joins `verify`.
+- `chainsaw:lint` checks the schema and a read-only allowlist: the suite
+  must use kube-system (chainsaw otherwise creates a namespace per
+  test), `try` may only assert or expect errors, and `catch`/`finally`
+  may only collect diagnostics. hk runs it when a suite changes.
+- The chart-reconcile wait stays in `.mise/lib.sh`, because chainsaw's
+  JMESPath has no `sha256`. `k0s:verify` and `cilium:verify` are
+  unchanged.
+
+### Move plan-level module suites to `tofu test`
+
+Done on the `test/tofu-test-module-suites` branch:
+- `tofu:test` runs every `tests/*.tftest.hcl` offline and joins `test`.
+- cni-cilium (`unit.tftest.hcl`) and orch-k0s (`unit.tftest.hcl`, plus
+  `creation.tftest.hcl` for the creation-time kube-proxy guard) moved
+  off bats. A mutation check failed the same tests in both suites before
+  the bats files were deleted.
+- Three tests that assert OpenTofu's own errors stay on bats in
+  `tests/inputs.bats`, because `expect_failures` only matches custom
+  conditions.
+- os-ubuntu, vm-orb and `environment/local/tests/integration.bats` stay
+  on bats. The environment suite would need a plan-known rendered-config
+  output from orch-k0s, since a root-level `tofu test` cannot address
+  resources inside nested modules. Add that output only when a real
+  consumer needs it.
 
 ### Extract multi-line mise task shell into scripts
 

@@ -76,4 +76,5 @@ the full task list:
 | `mise run k0s:apply` | Apply the cluster and kubeconfig, then wait for the node to be Ready and Cilium to report healthy |
 | `mise run k0s:plan` | Plan without applying |
 | `mise run k0s:verify` | Wait for every node to be Ready, using the rendered kubeconfig |
-| `mise run k0s:test` | Run this module's tests against a rendered plan, no live host |
+| `mise run tofu:test` | Run `tests/unit.tftest.hcl` and `tests/creation.tftest.hcl` (and every other OpenTofu suite) against rendered plans, no live host |
+| `mise run k0s:test` | Run `tests/inputs.bats`, which checks that OpenTofu refuses a plan without the required inputs |

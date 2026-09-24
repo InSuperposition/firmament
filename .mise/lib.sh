@@ -47,6 +47,23 @@ init_environment() {
     -backend-config="path=$state/terraform.tfstate" >/dev/null
 }
 
+# Initializes an OpenTofu root or module without a backend, for checks that
+# never read or write state.
+init_offline() {
+  tofu -chdir="$1" init -backend=false -input=false -reconfigure >/dev/null
+}
+
+# Prints each module or environment directory that holds an OpenTofu test
+# suite (tests/*.tftest.hcl), once, in sorted order.
+tofu_test_directories() {
+  local suite
+  for suite in "${MISE_PROJECT_ROOT:?run this through mise}"/{modules,environment}/*/tests/*.tftest.hcl; do
+    if [[ -e "$suite" ]]; then
+      dirname -- "$(dirname -- "$suite")"
+    fi
+  done | sort -u
+}
+
 # Prints one output from an environment's state.
 environment_output() {
   tofu_in_environment "$1" output -raw "$2"
@@ -55,6 +72,16 @@ environment_output() {
 # Prints the kubeconfig path recorded in an environment's state.
 environment_kubeconfig() {
   environment_output "$1" kubeconfig_path
+}
+
+# Runs chainsaw against an environment's cluster. chainsaw has no kubeconfig
+# flag; it reads KUBECONFIG, set here from the path recorded in state.
+chainsaw_in_environment() {
+  local environment="$1"
+  shift
+  local kubeconfig
+  kubeconfig=$(environment_kubeconfig "$environment") || return
+  KUBECONFIG="$kubeconfig" chainsaw "$@"
 }
 
 # Prints one "<state> <chart>" line per k0s Helm chart, where state is:

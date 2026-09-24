@@ -11,6 +11,7 @@ FIRMAMENT_STATE_HOME = "{% if env.FIRMAMENT_STATE_HOME %}{{ env.FIRMAMENT_STATE_
 KUBECONFIG = "{{ env.FIRMAMENT_STATE_HOME }}/environment/local/admin.kubeconfig"
 
 [tools]
+"aqua:kyverno/chainsaw" = "0.2.15"
 bats = "1.14.0"
 cilium-cli = "0.20.0"
 cilium-hubble = "1.19.4"
@@ -27,16 +28,16 @@ description = "Run every offline check: lint, validate and test"
 run = [{ task = "lint" }, { task = "tofu:validate" }, { task = "test" }]
 
 [tasks."cilium:test"]
-description = "Test the cni-cilium module without a live cluster"
-run = "bats modules/cni-cilium/tests/unit.bats"
+description = "Check that the cni-cilium module requires its inputs, without a live cluster"
+run = "bats modules/cni-cilium/tests/inputs.bats"
 
 [tasks.format]
 description = "Run every *:format task"
 depends = ["*:format"]
 
 [tasks."k0s:test"]
-description = "Test the orch-k0s module without a live host"
-run = "bats modules/orch-k0s/tests/unit.bats"
+description = "Check that the orch-k0s module requires its inputs, without a live host"
+run = "bats modules/orch-k0s/tests/inputs.bats"
 
 [tasks.lint]
 description = "Run every *:lint task; changes nothing"

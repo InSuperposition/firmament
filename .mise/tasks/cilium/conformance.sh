@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run the Cilium connectivity suite against the cluster, checking only logs written during the tests (slow; deploys test workloads)"
+#MISE description="Run the Cilium connectivity suite against the cluster, checking only logs written during the tests, then remove its test workloads (slow; deploys test workloads)"
 #USAGE arg "[environment]" default="local" help="Directory name under environment/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
@@ -10,3 +10,6 @@ environment="$usage_environment"
 init_environment "$environment"
 kubeconfig=$(environment_kubeconfig "$environment")
 cilium --kubeconfig "$kubeconfig" connectivity test --log-check-only-test-time
+# Reached only when the suite passed: a failed run keeps its test
+# namespaces and pods for debugging.
+cilium --kubeconfig "$kubeconfig" connectivity test --cleanup
