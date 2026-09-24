@@ -24,8 +24,9 @@ locals {
   api_address = module.vm_orb.dns_name
   api_port    = 6443
 
-  # Cilium replaces kube-proxy, on the netkit datapath. Both modules must
-  # agree, and orch_k0s fixes the value when the cluster is created.
+  # Cilium replaces kube-proxy, on the netkit datapath. k0s and the Cilium
+  # values must agree, and orch_k0s fixes the value when the cluster is
+  # created.
   kube_proxy_replacement = true
 
   orbstack_ssh_key_path = coalesce(var.orbstack_ssh_key_path, pathexpand("~/.orbstack/ssh/id_ed25519"))
@@ -40,16 +41,6 @@ module "os_ubuntu" {
   ssh_target = module.vm_orb.ssh_target
 }
 
-# Reads no orch_k0s output: orch_k0s consumes this chart, so the reverse edge would be a cycle.
-module "cni_cilium" {
-  source = "../../modules/cni-cilium"
-
-  api_host               = local.api_address
-  api_port               = local.api_port
-  kube_proxy_replacement = local.kube_proxy_replacement
-  operator_replicas      = 1
-}
-
 module "orch_k0s" {
   source = "../../modules/orch-k0s"
 
@@ -62,7 +53,8 @@ module "orch_k0s" {
   cluster_name = module.vm_orb.name
 
   kube_proxy_replacement = local.kube_proxy_replacement
-  helm_charts            = [module.cni_cilium.helm_chart]
+  # One node: a drain would evict every pod with nowhere to go.
+  drain_before_upgrade = false
 
   # os_ubuntu's postconditions must pass before k0s touches the host.
   depends_on = [module.os_ubuntu]

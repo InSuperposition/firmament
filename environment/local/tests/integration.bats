@@ -1,31 +1,76 @@
 #!/usr/bin/env bats
 load setup.bash
 
-@test "hands the Cilium chart to the k0s Helm extension" {
+@test "installs no Helm charts through k0s" {
   run cluster_config
   [ "$status" -eq 0 ]
-  [ "$(yq -r '.spec.extensions.helm.repositories[] | select(.name == "cilium") | .url' <<<"$output")" = https://helm.cilium.io ]
-  [ "$(yq -r '.spec.extensions.helm.charts[] | select(.name == "cilium") | .chartname' <<<"$output")" = cilium/cilium ]
-  [ "$(yq -r '.spec.extensions.helm.charts[] | select(.name == "cilium") | .namespace' <<<"$output")" = kube-system ]
-  [ "$(yq -r '.spec.extensions.helm.charts[] | select(.name == "cilium") | .forceUpgrade' <<<"$output")" = false ]
-}
-
-@test "points Cilium at the API address and port k0s advertises" {
-  run cluster_config
-  [ "$status" -eq 0 ]
-  api_address=$(yq -r '.spec.api.externalAddress' <<<"$output")
-  [ "$api_address" = firmament.orb.local ]
-  [ "$(cilium_values <<<"$output" | yq -r '.k8sServiceHost')" = "$api_address" ]
-  [ "$(cilium_values <<<"$output" | yq -r '.k8sServicePort')" = "$(yq -r '.spec.api.port' <<<"$output")" ]
-  [ "$(cilium_values <<<"$output" | yq -r '.operator.replicas')" = 1 ]
+  [ "$(yq -r '.spec | has("extensions")' <<<"$output")" = false ]
 }
 
 @test "replaces kube-proxy with Cilium on the netkit datapath" {
   run cluster_config
   [ "$status" -eq 0 ]
   [ "$(yq -r '.spec.network.kubeProxy.disabled' <<<"$output")" = true ]
-  [ "$(cilium_values <<<"$output" | yq -r '.kubeProxyReplacement')" = true ]
-  [ "$(cilium_values <<<"$output" | yq -r '.bpf.datapathMode')" = netkit ]
+  run bootstrap_values
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.managedResources.runtimeInfo.data.kube_proxy_replacement' <<<"$output")" = true ]
+  [ "$(yq -r '.managedResources.runtimeInfo.data.cilium_datapath_mode' <<<"$output")" = netkit ]
+}
+
+@test "points Cilium at the API address and port k0s advertises" {
+  run cluster_config
+  [ "$status" -eq 0 ]
+  api_address=$(yq -r '.spec.api.externalAddress' <<<"$output")
+  api_port=$(yq -r '.spec.api.port' <<<"$output")
+  [ "$api_address" = firmament.orb.local ]
+  run bootstrap_values
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.managedResources.runtimeInfo.data.api_address' <<<"$output")" = "$api_address" ]
+  [ "$(yq -r '.managedResources.runtimeInfo.data.api_port' <<<"$output")" = "$api_port" ]
+  [ "$(yq -r '.managedResources.runtimeInfo.data.cilium_operator_replicas' <<<"$output")" = 1 ]
+}
+
+@test "never drains the single node before an upgrade" {
+  run k0sctl_config
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.no_drain' <<<"$output")" = true ]
+}
+
+@test "bootstraps Cilium from the chart digest the cni-cilium component pins" {
+  run bootstrap_values
+  [ "$status" -eq 0 ]
+  chart=$(yq '.gitopsResources.prerequisites.charts[0]' <<<"$output")
+  source_url=$(yq -r '.spec.url' "$components_directory/cni-cilium/ocirepository.yaml")
+  digest=$(yq -r '.spec.ref.digest' "$components_directory/cni-cilium/ocirepository.yaml")
+  [ "$(yq -r '.gitopsResources.prerequisites.charts | length' <<<"$output")" = 1 ]
+  [ "$(yq -r '.repository' <<<"$chart")" = "${source_url#oci://}@$digest" ]
+  [ "$(yq -r '.version' <<<"$chart")" = "" ]
+}
+
+@test "bootstraps Cilium under the release identity Flux adopts" {
+  run bootstrap_values
+  [ "$status" -eq 0 ]
+  chart=$(yq '.gitopsResources.prerequisites.charts[0]' <<<"$output")
+  release="$components_directory/cni-cilium/helmrelease.yaml"
+  [ "$(yq -r '.name' <<<"$chart")" = "$(yq -r '.spec.releaseName' "$release")" ]
+  [ "$(yq -r '.namespace' <<<"$chart")" = "$(yq -r '.spec.storageNamespace' "$release")" ]
+  [ "$(yq -r '.createNamespace' <<<"$chart")" = false ]
+  [ "$(yq -r '.fluxAdoptionCheck | .resource + " " + .namespace + "/" + .name' <<<"$chart")" = "daemonset.apps kube-system/cilium" ]
+}
+
+@test "bootstraps Cilium with the values Flux applies" {
+  run bootstrap_values
+  [ "$status" -eq 0 ]
+  flux_values=$(kubectl kustomize "$environment_directory/flux" | yq -r 'select(.kind == "ConfigMap" and .metadata.name == "cilium-values") | .data["values.yaml"]')
+  [ -n "$flux_values" ]
+  [ "$(yq -r '.gitopsResources.prerequisites.charts[0].values' <<<"$output")" = "$flux_values" ]
+}
+
+@test "runs the bootstrap Job before the pod network exists" {
+  run bootstrap_values
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.job.tolerations[] | select(.key == "node.kubernetes.io/not-ready") | .operator' <<<"$output")" = Exists ]
+  [ "$(yq -r '.job.tolerations[] | select(.key == "node.cilium.io/agent-not-ready") | .operator' <<<"$output")" = Exists ]
 }
 
 @test "reaches the machine with OrbStack's own SSH key by default" {

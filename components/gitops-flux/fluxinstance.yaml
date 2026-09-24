@@ -41,5 +41,9 @@ spec:
             value:
               - apiVersion: helm.toolkit.fluxcd.io/v2
                 kind: HelmRelease
+                name: cilium
+                namespace: flux-system
+              - apiVersion: helm.toolkit.fluxcd.io/v2
+                kind: HelmRelease
                 name: flux-operator
                 namespace: flux-system

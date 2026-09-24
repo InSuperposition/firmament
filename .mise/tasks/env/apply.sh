@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Apply a whole environment, then wait for the node to be Ready and Cilium to report healthy"
+#MISE description="Apply a whole environment, then wait for Flux and Cilium to be ready and the node to be Ready"
 #USAGE arg "[environment]" default="local" help="Directory name under environment/"
 set -euo pipefail
 # shellcheck source=../../lib.sh

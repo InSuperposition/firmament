@@ -24,7 +24,7 @@ so its title and body can be pasted into a new issue unchanged.
 | Form | Bug report (`kind/community-report`, `kind/bug`, `needs/triage`) |
 | Status | Not filed |
 | Duplicate search | 2026-09-23, see below |
-| Related OrbStack request | [vm-orb/BUGS.md](../vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy) |
+| Related OrbStack request | [vm-orb/BUGS.md](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy) |
 
 **Title:** `Socket LB termination disabled on kernels with bpf_sock_destroy but without CONFIG_INET_DIAG_DESTROY (regression in 1.20)`
 
@@ -258,12 +258,12 @@ lines.
 
 ### Notes for this repo (not part of the issue)
 
-- `mise run cilium:connectivity` passes `--log-check-only-test-time`, so
+- `mise run cilium:conformance` passes `--log-check-only-test-time`, so
   the start-up error does not fail the suite, while agent errors logged
   during the tests still do. Remove the flag once either this fix or the
-  [OrbStack kernel request](../vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy)
+  [OrbStack kernel request](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy)
   lands.
-- Until either fix lands, `modules/cni-cilium` sets
+- Until either fix lands, `components/cni-cilium` sets
   `socketLB.hostNamespaceOnly: true`, so pods use per-packet Service
   translation and follow a replaced backend (verified live with the
   scenario in step 4). Revisit that setting once socket termination

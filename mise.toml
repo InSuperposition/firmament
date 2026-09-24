@@ -15,6 +15,7 @@ KUBECONFIG = "{{ env.FIRMAMENT_STATE_HOME }}/environment/local/admin.kubeconfig"
 bats = "1.14.0"
 cilium-cli = "0.20.0"
 cilium-hubble = "1.19.4"
+flux2 = "2.9.5"
 hk = "2.0.1"
 jq = "1.8.2"
 kubectl = "1.36.4"
@@ -26,10 +27,6 @@ yq = "4.53.6"
 [tasks.check]
 description = "Run every offline check: lint, validate and test"
 run = [{ task = "lint" }, { task = "tofu:validate" }, { task = "test" }]
-
-[tasks."cilium:test"]
-description = "Check that the cni-cilium module requires its inputs, without a live cluster"
-run = "bats modules/cni-cilium/tests/inputs.bats"
 
 [tasks.format]
 description = "Run every *:format task"

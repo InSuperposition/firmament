@@ -76,12 +76,21 @@ run_task() {
   grep -q ' destroy -input=false -auto-approve ' "$CALLS"
 }
 
-@test "apply tasks wait for the cluster only after applying" {
-  run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
+@test "env:apply waits for the cluster only after applying" {
+  run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ]
   run grep -nE '^(tofu .* apply |cilium )' "$CALLS"
   [[ "${lines[0]}" == *"apply -input=false -auto-approve"* ]]
   [[ "${lines[1]}" == *"cilium --kubeconfig /state/admin.kubeconfig status"* ]]
+}
+
+@test "k0s:apply applies only the cluster and its kubeconfig, then waits for the node" {
+  NODES=node/firmament run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
+  [ "$status" -eq 0 ]
+  run grep -nE '^(tofu .* apply |kubectl |cilium )' "$CALLS"
+  [ "${#lines[@]}" -eq 2 ]
+  [[ "${lines[0]}" == *"apply -input=false -auto-approve -target=module.orch_k0s -target=local_sensitive_file.kubeconfig "* ]]
+  [[ "${lines[1]}" == *"kubectl --kubeconfig /state/admin.kubeconfig get nodes -o name "* ]]
 }
 
 @test "verify runs every *:verify task, one at a time, against the environment" {

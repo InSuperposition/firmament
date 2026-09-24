@@ -108,7 +108,7 @@ to the real OrbStack ID, `env:destroy` would hit this crash.
 | Template | Feature request (`t/feature`) |
 | Status | Not filed |
 | Duplicate search | 2026-09-23: `INET_DIAG_DESTROY`, `INET_DIAG`, `socket destroy`, `sock_destroy`, `netkit`, `cilium`, `kernel config`; no match |
-| Related Cilium bug | [cni-cilium/BUGS.md](../cni-cilium/BUGS.md#socket-termination-disabled-when-only-the-netlink-destroy-path-is-missing) |
+| Related Cilium bug | [cni-cilium/BUGS.md](../../components/cni-cilium/BUGS.md#socket-termination-disabled-when-only-the-netlink-destroy-path-is-missing) |
 
 **Title:** `[Kernel] Enable CONFIG_INET_DIAG_DESTROY (socket termination for Cilium and ss -K)`
 
@@ -205,10 +205,10 @@ Major distribution and platform kernels already enable it:
 ### Notes for this repo (not part of the issue)
 
 - Once this ships, remove `--log-check-only-test-time` from
-  `cilium:conformance` in `mise.toml`, reconsider
-  `socketLB.hostNamespaceOnly` in `modules/cni-cilium`, and update the
+  `cilium:conformance` (`.mise/tasks/cilium/conformance.sh`), reconsider
+  `socketLB.hostNamespaceOnly` in `components/cni-cilium`, and update the
   socket termination section in
-  [modules/cni-cilium/README.md](../cni-cilium/README.md#socket-termination).
+  [components/cni-cilium/README.md](../../components/cni-cilium/README.md#socket-termination).
 - Unlike `CONFIG_PSI` (#1309, declined for measured performance
   regressions), this option does nothing until a privileged process
   sends a destroy request.

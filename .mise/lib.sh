@@ -98,57 +98,15 @@ chainsaw_in_environment() {
   KUBECONFIG="$kubeconfig" chainsaw "$@"
 }
 
-# Prints one "<state> <chart>" line per k0s Helm chart, where state is:
-#   ready    k0s installed the current spec;
-#   pending  k0s has not yet reconciled the current spec;
-#   failed   k0s tried the current spec and recorded an error.
-# k0s stores sha256(release name + values) of the spec it last reconciled in
-# .status.valuesHash, whether or not that attempt failed, so comparing it with
-# the current spec tells a pending upgrade from a finished one.
-chart_states() {
-  local charts rows name hash payload version_matches error expected
-  charts=$(kubectl --kubeconfig "$1" -n kube-system get charts.helm.k0sproject.io -o json) || return
-  rows=$(jq -r '.items[] | [
-      .metadata.name,
-      (.status.valuesHash // "-"),
-      (((.spec.releaseName // .metadata.name) + (.spec.values // "")) | @base64),
-      ((.status.version // "") == .spec.version),
-      (.status.error // "")
-    ] | @tsv' <<<"$charts") || return
-  [[ -n "$rows" ]] || return 0
-  while IFS=$'\t' read -r name hash payload version_matches error; do
-    expected=$(printf '%s' "$payload" | base64 --decode | shasum -a 256)
-    expected=${expected%% *}
-    if [[ "$hash" != "$expected" ]]; then
-      printf 'pending %s\n' "$name"
-    elif [[ -n "$error" ]]; then
-      printf 'failed %s\n' "$name"
-    elif [[ "$version_matches" != true ]]; then
-      printf 'pending %s\n' "$name"
-    else
-      printf 'ready %s\n' "$name"
-    fi
-  done <<<"$rows"
-}
-
-# Waits until every k0s Helm chart runs its current spec. Fails as soon as
-# k0s records an error for the current spec, or when the timeout (seconds)
-# passes, printing the charts so the Helm error is visible.
-wait_for_charts() {
-  local kubeconfig="$1" timeout="${2:-600}" interval="${3:-5}"
-  local deadline=$((SECONDS + timeout)) states
-  while true; do
-    if states=$(chart_states "$kubeconfig"); then
-      if grep -q '^failed ' <<<"$states"; then
-        fail "k0s could not install a Helm chart:"$'\n'"$states"
-        kubectl --kubeconfig "$kubeconfig" -n kube-system get charts.helm.k0sproject.io -o yaml >&2
-        return 1
-      fi
-      grep -q '^pending ' <<<"$states" || return 0
-    fi
+# Waits until the node the cluster just created has registered with the API
+# server. Retries while k0s starts the API server, whereas kubectl wait fails
+# on a node that does not exist yet.
+wait_for_node() {
+  local kubeconfig="$1" timeout="${2:-300}" interval="${3:-5}"
+  local deadline=$((SECONDS + timeout))
+  until [[ -n "$(kubectl --kubeconfig "$kubeconfig" get nodes -o name 2>/dev/null)" ]]; do
     if ((SECONDS >= deadline)); then
-      fail "k0s did not reconcile the Helm charts within ${timeout}s:"$'\n'"${states:-charts unavailable}"
-      kubectl --kubeconfig "$kubeconfig" -n kube-system get charts.helm.k0sproject.io -o yaml >&2
+      fail "no node registered with the API server within ${timeout}s"
       return 1
     fi
     sleep "$interval"
@@ -157,14 +115,15 @@ wait_for_charts() {
 
 # Waits until the cluster runs what was just applied. The first Cilium wait
 # retries while k0s restarts the API server after apply, whereas kubectl
-# fails on the first refused connection. That wait can pass on the old pods
-# while k0s upgrades the chart in the background, so the chart wait follows,
-# then Cilium is checked again on the pods the upgrade rolled out.
+# fails on the first refused connection. Flux then reports its own
+# reconcile and the Cilium release, and Cilium is checked again on the pods
+# an upgrade rolled out.
 wait_for_cluster() {
   local kubeconfig
   kubeconfig=$(environment_kubeconfig "$1") || return
   cilium --kubeconfig "$kubeconfig" status --wait --wait-duration=10m --interactive=false
-  wait_for_charts "$kubeconfig"
+  kubectl --kubeconfig "$kubeconfig" -n flux-system wait --for=condition=Ready fluxinstance/flux --timeout=10m
+  kubectl --kubeconfig "$kubeconfig" -n flux-system wait --for=condition=Ready helmrelease/cilium --timeout=10m
   cilium --kubeconfig "$kubeconfig" status --wait --wait-duration=10m --interactive=false
   kubectl --kubeconfig "$kubeconfig" wait --for=condition=Ready node --all --timeout=5m
 }

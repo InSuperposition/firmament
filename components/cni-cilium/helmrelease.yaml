@@ -1,0 +1,34 @@
+# Adopts the cilium release the bootstrap installed: same release name, in
+# kube-system, where Helm also stores it.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cilium
+  namespace: flux-system
+  annotations:
+    # Removing the cluster network takes an explicit teardown, never a Git deletion.
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  interval: 1h
+  releaseName: cilium
+  targetNamespace: kube-system
+  storageNamespace: kube-system
+  chartRef:
+    kind: OCIRepository
+    name: cilium
+  valuesFrom:
+    - kind: ConfigMap
+      name: cilium-values
+      valuesKey: values.yaml
+  # The chart's hubble-generate-certs Job cannot be recreated in place, so
+  # upgrades patch instead of forcing.
+  upgrade:
+    force: false
+    strategy:
+      name: RemediateOnFailure
+    remediation:
+      retries: 3
+      strategy: rollback
+      remediateLastFailure: true
+  rollback:
+    force: false

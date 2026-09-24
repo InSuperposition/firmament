@@ -5,30 +5,19 @@ locals {
     metadata = {
       name = var.cluster_name
     }
-    spec = merge(
-      {
-        api = {
-          externalAddress = var.api_address
-          port            = var.api_port
+    spec = {
+      api = {
+        externalAddress = var.api_address
+        port            = var.api_port
+      }
+      network = {
+        provider    = "custom"
+        podCIDR     = "10.244.0.0/16"
+        serviceCIDR = "10.96.0.0/12"
+        kubeProxy = {
+          disabled = var.kube_proxy_replacement
         }
-        network = {
-          provider    = "custom"
-          podCIDR     = "10.244.0.0/16"
-          serviceCIDR = "10.96.0.0/12"
-          kubeProxy = {
-            disabled = var.kube_proxy_replacement
-          }
-        }
-      },
-      # k0s installs these charts itself and uninstalls any chart removed from this list.
-      length(var.helm_charts) > 0 ? { extensions = local.helm_extension } : {},
-    )
-  }
-
-  helm_extension = {
-    helm = {
-      repositories = distinct([for helm_chart in var.helm_charts : helm_chart.repository])
-      charts       = [for helm_chart in var.helm_charts : helm_chart.chart]
+      }
     }
   }
 }
@@ -44,6 +33,8 @@ resource "terraform_data" "kube_proxy_replacement_at_creation" {
 }
 
 resource "k0sctl_config" "this" {
+  no_drain = !var.drain_before_upgrade
+
   metadata {
     name = var.cluster_name
   }

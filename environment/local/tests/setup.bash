@@ -44,7 +44,3 @@ cluster_config() {
 ssh_key_path() {
   k0sctl_config "$@" | jq -r '.spec.host[0].ssh[0].key_path'
 }
-
-cilium_values() {
-  yq -r '.spec.extensions.helm.charts[] | select(.name == "cilium") | .values'
-}

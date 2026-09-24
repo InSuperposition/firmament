@@ -51,29 +51,29 @@ eval "$(mise env)"
 ## Structure
 
 ```text
-environment/local/    root config: composes the four modules below,
-                      bootstraps Flux, owns the one shared state and
-                      the kubeconfig file
+environment/local/    root config: composes the three modules below,
+                      bootstraps Cilium and Flux, owns the one shared
+                      state and the kubeconfig file
 modules/vm-orb/       the OrbStack VM
 modules/os-ubuntu/    Ubuntu readiness check (SSH probe + postconditions)
-modules/cni-cilium/   the Cilium and Hubble Helm chart declaration
-modules/orch-k0s/     the k0s controller+worker node, which installs
-                      the declared Helm charts
+modules/orch-k0s/     the k0s controller+worker node; installs no charts
 components/           packages Flux reconciles in the cluster (plain
-                      Kustomize); components/gitops-flux is Flux itself
+                      Kustomize): cni-cilium (Cilium and Hubble) and
+                      gitops-flux (Flux itself)
 .mise/tasks/          one executable script per mise task, named
                       <noun>/<verb>.sh and run as `mise run <noun>:<verb>`
 .mise/lib.sh          helpers the task scripts share (environment lookup,
                       state paths, post-apply waits), tested in .mise/tests
 ```
 
-Each module has its own README with its contract. `mise run env:apply`
-applies the whole environment in dependency order (VM, then the readiness
-check, then k0s, which installs Cilium), and `mise run env:destroy`
-reverses it. Both take an environment name, defaulting to `local`. Narrower tasks
+Each module and component has its own README with its contract.
+`mise run env:apply` applies the whole environment in dependency order
+(VM, then the readiness check, then k0s, then the bootstrap that installs
+Cilium and Flux), and `mise run env:destroy` reverses it. Both take an
+environment name, defaulting to `local`. Narrower tasks
 (`orb:apply`, `ubuntu:verify`, `k0s:apply`, and their counterparts) target
 one module via `tofu -target` against the same shared state (`k0s:*` also
-targets the kubeconfig file and renders the Cilium chart it depends on) —
+targets the kubeconfig file) —
 see `environment/local/README.md` for the full task list and what
 `-target` does and doesn't isolate.
 
