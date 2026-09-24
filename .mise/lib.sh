@@ -191,11 +191,18 @@ forget_bootstrap() {
 # Fails when the environment's cluster has Helm charts that k0s installs.
 # k0s uninstalls a chart once it leaves its configuration, and this
 # configuration installs none, so applying over such a cluster would remove
-# its Cilium. Passes when there is no cluster to ask.
+# its Cilium. Passes when the state records no cluster yet; fails when a
+# recorded cluster cannot answer, since that says nothing about its charts.
 refuse_k0s_charts() {
-  local kubeconfig charts
+  local kubeconfig charts errors
   kubeconfig=$(environment_output "$1" kubeconfig_path 2>/dev/null) || return 0
-  charts=$(kubectl --kubeconfig "$kubeconfig" get charts.helm.k0sproject.io -A -o name --request-timeout=10s 2>/dev/null) || return 0
+  errors=$(mktemp)
+  if ! charts=$(kubectl --kubeconfig "$kubeconfig" get charts.helm.k0sproject.io -A -o name --request-timeout=10s 2>"$errors"); then
+    fail "cannot tell whether k0s installs Helm charts on this cluster:"$'\n'"$(cat "$errors")"$'\n'"Start the machine, or rebuild it: mise run --yes env:destroy $1, then mise run env:apply $1"
+    rm -f "$errors"
+    return 1
+  fi
+  rm -f "$errors"
   if [[ -n "$charts" ]]; then
     fail "k0s still installs Helm charts on this cluster, and applying would uninstall them:"$'\n'"$charts"$'\n'"Rebuild it instead: mise run --yes env:destroy $1, then mise run env:apply $1"
   fi

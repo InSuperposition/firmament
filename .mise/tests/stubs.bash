@@ -5,7 +5,8 @@
 # configuration. $STATE_LIST is what `tofu state list` prints, $NODES what
 # `kubectl get nodes -o name` prints, $PODS names the file whose JSON
 # `kubectl get pods` prints, and $K0S_CHARTS is what `kubectl get
-# charts.helm.k0sproject.io` prints.
+# charts.helm.k0sproject.io` prints; $K0S_CHARTS_ERROR makes it fail with
+# that message instead.
 setup_stubs() {
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
   export MISE_PROJECT_ROOT="$root_directory"
@@ -31,7 +32,9 @@ case "\$*" in
   *"output -raw machine_name"*) printf 'firmament' ;;
   *"state list"*) printf '%s' "\${STATE_LIST:-}" ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;
-  *"get charts.helm.k0sproject.io"*) printf '%s' "\${K0S_CHARTS:-}" ;;
+  *"get charts.helm.k0sproject.io"*)
+    if [[ -n "\${K0S_CHARTS_ERROR:-}" ]]; then printf '%s\\n' "\$K0S_CHARTS_ERROR" >&2; exit 1; fi
+    printf '%s' "\${K0S_CHARTS:-}" ;;
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
   "tasks ls --name-only") printf '%s\\n' a:verify b:test k0s:verify ;;
 esac

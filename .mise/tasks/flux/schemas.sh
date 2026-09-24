@@ -4,7 +4,8 @@ set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 
-# flux-schema v0.13.0, the version mise pins for the CLI.
+# The commit tag v0.13.0 of flux-schema points at. mise.toml pins the same
+# flux-schema version for the CLI; update both together.
 catalog="https://raw.githubusercontent.com/fluxcd/flux-schema/88c74c0294aaf472a8df920f92a2f28811a47d72/catalog/latest"
 schemas="$MISE_PROJECT_ROOT/.mise/flux-schemas"
 
@@ -25,11 +26,18 @@ schema_paths() {
   done
 }
 
-mapfile -t paths < <(schema_paths)
-((${#paths[@]} > 0)) || fail "no environment/*/flux build renders any kind" || exit 1
-rm -rf "$schemas"
+listing=$(schema_paths)
+[[ -n "$listing" ]] || fail "no environment/*/flux build renders any kind" || exit 1
+mapfile -t paths <<<"$listing"
+
+# Downloads into a staging directory and replaces the vendored schemas only
+# once every download succeeded.
+staging=$(mktemp -d)
+trap 'rm -rf "$staging"' EXIT
 for path in "${paths[@]}"; do
-  mkdir -p "$schemas/$(dirname -- "$path")"
-  curl -fsSL "$catalog/$path" -o "$schemas/$path"
+  mkdir -p "$staging/$(dirname -- "$path")"
+  curl -fsSL "$catalog/$path" -o "$staging/$path"
   printf '%s\n' "$path"
 done
+rm -rf "$schemas"
+mv "$staging" "$schemas"

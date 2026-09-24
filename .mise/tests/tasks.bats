@@ -113,6 +113,19 @@ local_state() {
   [[ "${lines[1]}" == *" destroy -input=false -auto-approve -target=module.vm_orb "* ]]
 }
 
+@test "env:apply refuses a recorded cluster that cannot say whether k0s installs charts" {
+  K0S_CHARTS_ERROR="Unable to connect to the server: dial tcp: i/o timeout" run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot tell whether k0s installs Helm charts"*"i/o timeout"* ]]
+  ! grep -q ' apply -input=false' "$CALLS"
+}
+
+@test "env:apply applies a cluster where k0s installs no charts" {
+  run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  [ "$status" -eq 0 ]
+  grep -q ' apply -input=false -auto-approve ' "$CALLS"
+}
+
 @test "env:apply refuses a cluster whose Helm charts k0s still installs" {
   K0S_CHARTS=chart.helm.k0sproject.io/k0s-addon-chart-cilium run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
@@ -595,6 +608,19 @@ STUB
   [ "$output" = 4 ]
   [ -f "$repository/.mise/flux-schemas/core/configmap_v1.json" ]
   [ -f "$repository/.mise/flux-schemas/helm.toolkit.fluxcd.io/helmrelease_v2.json" ]
+}
+
+@test "flux:schemas keeps the vendored schemas when a download fails" {
+  rm "$stubs/kubectl"
+  printf '#!/usr/bin/env bash\nexit 22\n' >"$stubs/curl"
+  chmod +x "$stubs/curl"
+  repository="$BATS_TEST_TMPDIR/schemas-repository"
+  mkdir -p "$repository/.mise"
+  cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/flux-test-values.env" "$root_directory/.mise/flux-schemas" "$repository/.mise/"
+  cp -R "$root_directory/environment" "$root_directory/components" "$repository/"
+  MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/flux/schemas.sh"
+  [ "$status" -ne 0 ]
+  diff -r "$root_directory/.mise/flux-schemas" "$repository/.mise/flux-schemas"
 }
 
 @test "flux:lint rejects a Flux build that breaks its schema" {
