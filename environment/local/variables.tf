@@ -11,19 +11,10 @@ variable "state_directory" {
 
 variable "git_branch" {
   type        = string
-  description = "Branch of this repository that Flux follows. The bootstrap Job interpolates it into a shell command, so only letters, digits and . _ / - are accepted."
+  description = "Branch of this repository that Flux follows. The bootstrap Job interpolates it into a shell command, so only letters, digits and . _ / - are accepted, and it may not start with -. The mise tasks also check it with git check-ref-format before passing it."
 
   validation {
-    condition = (
-      can(regex("^[A-Za-z0-9._/-]+$", var.git_branch)) &&
-      !startswith(var.git_branch, "-") &&
-      !startswith(var.git_branch, "/") &&
-      !endswith(var.git_branch, "/") &&
-      !endswith(var.git_branch, ".") &&
-      !endswith(var.git_branch, ".lock") &&
-      !strcontains(var.git_branch, "..") &&
-      !strcontains(var.git_branch, "//")
-    )
-    error_message = "git_branch must be a Git branch name made of letters, digits and . _ / - only."
+    condition     = can(regex("^[A-Za-z0-9._/][A-Za-z0-9._/-]*$", var.git_branch))
+    error_message = "git_branch must use letters, digits and . _ / - only, and not start with -."
   }
 }

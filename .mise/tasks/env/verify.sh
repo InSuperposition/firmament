@@ -13,12 +13,12 @@ if [[ ! -d "$suite" ]]; then
 fi
 
 # The suite checks that Flux applied the checked-out branch at the tip
-# origin had when last fetched.
+# origin had when last fetched. Flux polls Git on its own interval, so the
+# task first waits for that revision instead of racing it.
 branch=$(git_branch)
 revision=$(flux_revision "$branch")
-values=$(mktemp)
-trap 'rm -f "$values"' EXIT
-printf 'flux_revision: %s\n' "$revision" >"$values"
 
 init_environment "$environment"
-chainsaw_in_environment "$environment" test --test-dir "$suite" --values "$values"
+kubectl --kubeconfig "$(environment_kubeconfig "$environment")" -n flux-system wait kustomization/flux-system \
+  --for=jsonpath='{.status.lastAppliedRevision}'="$revision" --timeout=10m
+chainsaw_in_environment "$environment" test --test-dir "$suite" --set-string flux_revision="$revision"

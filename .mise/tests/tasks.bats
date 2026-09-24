@@ -74,7 +74,8 @@ run_task() {
 @test "env:destroy destroys without touching state when there is no bootstrap" {
   STATE_LIST=module.vm_orb.orbstack_machine.this run_task "$root_directory/.mise/tasks/env/destroy.sh" local
   [ "$status" -eq 0 ]
-  ! grep -q ' state rm ' "$CALLS"
+  run grep -c ' state rm ' "$CALLS"
+  [ "$output" = 0 ]
   grep -q ' destroy -input=false -auto-approve ' "$CALLS"
 }
 
@@ -147,8 +148,6 @@ run_task() {
   ! grep -q -- --cleanup "$CALLS"
 }
 
-# Replaces the mise stub with one that records each call and fails the call
-# whose arguments equal $FAIL_CALL.
 # Records each mise call with the branch Flux would follow. FAIL_CALL fails
 # the matching call; ON_CALL runs ON_CALL_RUN just before the matching call.
 e2e_mise_stub() {
@@ -169,6 +168,27 @@ e2e_repository() {
   export MISE_PROJECT_ROOT
 }
 
+# Records each chainsaw call with the KUBECONFIG it runs under.
+record_chainsaw_kubeconfig() {
+  printf '#!/usr/bin/env bash\nprintf "chainsaw %%s | KUBECONFIG=%%s\\n" "$*" "$KUBECONFIG" >>"$CALLS"\n' >"$stubs/chainsaw"
+}
+
+# A pushed checkout of feature/test whose main branch, on origin, already
+# hands Cilium to Flux and lists the workloads an upgrade must leave running.
+upgrade_repository() {
+  e2e_repository components/cni-cilium/helmrelease.yaml environment/local/tests/upgrade-unaffected
+  printf 'kube-system k8s-app=kube-dns\n' >"$MISE_PROJECT_ROOT/environment/local/tests/upgrade-unaffected"
+  commit_and_push "$MISE_PROJECT_ROOT" feature/test unaffected
+  commit_and_push "$MISE_PROJECT_ROOT" main baseline
+  git -C "$MISE_PROJECT_ROOT" reset -q --hard origin/feature/test
+}
+
+# Prints a one-pod list whose pod has the given UID, as kubectl get pods -o json.
+pods() {
+  jq -n --arg uid "$1" '{items: [{metadata: {namespace: "kube-system", name: "coredns-1", uid: $uid},
+    status: {containerStatuses: [{containerID: "containerd://1", restartCount: 0}]}}]}'
+}
+
 mise_calls() {
   grep '^mise ' "$CALLS" | sed 's/ | branch=.*//'
 }
@@ -180,6 +200,8 @@ mise_calls() {
   [ "$status" -eq 0 ]
   tested=$(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD)
   [[ "$output" == *"env:e2e passed for local at $tested; the cluster is destroyed."* ]]
+  [[ "$output" == *"OrbStack: "* && "$output" == *"kernel: "* ]]
+  grep -q '^orb -m firmament uname -r ' "$CALLS"
   run mise_calls
   [ "$output" = "mise run --yes env:destroy local
 mise run env:apply local
@@ -248,52 +270,102 @@ mise run --yes env:destroy local" ]
   [ "$(mise_calls | tail -1)" = "mise run cilium:conformance local" ]
 }
 
-@test "env:e2e --from-ref applies the baseline branch, verifies it, then applies the checkout over it" {
+@test "env:e2e --from-branch applies the baseline branch, verifies it, then applies the checkout over it" {
   e2e_mise_stub
-  e2e_repository
-  commit_and_push "$MISE_PROJECT_ROOT" main baseline
-  git -C "$MISE_PROJECT_ROOT" reset -q --hard origin/feature/test
-  usage_from_ref=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  upgrade_repository
+  usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -eq 0 ]
+  [[ "$output" == *"Baseline: origin/main at $(git -C "$MISE_PROJECT_ROOT" rev-parse origin/main)"* ]]
   run grep '^mise ' "$CALLS"
   [ "${#lines[@]}" -eq 7 ]
   [ "${lines[0]}" = "mise run --yes env:destroy local | branch=feature/test" ]
   [[ "${lines[1]}" == "mise --cd "*"/baseline run env:apply local | branch=main" ]]
   [ "${lines[2]}" = "mise run env:verify local | branch=main" ]
   [ "${lines[3]}" = "mise run env:apply local | branch=feature/test" ]
+  [ "${lines[4]}" = "mise run verify local | branch=feature/test" ]
+  [ "${lines[5]}" = "mise run cilium:conformance local | branch=feature/test" ]
   [ "${lines[6]}" = "mise run --yes env:destroy local | branch=feature/test" ]
   ! git -C "$MISE_PROJECT_ROOT" worktree list | grep -q /baseline
 }
 
-@test "env:e2e --from-ref refuses a baseline that installs Cilium through k0s" {
+@test "env:e2e --from-branch fails when the switch replaces a workload it should not touch" {
   e2e_mise_stub
-  e2e_repository
-  mkdir -p "$MISE_PROJECT_ROOT/modules/cni-cilium"
-  : >"$MISE_PROJECT_ROOT/modules/cni-cilium/main.tf"
-  commit_and_push "$MISE_PROJECT_ROOT" main k0s-baseline
-  git -C "$MISE_PROJECT_ROOT" reset -q --hard origin/feature/test
-  usage_from_ref=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  upgrade_repository
+  export PODS="$BATS_TEST_TMPDIR/pods.json"
+  pods uid-before >"$PODS"
+  export ON_CALL="run env:apply local"
+  export ON_CALL_RUN='pods uid-after >"$PODS"'
+  export -f pods
+  usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"origin/main installs Cilium through k0s"* ]]
-  ! grep -q '^mise ' "$CALLS"
+  [[ "$output" == *"the upgrade replaced or restarted workloads it should not touch"* ]]
+  [[ "$output" == *"uid-before"*"uid-after"* ]]
+  [ "$(mise_calls | tail -1)" = "mise run verify local" ]
 }
 
-@test "env:verify checks that Flux applied the branch at origin's tip" {
-  cat >"$stubs/chainsaw" <<'STUB'
-#!/usr/bin/env bash
-printf 'chainsaw %s | KUBECONFIG=%s\n' "$*" "$KUBECONFIG" >>"$CALLS"
-while (($#)); do
-  if [[ "$1" == --values ]]; then cat "$2" >>"$CALLS"; fi
-  shift
-done
-STUB
-  chmod +x "$stubs/chainsaw"
+@test "env:e2e --from-branch refuses a baseline that is not merged into main" {
+  e2e_mise_stub
+  upgrade_repository
+  git -C "$MISE_PROJECT_ROOT" checkout -q -b feature/unmerged
+  commit_and_push "$MISE_PROJECT_ROOT" feature/unmerged unmerged
+  git -C "$MISE_PROJECT_ROOT" checkout -q feature/test
+  usage_from_branch=feature/unmerged run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"origin/feature/unmerged at "*" is not merged into origin/main"* ]]
+  [ -z "$(grep '^mise ' "$CALLS" 2>/dev/null)" ]
+}
+
+@test "env:e2e --from-branch refuses a baseline that does not hand Cilium to Flux" {
+  e2e_mise_stub
+  e2e_repository environment/local/tests/upgrade-unaffected
+  commit_and_push "$MISE_PROJECT_ROOT" main k0s-baseline
+  git -C "$MISE_PROJECT_ROOT" reset -q --hard origin/feature/test
+  usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"origin/main at "*" does not hand Cilium to Flux"* ]]
+  [ -z "$(grep '^mise ' "$CALLS" 2>/dev/null)" ]
+}
+
+@test "env:e2e --from-branch refuses a baseline name the bootstrap shell would misread" {
+  e2e_mise_stub
+  e2e_repository
+  usage_from_branch='main;touch x' run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid branch name 'main;touch x'"* ]]
+  [ -z "$(grep '^mise ' "$CALLS" 2>/dev/null)" ]
+}
+
+@test "env:e2e --from-branch refuses a baseline branch that is not on origin" {
+  e2e_mise_stub
+  e2e_repository
+  usage_from_branch=absent run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"origin/absent does not exist; push the branch first"* ]]
+  [ -z "$(grep '^mise ' "$CALLS" 2>/dev/null)" ]
+}
+
+@test "env:e2e --from-branch fails when the baseline branch moves while it runs" {
+  e2e_mise_stub
+  upgrade_repository
+  export ON_CALL="run cilium:conformance local"
+  export ON_CALL_RUN='git -C "$MISE_PROJECT_ROOT" push -q --force origin HEAD:refs/heads/main'
+  usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"origin/main moved from"*"during the run"* ]]
+  [ "$(mise_calls | tail -1)" = "mise run cilium:conformance local" ]
+  ! git -C "$MISE_PROJECT_ROOT" worktree list | grep -q /baseline
+}
+
+@test "env:verify waits for Flux to apply origin's tip, then checks it" {
+  record_chainsaw_kubeconfig
   e2e_repository environment/local/tests/cluster/chainsaw-test.yaml
   run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -eq 0 ]
-  run grep -A1 '^chainsaw ' "$CALLS"
-  [[ "${lines[0]}" == "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --values "*" | KUBECONFIG=/state/admin.kubeconfig" ]]
-  [ "${lines[1]}" = "flux_revision: refs/heads/feature/test@sha1:$(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD)" ]
+  revision="refs/heads/feature/test@sha1:$(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD)"
+  run grep -E '^(kubectl .* wait kustomization|chainsaw )' "$CALLS"
+  [ "${#lines[@]}" -eq 2 ]
+  [ "${lines[0]%% |*}" = "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system wait kustomization/flux-system --for=jsonpath={.status.lastAppliedRevision}=$revision --timeout=10m" ]
+  [ "${lines[1]}" = "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --set-string flux_revision=$revision | KUBECONFIG=/state/admin.kubeconfig" ]
 }
 
 @test "env:verify fails for an environment without a cluster suite" {
@@ -383,6 +455,14 @@ fail() {
   rm "$stubs/kubectl"
   run "$root_directory/.mise/tasks/flux/lint.sh"
   [ "$status" -eq 0 ]
+}
+
+@test "flux:lint fails when there is no Flux build to check" {
+  rm "$stubs/kubectl"
+  MISE_PROJECT_ROOT=$(make_repository environment/local/main.tf)
+  run "$MISE_PROJECT_ROOT/.mise/tasks/flux/lint.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no environment/*/flux build to validate"* ]]
 }
 
 @test "flux:lint rejects a Flux build that breaks its schema" {

@@ -1,8 +1,8 @@
 # Read-only assertions on a running local cluster, where Cilium replaces
 # kube-proxy on the netkit datapath and Flux runs Cilium and itself. The
 # namespace is set so chainsaw uses kube-system instead of creating one;
-# Flux objects name flux-system explicitly. env:verify passes
-# flux_revision, the revision Flux must have applied.
+# Flux objects name flux-system explicitly. env:verify sets flux_revision,
+# the revision Flux must have applied.
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:

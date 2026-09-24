@@ -109,6 +109,14 @@ load setup.bash
   [ "$(yq -r '.gitopsResources.instance' <<<"$output")" = "$(cat "$components_directory/gitops-flux/fluxinstance.yaml")" ]
 }
 
+@test "sets every runtime value the Flux build is linted with, and no other" {
+  run bootstrap_values
+  [ "$status" -eq 0 ]
+  planned=$(yq -r '.managedResources.runtimeInfo.data | keys | .[]' <<<"$output" | sort)
+  linted=$(grep -Ev '^[[:space:]]*(#|$)' "$root_directory/.mise/flux-test-values.env" | cut -d= -f1 | sort)
+  [ "$planned" = "$linted" ]
+}
+
 @test "tells Flux which branch and environment to follow" {
   run bootstrap_values
   [ "$status" -eq 0 ]

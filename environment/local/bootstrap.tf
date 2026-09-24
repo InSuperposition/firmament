@@ -1,6 +1,7 @@
-# Installs Flux Operator and the FluxInstance once, then leaves both to Flux.
-# The chart digest, the operator values and the FluxInstance are read from
-# components/gitops-flux, so Flux and the bootstrap install the same bytes.
+# Installs Cilium, then Flux Operator and the FluxInstance, once, and leaves
+# all three to Flux. Chart digests, release identities, values and the
+# FluxInstance are read from components/cni-cilium and components/gitops-flux,
+# so Flux and the bootstrap install the same bytes.
 locals {
   # Increment only to rerun the bootstrap on purpose, for example after a
   # failed bootstrap, without rebuilding the machine.

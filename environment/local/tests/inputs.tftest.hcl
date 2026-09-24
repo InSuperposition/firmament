@@ -31,16 +31,6 @@ run "rejects_a_branch_with_command_substitution" {
   expect_failures = [var.git_branch]
 }
 
-run "rejects_a_branch_git_would_refuse" {
-  command = plan
-
-  variables {
-    git_branch = "feature..x"
-  }
-
-  expect_failures = [var.git_branch]
-}
-
 run "rejects_a_branch_that_looks_like_an_option" {
   command = plan
 

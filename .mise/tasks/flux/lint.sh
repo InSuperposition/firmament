@@ -8,6 +8,10 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # schema catalog built into flux-schema, so no network is needed.
 status=0
 mapfile -t builds < <(find "$MISE_PROJECT_ROOT/environment" -mindepth 2 -maxdepth 2 -type d -name flux | sort)
+if ((${#builds[@]} == 0)); then
+  fail "no environment/*/flux build to validate under $MISE_PROJECT_ROOT/environment"
+  exit 1
+fi
 for build in "${builds[@]}"; do
   if ! render_flux_build "$build" | flux-schema validate; then
     printf '%s: the rendered Flux build is not valid\n' "$build" >&2

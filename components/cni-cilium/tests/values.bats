@@ -2,9 +2,12 @@
 
 setup() {
   component_directory=$(cd -- "$BATS_TEST_DIRNAME/.." && pwd)
-  # The runtime values local uses; each test overrides what it checks.
-  export api_address=firmament.orb.local api_port=6443 kube_proxy_replacement=true
-  export cilium_datapath_mode=netkit cilium_operator_replicas=1
+  # The stand-in runtime values flux:lint renders with; each test overrides
+  # what it checks.
+  set -a
+  # shellcheck source=../../../.mise/flux-test-values.env
+  source "$component_directory/../../.mise/flux-test-values.env"
+  set +a
 }
 
 # Prints values.yaml the way Flux and the bootstrap apply it: with every
@@ -78,7 +81,7 @@ release() {
 }
 
 @test "reaches the API server at the runtime address and port" {
-  api_port=16443
+  api_address=firmament.orb.local api_port=16443
   [ "$(value '.k8sServiceHost')" = firmament.orb.local ]
   [ "$(value '.k8sServicePort')" = 16443 ]
   [ "$(value '.k8sServicePort | type')" = '!!int' ]

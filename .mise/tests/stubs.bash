@@ -2,8 +2,9 @@
 # first on PATH. Each call is appended to $CALLS as
 # "<tool> <arguments> | state=<TF_VAR_state_directory> branch=<TF_VAR_git_branch>".
 # $real_mise keeps the real mise for tests that read the resolved
-# configuration. $STATE_LIST is what `tofu state list` prints, and $NODES
-# what `kubectl get nodes -o name` prints.
+# configuration. $STATE_LIST is what `tofu state list` prints, $NODES what
+# `kubectl get nodes -o name` prints, and $PODS names the file whose JSON
+# `kubectl get pods` prints.
 setup_stubs() {
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
   export MISE_PROJECT_ROOT="$root_directory"
@@ -28,6 +29,7 @@ case "\$*" in
   *"output -raw kubeconfig_path"*) printf '/state/admin.kubeconfig' ;;
   *"output -raw machine_name"*) printf 'firmament' ;;
   *"state list"*) printf '%s' "\${STATE_LIST:-}" ;;
+  *" get pods "*) cat "\${PODS:-/dev/null}" ;;
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
   "tasks ls --name-only") printf '%s\\n' a:verify b:test k0s:verify ;;
 esac

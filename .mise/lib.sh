@@ -124,14 +124,47 @@ chainsaw_in_environment() {
   KUBECONFIG="$kubeconfig" chainsaw "$@"
 }
 
-# Renders what Flux applies from an environment's flux directory, with fixed
-# test values in place of the runtime values OpenTofu computes. Fails on a
-# variable left without a value.
+# Prints the OrbStack and guest kernel versions an environment's machine
+# runs on. Both sit outside what this repository pins, so live runs record
+# them.
+platform_versions() {
+  local machine
+  machine=$(environment_output "$1" machine_name) || return
+  printf 'OrbStack: %s\n' "$(orb version | head -n 1)"
+  printf 'kernel: %s\n' "$(orb -m "$machine" uname -r)"
+}
+
+# Prints one sorted "namespace/pod uid container-ids restarts" line for each
+# pod an identity list selects. Each list line is "<namespace> <selector>".
+# Two snapshots that match mean the same pods kept running, with no
+# container restarted or replaced.
+workload_identities() {
+  local kubeconfig="$1" list="$2" namespace selector
+  while read -r namespace selector; do
+    [[ -n "$namespace" && "$namespace" != \#* ]] || continue
+    kubectl --kubeconfig "$kubeconfig" -n "$namespace" get pods -l "$selector" -o json |
+      jq -r '.items[] | [
+          .metadata.namespace + "/" + .metadata.name,
+          .metadata.uid,
+          ([.status.containerStatuses[]?.containerID] | sort | join(",")),
+          ([.status.containerStatuses[]?.restartCount] | add // 0)
+        ] | @tsv' || return
+  done <"$list" | sort
+}
+
+# Prints the stand-in runtime values in .mise/flux-test-values.env as
+# KEY=value lines, without comments or blank lines.
+flux_test_values() {
+  grep -Ev '^[[:space:]]*(#|$)' "${MISE_PROJECT_ROOT:?run this through mise}/.mise/flux-test-values.env"
+}
+
+# Renders what Flux applies from an environment's flux directory, with the
+# stand-in values in place of the runtime values OpenTofu computes. Fails on
+# a variable left without a value.
 render_flux_build() {
-  kubectl kustomize "$1" |
-    env api_address=api.example.test api_port=6443 kube_proxy_replacement=true \
-      cilium_datapath_mode=netkit cilium_operator_replicas=1 environment=lint git_branch=main \
-      flux envsubst --strict
+  local -a values
+  mapfile -t values < <(flux_test_values)
+  kubectl kustomize "$1" | env "${values[@]}" flux envsubst --strict
 }
 
 # Waits until the node the cluster just created has registered with the API

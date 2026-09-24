@@ -93,27 +93,26 @@ gains a real chart-value input.
 **Depends on:** Add Flux Operator and hand Cilium and Flux to Flux; a
 real chart-value input.
 
-### Prove Flux-owned upgrades with `env:e2e --from-ref`
+### Prove Flux-owned upgrades with `env:e2e --from-branch`
 
 **What:** Run the first live upgrade test once a baseline where Flux owns
-Cilium is on origin, and add the continuity checks the upgrade lane
-still lacks.
+Cilium is on main, and add a traffic probe.
 
-**Why:** `env:e2e --from-ref <branch>` exists and is tested offline, but
-it has never run live: every baseline before the Flux handoff installs
-Cilium through k0s, and the task refuses those.
+**Why:** `env:e2e --from-branch <branch>` exists and is tested offline,
+but it has never run live: every baseline before the Flux handoff
+installs Cilium through k0s, and the task refuses those.
 
 **Context:**
-- Once the Flux handoff is merged, run `mise run env:e2e --from-ref main`
-  from a branch that bumps something (for example the next Cilium patch).
-- Continuity is not checked yet. Record the pod UIDs, container IDs and
-  restart counts of the unaffected workloads before the switch, and
-  compare them after. Report health separately from traffic continuity,
-  and claim continuity only with a traffic probe that runs through the
-  whole upgrade and shows no gap.
-- Live tests do not yet record the OrbStack and kernel versions they ran
-  on. Add them to the e2e output, since both sit outside what this
-  repository pins.
+- Once the Flux handoff is merged, run `mise run env:e2e --from-branch
+  main` from a branch that bumps something (for example the next Cilium
+  patch).
+- The upgrade lane already checks that the workloads in
+  `environment/local/tests/upgrade-unaffected` (CoreDNS, metrics-server)
+  keep their pod UIDs, container IDs and restart counts across the
+  switch, and `verify` reports health. It does not measure traffic, so it
+  claims no traffic continuity. Add a probe that runs through the whole
+  upgrade and shows no gap before claiming it; it needs a test workload,
+  which the read-only chainsaw suite cannot deploy.
 - Known pinning exceptions, to revisit rather than fix blindly:
   - the upstream bootstrap Job image is selected by tag (v0.8.0);
   - k0s's own konnectivity, CoreDNS and metrics-server images run by tag;
@@ -316,7 +315,8 @@ Done on the `feat/flux-bootstrap-spike` branch. Every commit passes
   the bootstrap installs it before any pod network exists and Flux
   adopts it. orch-k0s lost `helm_charts` and gained
   `drain_before_upgrade`.
-- `env:e2e` tests exactly the pushed commit and gained `--from-ref`;
+- `env:e2e` tests exactly the pushed commit, records the OrbStack and
+  kernel versions, and gained `--from-branch` with a pod continuity check;
   `flux:lint` validates each environment's rendered Flux build; the
   chainsaw suite checks Flux ownership and the applied revision; tofu
   init reads lock files read-only.
@@ -333,8 +333,8 @@ Differences from the plan:
   CoreDNS answers.
 - No `.fluxschema.yml`: `flux:lint` needs no settings beyond the
   defaults.
-- Live upgrade testing and continuity checks moved to "Prove Flux-owned
-  upgrades with `env:e2e --from-ref`".
+- The first live upgrade run and a traffic probe moved to "Prove
+  Flux-owned upgrades with `env:e2e --from-branch`".
 
 ### Add a live end-to-end test lane for an environment
 

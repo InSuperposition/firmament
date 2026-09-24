@@ -2,8 +2,9 @@
 
 Abstract: Declarative bootstrap for a dedicated Kubernetes host — one
 OrbStack VM, verified Ubuntu-ready, running k0s with Cilium and Hubble.
-`environment/local` composes four real OpenTofu modules under `modules/`
-into one applied environment with a single shared state.
+`environment/local` composes three real OpenTofu modules under `modules/`
+into one applied environment with a single shared state, then bootstraps
+Flux, which runs Cilium and itself from `components/`.
 
 ## Goals
 
@@ -63,7 +64,8 @@ components/           packages Flux reconciles in the cluster (plain
 .mise/tasks/          one executable script per mise task, named
                       <noun>/<verb>.sh and run as `mise run <noun>:<verb>`
 .mise/lib.sh          helpers the task scripts share (environment lookup,
-                      state paths, post-apply waits), tested in .mise/tests
+                      state paths, the branch Flux follows, Flux build
+                      rendering, post-apply waits), tested in .mise/tests
 ```
 
 Each module and component has its own README with its contract.

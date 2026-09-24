@@ -15,7 +15,7 @@ local fast = new Mapping<String, Step> {
   }
   // Renders and schema-validates each environment's Flux build.
   ["flux"] {
-    glob = List("components/**", "environment/*/flux/**")
+    glob = List("components/**", "environment/*/flux/**", ".mise/flux-test-values.env")
     check = "mise run flux:lint"
   }
 }
@@ -28,7 +28,7 @@ local slow = new Mapping<String, Step> {
     check = "mise run tofu:validate"
   }
   ["test"] {
-    glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "environment/*/tests/cluster/**/*.yaml", "components/**", "environment/*/flux/**")
+    glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "environment/*/tests/cluster/**/*.yaml", "components/**", "environment/*/flux/**", ".mise/flux-test-values.env", "environment/*/tests/upgrade-unaffected")
     check = "mise run test"
   }
 }
