@@ -13,6 +13,11 @@ local fast = new Mapping<String, Step> {
     glob = List("environment/*/tests/cluster/**/*.yaml")
     check = "mise run chainsaw:lint"
   }
+  // Renders and schema-validates each environment's Flux build.
+  ["flux"] {
+    glob = List("components/**", "environment/*/flux/**")
+    check = "mise run flux:lint"
+  }
 }
 
 // Whole-repository checks, too slow for every commit. Each runs once, and

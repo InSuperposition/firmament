@@ -274,3 +274,61 @@ fail() {
   printf '%s\n' "$*" >&2
   return 1
 }
+
+@test "flux:lint accepts every environment's Flux build" {
+  rm "$stubs/kubectl"
+  run "$root_directory/.mise/tasks/flux/lint.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "flux:lint rejects a Flux build that breaks its schema" {
+  rm "$stubs/kubectl"
+  MISE_PROJECT_ROOT=$(make_repository)
+  mkdir -p "$MISE_PROJECT_ROOT/environment/bad/flux"
+  cat >"$MISE_PROJECT_ROOT/environment/bad/flux/kustomization.yaml" <<'YAML'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - helmrelease.yaml
+YAML
+  cat >"$MISE_PROJECT_ROOT/environment/bad/flux/helmrelease.yaml" <<'YAML'
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: demo
+  namespace: flux-system
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: demo
+  notAField: true
+YAML
+  run "$MISE_PROJECT_ROOT/.mise/tasks/flux/lint.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"environment/bad/flux: the rendered Flux build is not valid"* ]]
+}
+
+@test "flux:lint rejects a Flux build with a variable no runtime value sets" {
+  rm "$stubs/kubectl"
+  MISE_PROJECT_ROOT=$(make_repository)
+  mkdir -p "$MISE_PROJECT_ROOT/environment/bad/flux"
+  cat >"$MISE_PROJECT_ROOT/environment/bad/flux/kustomization.yaml" <<'YAML'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - configmap.yaml
+YAML
+  cat >"$MISE_PROJECT_ROOT/environment/bad/flux/configmap.yaml" <<'YAML'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo
+  namespace: flux-system
+data:
+  value: ${not_a_runtime_value}
+YAML
+  run "$MISE_PROJECT_ROOT/.mise/tasks/flux/lint.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *'variable not set (strict mode): "not_a_runtime_value"'* ]]
+}

@@ -100,6 +100,16 @@ chainsaw_in_environment() {
   KUBECONFIG="$kubeconfig" chainsaw "$@"
 }
 
+# Renders what Flux applies from an environment's flux directory, with fixed
+# test values in place of the runtime values OpenTofu computes. Fails on a
+# variable left without a value.
+render_flux_build() {
+  kubectl kustomize "$1" |
+    env api_address=api.example.test api_port=6443 kube_proxy_replacement=true \
+      cilium_datapath_mode=netkit cilium_operator_replicas=1 environment=lint git_branch=main \
+      flux envsubst --strict
+}
+
 # Waits until the node the cluster just created has registered with the API
 # server. Retries while k0s starts the API server, whereas kubectl wait fails
 # on a node that does not exist yet.

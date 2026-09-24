@@ -91,8 +91,10 @@ that verb for every noun. The verb also says how far a task reaches:
 | `plan`, `apply`, `destroy` | drive OpenTofu; `destroy` asks first (`-y` skips) | none |
 
 `mise run check` runs every offline check: `lint` (shellcheck, shfmt,
-`tofu fmt`, `mise fmt`, `mise tasks validate`, and `chainsaw:lint` for the
-live cluster suites), `tofu:validate` and
+`tofu fmt`, `mise fmt`, `mise tasks validate`, `chainsaw:lint` for the
+live cluster suites, and `flux:lint`, which renders each environment's
+Flux build with test runtime values through `flux envsubst --strict` and
+validates it with `flux-schema`), `tofu:validate` and
 `test` (every module and environment suite, and the task scripts with
 their shared library). Suites that only check OpenTofu logic (rendered
 values, variable validation, preconditions) are `tests/*.tftest.hcl`,
