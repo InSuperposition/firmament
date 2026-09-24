@@ -120,39 +120,28 @@ run_task() {
   ! grep -q -- --cleanup "$CALLS"
 }
 
-# Replaces the mise stub with one that records the kube-proxy mode of each
-# call. env:plan fails with $PLAN_ERROR (default: the creation-time
-# refusal) unless PLAN_ACCEPTS is set; the call whose arguments equal
-# $FAIL_CALL fails.
+# Replaces the mise stub with one that records each call and fails the call
+# whose arguments equal $FAIL_CALL.
 e2e_mise_stub() {
   cat >"$stubs/mise" <<'STUB'
 #!/usr/bin/env bash
-printf 'mise %s | mode=%s\n' "$*" "${TF_VAR_kube_proxy_replacement:-}" >>"$CALLS"
-[[ "$*" != "${FAIL_CALL:-}" ]] || exit 1
-if [[ "$*" == "run env:plan "* && -z "${PLAN_ACCEPTS:-}" ]]; then
-  printf '%s\n' "${PLAN_ERROR:-kube_proxy_replacement is fixed at cluster creation}" >&2
-  exit 1
-fi
+printf 'mise %s\n' "$*" >>"$CALLS"
+[[ "$*" != "${FAIL_CALL:-}" ]]
 STUB
   chmod +x "$stubs/mise"
 }
 
-@test "env:e2e rebuilds the cluster once per kube-proxy mode, whatever mode it inherits" {
+@test "env:e2e rebuilds the cluster from scratch, runs every live check, and destroys it" {
   e2e_mise_stub
-  TF_VAR_kube_proxy_replacement=false run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -eq 0 ]
-  [[ "$output" == *"env:e2e passed for local in both kube-proxy modes"* ]]
+  [[ "$output" == *"env:e2e passed for local; the cluster is destroyed."* ]]
   run grep '^mise ' "$CALLS"
-  [ "$output" = "mise run --yes env:destroy local | mode=false
-mise run env:apply local | mode=true
-mise run verify local | mode=true
-mise run cilium:conformance local | mode=true
-mise run env:plan local | mode=false
-mise run --yes env:destroy local | mode=true
-mise run env:apply local | mode=false
-mise run verify local | mode=false
-mise run cilium:conformance local | mode=false
-mise run --yes env:destroy local | mode=false" ]
+  [ "$output" = "mise run --yes env:destroy local
+mise run env:apply local
+mise run verify local
+mise run cilium:conformance local
+mise run --yes env:destroy local" ]
 }
 
 @test "env:e2e stops at the first failing step and leaves the cluster for inspection" {
@@ -161,33 +150,8 @@ mise run --yes env:destroy local | mode=false" ]
   [ "$status" -ne 0 ]
   [[ "$output" == *"env:e2e stopped at: mise run verify local"* ]]
   [[ "$output" == *"Remove it with: mise run --yes env:destroy local"* ]]
+  [ "$(tail -1 "$CALLS")" = "mise run verify local" ]
   [ "$(grep -c '^mise ' "$CALLS")" -eq 3 ]
-  [ "$(grep '^mise ' "$CALLS" | tail -1)" = "mise run verify local | mode=true" ]
-}
-
-@test "env:e2e fails when state records another kube-proxy mode than the pass applied" {
-  e2e_mise_stub
-  KUBE_PROXY_REPLACEMENT=true run_task "$root_directory/.mise/tasks/env/e2e.sh" local
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"state records kube_proxy_replacement=true, expected false"* ]]
-  [ "$(grep '^mise ' "$CALLS" | tail -1)" = "mise run env:apply local | mode=false" ]
-}
-
-@test "env:e2e fails when a live cluster accepts a kube-proxy mode switch" {
-  e2e_mise_stub
-  PLAN_ACCEPTS=1 run_task "$root_directory/.mise/tasks/env/e2e.sh" local
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"env:plan accepted kube_proxy_replacement=false on a live cluster"* ]]
-  [ "$(grep '^mise ' "$CALLS" | tail -1)" = "mise run env:plan local | mode=false" ]
-}
-
-@test "env:e2e fails when the mode switch is refused for another reason" {
-  e2e_mise_stub
-  PLAN_ERROR="provider crashed" run_task "$root_directory/.mise/tasks/env/e2e.sh" local
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"provider crashed"* ]]
-  [[ "$output" == *"not because the kube-proxy mode is fixed at creation"* ]]
-  [ "$(grep '^mise ' "$CALLS" | tail -1)" = "mise run env:plan local | mode=false" ]
 }
 
 # Replaces the chainsaw stub with one that also records KUBECONFIG.
