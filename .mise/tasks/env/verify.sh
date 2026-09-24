@@ -12,5 +12,13 @@ if [[ ! -d "$suite" ]]; then
   fail "environment '$environment' has no cluster suite at $suite"
 fi
 
+# The suite checks that Flux applied the checked-out branch at the tip
+# origin had when last fetched.
+branch=$(git_branch)
+revision=$(flux_revision "$branch")
+values=$(mktemp)
+trap 'rm -f "$values"' EXIT
+printf 'flux_revision: %s\n' "$revision" >"$values"
+
 init_environment "$environment"
-chainsaw_in_environment "$environment" test --test-dir "$suite"
+chainsaw_in_environment "$environment" test --test-dir "$suite" --values "$values"

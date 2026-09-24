@@ -1,6 +1,8 @@
 # Read-only assertions on a running local cluster, where Cilium replaces
-# kube-proxy on the netkit datapath. The namespace is set so chainsaw uses
-# kube-system instead of creating one.
+# kube-proxy on the netkit datapath and Flux runs Cilium and itself. The
+# namespace is set so chainsaw uses kube-system instead of creating one;
+# Flux objects name flux-system explicitly. env:verify passes
+# flux_revision, the revision Flux must have applied.
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -41,3 +43,68 @@ spec:
               data:
                 kube-proxy-replacement: "true"
                 datapath-mode: netkit
+    - name: k0s installs no Helm charts
+      try:
+        - error:
+            resource:
+              apiVersion: helm.k0sproject.io/v1beta1
+              kind: Chart
+    - name: Flux runs itself and applied the tested commit
+      try:
+        - assert:
+            resource:
+              apiVersion: fluxcd.controlplane.io/v1
+              kind: FluxInstance
+              metadata:
+                name: flux
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: kustomize.toolkit.fluxcd.io/v1
+              kind: Kustomization
+              metadata:
+                name: flux-system
+                namespace: flux-system
+              status:
+                lastAppliedRevision: ($values.flux_revision)
+    - name: Flux owns the Cilium and Flux Operator releases
+      try:
+        - assert:
+            resource:
+              apiVersion: helm.toolkit.fluxcd.io/v2
+              kind: HelmRelease
+              metadata:
+                name: cilium
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: helm.toolkit.fluxcd.io/v2
+              kind: HelmRelease
+              metadata:
+                name: flux-operator
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: DaemonSet
+              metadata:
+                name: cilium
+                labels:
+                  helm.toolkit.fluxcd.io/name: cilium
+                  helm.toolkit.fluxcd.io/namespace: flux-system
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: flux-operator
+                namespace: flux-system
+                labels:
+                  helm.toolkit.fluxcd.io/name: flux-operator
+                  helm.toolkit.fluxcd.io/namespace: flux-system

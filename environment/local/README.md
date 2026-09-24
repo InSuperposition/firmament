@@ -97,10 +97,11 @@ k0sctl reaches the machine with the SSH key OrbStack creates,
 | `mise run verify` | Run every `*:verify` task below, one at a time |
 | `mise run k0s:verify` | Wait for every node to be Ready, using the kubeconfig path recorded in state |
 | `mise run cilium:verify` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI, using the kubeconfig path recorded in state |
-| `mise run env:verify` | Run the read-only chainsaw suite in `tests/cluster` against the cluster: nodes Ready, no kube-proxy, and Cilium replacing it on the netkit datapath |
+| `mise run env:verify` | Run the read-only chainsaw suite in `tests/cluster` against the cluster: nodes Ready, no kube-proxy, Cilium replacing it on the netkit datapath, no k0s Charts, the `FluxInstance` and both HelmReleases Ready and owning their workloads, and the root Kustomization applied at `refs/heads/<branch>@sha1:<origin tip>` |
 | `mise run env:test` | Test that the modules and components are wired together (shared API address and port, kube-proxy setting, bootstrap charts, values and runtime info) against a plan in a temporary state, with no OrbStack calls |
 | `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests, then remove its test workloads; a failed run keeps them for debugging (slow, manual only) |
-| `mise run env:e2e` | Destroy the cluster, rebuild it from scratch, run `verify` and `cilium:conformance` against it, then destroy it again. Stops at the first failure and leaves the cluster up for inspection. Asks first; about 17 minutes |
+| `mise run env:e2e` | Destroy the cluster, rebuild it from scratch, run `verify` and `cilium:conformance` against it, then destroy it again. Refuses to start unless the working tree is clean (untracked files included) and HEAD is the tip of the branch on origin, since Flux reads the pushed branch; fails if origin moves during the run. Stops at the first failure and leaves the cluster up for inspection. Asks first; about 17 minutes |
+| `mise run env:e2e --from-ref <branch>` | Also test an upgrade: build the cluster from the pushed `<branch>` in a detached worktree and verify it, then apply the checked-out branch over it and run the same checks. Refuses a baseline that still installs Cilium through k0s. Run it before merging a k0s, Cilium, Flux, Flux Operator or k0sctl provider bump |
 
 ## What `-target` does and doesn't isolate
 

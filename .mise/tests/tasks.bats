@@ -41,6 +41,8 @@ run_task() {
 
 @test "read-only tasks never apply or destroy" {
   local script
+  # env:verify reads origin's branch tip, so the tasks run in a pushed checkout.
+  e2e_repository environment/local/tests/cluster/chainsaw-test.yaml
   for script in $(environment_scripts); do
     case "$(basename "$script")" in
     # e2e.sh destroys through `mise run`; its own tests check what it runs.
@@ -147,21 +149,38 @@ run_task() {
 
 # Replaces the mise stub with one that records each call and fails the call
 # whose arguments equal $FAIL_CALL.
+# Records each mise call with the branch Flux would follow. FAIL_CALL fails
+# the matching call; ON_CALL runs ON_CALL_RUN just before the matching call.
 e2e_mise_stub() {
   cat >"$stubs/mise" <<'STUB'
 #!/usr/bin/env bash
-printf 'mise %s\n' "$*" >>"$CALLS"
+printf 'mise %s | branch=%s\n' "$*" "${FIRMAMENT_GIT_BRANCH:-}" >>"$CALLS"
+if [[ "$*" == "${ON_CALL:-}" ]]; then
+  eval "$ON_CALL_RUN"
+fi
 [[ "$*" != "${FAIL_CALL:-}" ]]
 STUB
   chmod +x "$stubs/mise"
 }
 
+# A pushed checkout of feature/test with one environment, as env:e2e needs.
+e2e_repository() {
+  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environment/local/main.tf "$@")
+  export MISE_PROJECT_ROOT
+}
+
+mise_calls() {
+  grep '^mise ' "$CALLS" | sed 's/ | branch=.*//'
+}
+
 @test "env:e2e rebuilds the cluster from scratch, runs every live check, and destroys it" {
   e2e_mise_stub
+  e2e_repository
   run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -eq 0 ]
-  [[ "$output" == *"env:e2e passed for local; the cluster is destroyed."* ]]
-  run grep '^mise ' "$CALLS"
+  tested=$(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD)
+  [[ "$output" == *"env:e2e passed for local at $tested; the cluster is destroyed."* ]]
+  run mise_calls
   [ "$output" = "mise run --yes env:destroy local
 mise run env:apply local
 mise run verify local
@@ -171,25 +190,110 @@ mise run --yes env:destroy local" ]
 
 @test "env:e2e stops at the first failing step and leaves the cluster for inspection" {
   e2e_mise_stub
+  e2e_repository
   FAIL_CALL="run verify local" run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"env:e2e stopped at: mise run verify local"* ]]
   [[ "$output" == *"Remove it with: mise run --yes env:destroy local"* ]]
-  [ "$(tail -1 "$CALLS")" = "mise run verify local" ]
-  [ "$(grep -c '^mise ' "$CALLS")" -eq 3 ]
+  [ "$(mise_calls | tail -1)" = "mise run verify local" ]
+  [ "$(mise_calls | wc -l)" -eq 3 ]
 }
 
-# Replaces the chainsaw stub with one that also records KUBECONFIG.
-record_chainsaw_kubeconfig() {
-  printf '#!/usr/bin/env bash\nprintf "chainsaw %%s | KUBECONFIG=%%s\\n" "$*" "$KUBECONFIG" >>"$CALLS"\n' >"$stubs/chainsaw"
+@test "env:e2e refuses a working tree with changes Flux cannot see" {
+  e2e_mise_stub
+  e2e_repository
+  : >"$MISE_PROJECT_ROOT/untracked.txt"
+  run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the working tree has changes Flux cannot see"* ]]
+  ! grep -q '^mise ' "$CALLS"
 }
 
-@test "env:verify runs the cluster suite against the environment's kubeconfig" {
-  record_chainsaw_kubeconfig
+@test "env:e2e refuses a branch that is not on origin" {
+  e2e_mise_stub
+  e2e_repository
+  FIRMAMENT_GIT_BRANCH=feature/unpushed run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"origin/feature/unpushed does not exist; push the branch first"* ]]
+  ! grep -q '^mise ' "$CALLS"
+}
+
+@test "env:e2e refuses a commit that is not pushed" {
+  e2e_mise_stub
+  e2e_repository
+  git -C "$MISE_PROJECT_ROOT" -c user.name=test -c user.email=test@example.test commit -q --allow-empty -m local
+  run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"is not origin/feature/test"*"push or pull first"* ]]
+  ! grep -q '^mise ' "$CALLS"
+}
+
+@test "env:e2e refuses a branch name the bootstrap shell would misread" {
+  e2e_mise_stub
+  e2e_repository
+  FIRMAMENT_GIT_BRANCH='main;touch x' run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid branch name 'main;touch x'"* ]]
+  ! grep -q '^mise ' "$CALLS"
+}
+
+@test "env:e2e fails when origin moves while it runs, and keeps the cluster" {
+  e2e_mise_stub
+  e2e_repository
+  export ON_CALL="run cilium:conformance local"
+  export ON_CALL_RUN='git -C "$MISE_PROJECT_ROOT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m moved && git -C "$MISE_PROJECT_ROOT" push -q origin HEAD:refs/heads/feature/test'
+  run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"origin/feature/test moved from"*"during the run"* ]]
+  [ "$(mise_calls | tail -1)" = "mise run cilium:conformance local" ]
+}
+
+@test "env:e2e --from-ref applies the baseline branch, verifies it, then applies the checkout over it" {
+  e2e_mise_stub
+  e2e_repository
+  commit_and_push "$MISE_PROJECT_ROOT" main baseline
+  git -C "$MISE_PROJECT_ROOT" reset -q --hard origin/feature/test
+  usage_from_ref=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -eq 0 ]
+  run grep '^mise ' "$CALLS"
+  [ "${#lines[@]}" -eq 7 ]
+  [ "${lines[0]}" = "mise run --yes env:destroy local | branch=feature/test" ]
+  [[ "${lines[1]}" == "mise --cd "*"/baseline run env:apply local | branch=main" ]]
+  [ "${lines[2]}" = "mise run env:verify local | branch=main" ]
+  [ "${lines[3]}" = "mise run env:apply local | branch=feature/test" ]
+  [ "${lines[6]}" = "mise run --yes env:destroy local | branch=feature/test" ]
+  ! git -C "$MISE_PROJECT_ROOT" worktree list | grep -q /baseline
+}
+
+@test "env:e2e --from-ref refuses a baseline that installs Cilium through k0s" {
+  e2e_mise_stub
+  e2e_repository
+  mkdir -p "$MISE_PROJECT_ROOT/modules/cni-cilium"
+  : >"$MISE_PROJECT_ROOT/modules/cni-cilium/main.tf"
+  commit_and_push "$MISE_PROJECT_ROOT" main k0s-baseline
+  git -C "$MISE_PROJECT_ROOT" reset -q --hard origin/feature/test
+  usage_from_ref=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"origin/main installs Cilium through k0s"* ]]
+  ! grep -q '^mise ' "$CALLS"
+}
+
+@test "env:verify checks that Flux applied the branch at origin's tip" {
+  cat >"$stubs/chainsaw" <<'STUB'
+#!/usr/bin/env bash
+printf 'chainsaw %s | KUBECONFIG=%s\n' "$*" "$KUBECONFIG" >>"$CALLS"
+while (($#)); do
+  if [[ "$1" == --values ]]; then cat "$2" >>"$CALLS"; fi
+  shift
+done
+STUB
+  chmod +x "$stubs/chainsaw"
+  e2e_repository environment/local/tests/cluster/chainsaw-test.yaml
   run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -eq 0 ]
-  run grep '^chainsaw ' "$CALLS"
-  [ "$output" = "chainsaw test --test-dir $root_directory/environment/local/tests/cluster | KUBECONFIG=/state/admin.kubeconfig" ]
+  run grep -A1 '^chainsaw ' "$CALLS"
+  [[ "${lines[0]}" == "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --values "*" | KUBECONFIG=/state/admin.kubeconfig" ]]
+  [ "${lines[1]}" = "flux_revision: refs/heads/feature/test@sha1:$(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD)" ]
 }
 
 @test "env:verify fails for an environment without a cluster suite" {

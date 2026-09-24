@@ -60,6 +60,40 @@ setup() {
   [ ! -e "$CALLS" ]
 }
 
+@test "accepts a branch name made of letters, digits and . _ / -" {
+  run check_branch_name feat/flux-bootstrap_2.x
+  [ "$status" -eq 0 ]
+}
+
+@test "rejects branch names the bootstrap shell or Git would misread" {
+  local name
+  for name in 'main;touch x' '$(id)' 'a b' 'feature..x' '-x' 'x.lock' 'x/'; do
+    run check_branch_name "$name"
+    [ "$status" -ne 0 ] || fail "accepted '$name'"
+    [[ "$output" == *"invalid branch name '$name'"* ]]
+  done
+}
+
+@test "refuses a caller-named branch that is not a valid name" {
+  FIRMAMENT_GIT_BRANCH='main;touch x' run tofu_in_environment local plan
+  [ "$status" -ne 0 ]
+  [ ! -e "$CALLS" ]
+}
+
+@test "prints the revision Flux reports for origin's branch tip" {
+  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environment/local/main.tf)
+  run flux_revision feature/test
+  [ "$status" -eq 0 ]
+  [ "$output" = "refs/heads/feature/test@sha1:$(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD)" ]
+}
+
+@test "fails for a branch that origin does not have" {
+  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environment/local/main.tf)
+  run flux_revision feature/other
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"origin/feature/other does not exist; push the branch first"* ]]
+}
+
 @test "creates no state directory for an environment that does not exist" {
   run init_environment nowhere
   [ "$status" -ne 0 ]

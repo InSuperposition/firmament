@@ -25,16 +25,40 @@ state_directory() {
   printf '%s/environment/%s\n' "${FIRMAMENT_STATE_HOME:?FIRMAMENT_STATE_HOME is unset; run this through mise}" "$1"
 }
 
+# Fails unless a branch name is one Git accepts and uses only letters,
+# digits and . _ / -, since the Flux bootstrap Job interpolates it into a
+# shell command.
+check_branch_name() {
+  if [[ ! "$1" =~ ^[A-Za-z0-9._/-]+$ ]] || ! git check-ref-format --branch "$1" >/dev/null 2>&1; then
+    fail "invalid branch name '$1': use a name Git accepts, made of letters, digits and . _ / - only"
+  fi
+}
+
 # Prints the branch of this repository that Flux follows: FIRMAMENT_GIT_BRANCH
 # when the caller sets it, otherwise the checked-out branch. A detached HEAD
 # names no branch, so it fails instead of guessing one.
 git_branch() {
-  if [[ -n "${FIRMAMENT_GIT_BRANCH:-}" ]]; then
-    printf '%s\n' "$FIRMAMENT_GIT_BRANCH"
-    return
+  local branch="${FIRMAMENT_GIT_BRANCH:-}"
+  if [[ -z "$branch" ]]; then
+    branch=$(git -C "${MISE_PROJECT_ROOT:?run this through mise}" symbolic-ref --short -q HEAD) ||
+      fail "HEAD is detached; set FIRMAMENT_GIT_BRANCH to the branch Flux should follow" || return
   fi
-  git -C "${MISE_PROJECT_ROOT:?run this through mise}" symbolic-ref --short -q HEAD ||
-    fail "HEAD is detached; set FIRMAMENT_GIT_BRANCH to the branch Flux should follow"
+  check_branch_name "$branch" || return
+  printf '%s\n' "$branch"
+}
+
+# Prints the commit a branch pointed at on origin when it was last fetched.
+remote_branch_sha() {
+  git -C "${MISE_PROJECT_ROOT:?run this through mise}" rev-parse --verify -q "refs/remotes/origin/$1^{commit}" ||
+    fail "origin/$1 does not exist; push the branch first"
+}
+
+# Prints the revision Flux reports once it has applied a branch at the tip
+# origin had when last fetched.
+flux_revision() {
+  local sha
+  sha=$(remote_branch_sha "$1") || return
+  printf 'refs/heads/%s@sha1:%s\n' "$1" "$sha"
 }
 
 # Runs tofu in an environment's root, telling it where its state directory

@@ -48,3 +48,27 @@ make_repository() {
   done
   printf '%s\n' "$repository"
 }
+
+# Builds a stand-in repository like make_repository, commits it on the given
+# branch, pushes that branch to a bare origin and fetches it, and prints its
+# root. The checkout is clean and equal to origin, as env:e2e requires.
+make_pushed_repository() {
+  local branch="$1" repository origin="$BATS_TEST_TMPDIR/origin.git"
+  shift
+  repository=$(make_repository "$@")
+  git init -q --bare "$origin"
+  git -C "$repository" init -q -b "$branch"
+  git -C "$repository" remote add origin "$origin"
+  commit_and_push "$repository" "$branch" start
+  printf '%s\n' "$repository"
+}
+
+# Commits everything in a repository and pushes it to origin as the given
+# branch, then fetches.
+commit_and_push() {
+  local repository="$1" branch="$2" message="$3"
+  git -C "$repository" add -A
+  git -C "$repository" -c user.name=test -c user.email=test@example.test commit -q --allow-empty -m "$message"
+  git -C "$repository" push -q origin "HEAD:refs/heads/$branch"
+  git -C "$repository" fetch -q origin
+}
