@@ -15,7 +15,7 @@ local fast = new Mapping<String, Step> {
   }
   // Renders and schema-validates each environment's Flux build.
   ["flux"] {
-    glob = List("components/**", "environment/*/flux/**", ".mise/flux-test-values.env")
+    glob = List("components/**", "environment/*/flux/**", ".mise/flux-test-values.env", ".mise/flux-schemas/**")
     check = "mise run flux:lint"
   }
 }

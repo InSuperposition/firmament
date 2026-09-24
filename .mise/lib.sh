@@ -137,18 +137,24 @@ platform_versions() {
 # Prints one sorted "namespace/pod uid container-ids restarts" line for each
 # pod an identity list selects. Each list line is "<namespace> <selector>".
 # Two snapshots that match mean the same pods kept running, with no
-# container restarted or replaced.
+# container restarted or replaced. A line that selects no pod fails, since
+# two empty snapshots would match without checking anything.
 workload_identities() {
-  local kubeconfig="$1" list="$2" namespace selector
+  local kubeconfig="$1" list="$2" namespace selector identities
   while read -r namespace selector; do
     [[ -n "$namespace" && "$namespace" != \#* ]] || continue
-    kubectl --kubeconfig "$kubeconfig" -n "$namespace" get pods -l "$selector" -o json |
+    identities=$(kubectl --kubeconfig "$kubeconfig" -n "$namespace" get pods -l "$selector" -o json |
       jq -r '.items[] | [
           .metadata.namespace + "/" + .metadata.name,
           .metadata.uid,
           ([.status.containerStatuses[]?.containerID] | sort | join(",")),
           ([.status.containerStatuses[]?.restartCount] | add // 0)
-        ] | @tsv' || return
+        ] | @tsv') || return
+    if [[ -z "$identities" ]]; then
+      fail "$namespace $selector selects no pod"
+      return
+    fi
+    printf '%s\n' "$identities"
   done <"$list" | sort
 }
 
@@ -165,6 +171,34 @@ render_flux_build() {
   local -a values
   mapfile -t values < <(flux_test_values)
   kubectl kustomize "$1" | env "${values[@]}" flux envsubst --strict
+}
+
+# Removes the Flux bootstrap from an environment's state, so destroy works
+# when the API server is already gone: its objects live in the cluster and
+# go with the machine. Does nothing without a state file or a bootstrap in
+# it. state rm writes its backup into the working directory unless told
+# otherwise; the state directory keeps it next to the state, out of Git.
+forget_bootstrap() {
+  local environment="$1" state resources
+  state=$(state_directory "$environment") || return
+  [[ -f "$state/terraform.tfstate" ]] || return 0
+  resources=$(tofu_in_environment "$environment" state list) || return
+  grep -q '^module\.bootstrap_flux\.' <<<"$resources" || return 0
+  tofu_in_environment "$environment" state rm \
+    -backup="$state/terraform.tfstate.bootstrap.backup" module.bootstrap_flux
+}
+
+# Fails when the environment's cluster has Helm charts that k0s installs.
+# k0s uninstalls a chart once it leaves its configuration, and this
+# configuration installs none, so applying over such a cluster would remove
+# its Cilium. Passes when there is no cluster to ask.
+refuse_k0s_charts() {
+  local kubeconfig charts
+  kubeconfig=$(environment_output "$1" kubeconfig_path 2>/dev/null) || return 0
+  charts=$(kubectl --kubeconfig "$kubeconfig" get charts.helm.k0sproject.io -A -o name --request-timeout=10s 2>/dev/null) || return 0
+  if [[ -n "$charts" ]]; then
+    fail "k0s still installs Helm charts on this cluster, and applying would uninstall them:"$'\n'"$charts"$'\n'"Rebuild it instead: mise run --yes env:destroy $1, then mise run env:apply $1"
+  fi
 }
 
 # Waits until the node the cluster just created has registered with the API

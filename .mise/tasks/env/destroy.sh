@@ -8,16 +8,11 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
 environment="$usage_environment"
 
+# Destroy never reads the branch Flux follows, so it also runs from a
+# detached HEAD or an unusual branch name.
+FIRMAMENT_GIT_BRANCH=$(git_branch 2>/dev/null) || FIRMAMENT_GIT_BRANCH=main
+export FIRMAMENT_GIT_BRANCH
+
 init_environment "$environment"
-# The bootstrap only holds in-cluster transport objects, which go with the
-# machine. Forgetting them first lets destroy finish when the API server is
-# already gone.
-resources=$(tofu_in_environment "$environment" state list)
-if grep -q '^module\.bootstrap_flux\.' <<<"$resources"; then
-  # state rm writes its backup into the working directory unless told
-  # otherwise; the state directory keeps it next to the state, out of Git.
-  tofu_in_environment "$environment" state rm \
-    -backup="$(state_directory "$environment")/terraform.tfstate.bootstrap.backup" \
-    module.bootstrap_flux
-fi
+forget_bootstrap "$environment"
 tofu_in_environment "$environment" destroy -input=false -auto-approve

@@ -8,5 +8,6 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 environment="$usage_environment"
 
 init_environment "$environment"
+refuse_k0s_charts "$environment"
 tofu_in_environment "$environment" apply -input=false -auto-approve
 wait_for_cluster "$environment"

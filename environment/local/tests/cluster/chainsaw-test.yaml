@@ -68,6 +68,7 @@ spec:
                 name: flux-system
                 namespace: flux-system
               status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
                 lastAppliedRevision: ($values.flux_revision)
     - name: Flux owns the Cilium and Flux Operator releases
       try:

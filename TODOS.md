@@ -113,6 +113,15 @@ installs Cilium through k0s, and the task refuses those.
   claims no traffic continuity. Add a probe that runs through the whole
   upgrade and shows no gap before claiming it; it needs a test workload,
   which the read-only chainsaw suite cannot deploy.
+- Accepted risks for the local cluster, to revisit before any non-local
+  environment:
+  - Flux follows the branch tip, not the commit `env:e2e` tested, so
+    anyone who can push to the branch gets cluster-admin through Flux;
+    branch protection is the guard.
+  - The upstream bootstrap Job runs with host networking and
+    cluster-admin, and its image is selected by tag (v0.8.0); upstream
+    offers no digest option, and mirroring it needs the registry deferred
+    in "Run an OCI registry on the host".
 - Known pinning exceptions, to revisit rather than fix blindly:
   - the upstream bootstrap Job image is selected by tag (v0.8.0);
   - k0s's own konnectivity, CoreDNS and metrics-server images run by tag;
@@ -137,6 +146,48 @@ installs Cilium through k0s, and the task refuses those.
 **Effort:** M
 **Priority:** P3
 **Depends on:** The Flux handoff merged to main.
+
+### Make destroy and apply deterministic by holding less state
+
+**What:** Decide how `env:destroy` and `env:apply` stay correct when a
+step fails partway, preferably by removing in-cluster objects from
+OpenTofu state instead of adding recovery code.
+
+**Why:** `env:destroy` removes `module.bootstrap_flux` from state before
+it destroys the rest, so it works when the API server is already gone.
+If the destroy then fails partway (the k0sctl reset hang over OrbStack's
+SSH, an unreachable host), the VM and the bootstrap objects still exist
+but state no longer tracks the bootstrap, and the next `env:apply` fails
+on a name already in use. Recovery today is manual: restore from
+`terraform.tfstate.bootstrap.backup` in the state directory. Separately,
+`env:apply` reports success once the FluxInstance and the Cilium
+HelmRelease are Ready, which on an existing cluster can happen before
+Flux has applied the pushed commit; `env:verify` and `env:e2e` wait for
+the exact revision, `env:apply` alone does not.
+
+**Context:** Prefer designs that leave nothing to recover:
+- Keep the bootstrap out of OpenTofu state. k0s applies manifests placed
+  in `/var/lib/k0s/manifests/<stack>` and prunes a stack when its files
+  go away; k0sctl can upload them. OpenTofu would then hold no
+  in-cluster object, so destroy never needs the API server. Check that
+  it still covers the pre-CNI Job settings and the runtime ConfigMap.
+- Treat the machine as the unit of destroy: deleting the VM removes
+  everything inside it, so the state of in-cluster objects can be
+  dropped with it rather than destroyed one by one.
+- OpenTofu features not used yet: `removed` blocks with
+  `lifecycle { destroy = false }`, and `destroy -exclude`, which keep
+  state consistent at every step. Prove any of them on a live destroy
+  with the API server gone.
+- One definition of done for apply, verify and e2e: Flux has applied the
+  intended revision and it is healthy. Flux Operator's CLI
+  (`flux-operator wait`), FluxInstance status, or an OCI artifact pinned
+  by digest (see "Run an OCI registry on the host") could give
+  `env:apply` an exact target without requiring a pushed branch, which
+  would hurt local iteration.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** Add Flux Operator and hand Cilium and Flux to Flux.
 
 ### Add a second environment
 

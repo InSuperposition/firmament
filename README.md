@@ -96,7 +96,9 @@ that verb for every noun. The verb also says how far a task reaches:
 `tofu fmt`, `mise fmt`, `mise tasks validate`, `chainsaw:lint` for the
 live cluster suites, and `flux:lint`, which renders each environment's
 Flux build with test runtime values through `flux envsubst --strict` and
-validates it with `flux-schema`), `tofu:validate` and
+validates it with `flux-schema` against the schemas vendored in
+`.mise/flux-schemas`; `mise run flux:schemas` refreshes them from a pinned
+flux-schema commit), `tofu:validate` and
 `test` (every module and environment suite, and the task scripts with
 their shared library). Suites that only check OpenTofu logic (rendered
 values, variable validation, preconditions) are `tests/*.tftest.hcl`,

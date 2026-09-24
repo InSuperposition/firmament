@@ -3,8 +3,9 @@
 # "<tool> <arguments> | state=<TF_VAR_state_directory> branch=<TF_VAR_git_branch>".
 # $real_mise keeps the real mise for tests that read the resolved
 # configuration. $STATE_LIST is what `tofu state list` prints, $NODES what
-# `kubectl get nodes -o name` prints, and $PODS names the file whose JSON
-# `kubectl get pods` prints.
+# `kubectl get nodes -o name` prints, $PODS names the file whose JSON
+# `kubectl get pods` prints, and $K0S_CHARTS is what `kubectl get
+# charts.helm.k0sproject.io` prints.
 setup_stubs() {
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
   export MISE_PROJECT_ROOT="$root_directory"
@@ -30,6 +31,7 @@ case "\$*" in
   *"output -raw machine_name"*) printf 'firmament' ;;
   *"state list"*) printf '%s' "\${STATE_LIST:-}" ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;
+  *"get charts.helm.k0sproject.io"*) printf '%s' "\${K0S_CHARTS:-}" ;;
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
   "tasks ls --name-only") printf '%s\\n' a:verify b:test k0s:verify ;;
 esac

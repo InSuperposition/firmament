@@ -9,4 +9,5 @@ environment="$usage_environment"
 
 init_environment "$environment"
 tofu_in_environment "$environment" apply -input=false -auto-approve -target=module.orch_k0s -target=local_sensitive_file.kubeconfig
-wait_for_node "$(environment_kubeconfig "$environment")"
+kubeconfig=$(environment_kubeconfig "$environment")
+wait_for_node "$kubeconfig"

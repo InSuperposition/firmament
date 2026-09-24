@@ -62,7 +62,14 @@ run_task() {
   done
 }
 
+# Gives the local environment a state file, as any applied environment has.
+local_state() {
+  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
+  : >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
+}
+
 @test "env:destroy forgets the Flux bootstrap before destroying the rest" {
+  local_state
   STATE_LIST=$'module.bootstrap_flux.helm_release.this\nmodule.vm_orb.orbstack_machine.this' run_task "$root_directory/.mise/tasks/env/destroy.sh" local
   [ "$status" -eq 0 ]
   run grep -E '^tofu .* (state rm|destroy) ' "$CALLS"
@@ -72,11 +79,45 @@ run_task() {
 }
 
 @test "env:destroy destroys without touching state when there is no bootstrap" {
+  local_state
   STATE_LIST=module.vm_orb.orbstack_machine.this run_task "$root_directory/.mise/tasks/env/destroy.sh" local
   [ "$status" -eq 0 ]
   run grep -c ' state rm ' "$CALLS"
   [ "$output" = 0 ]
   grep -q ' destroy -input=false -auto-approve ' "$CALLS"
+}
+
+@test "env:destroy runs on a fresh machine with no state yet" {
+  run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  [ "$status" -eq 0 ]
+  [ "$(grep -c ' state ' "$CALLS")" -eq 0 ]
+  grep -q ' destroy -input=false -auto-approve ' "$CALLS"
+}
+
+@test "env:destroy runs from a detached HEAD" {
+  unset FIRMAMENT_GIT_BRANCH
+  e2e_repository
+  git -C "$MISE_PROJECT_ROOT" checkout -q --detach
+  run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  [ "$status" -eq 0 ]
+  grep -q ' destroy -input=false -auto-approve .*branch=main$' "$CALLS"
+}
+
+@test "orb:destroy forgets the Flux bootstrap before destroying the machine" {
+  local_state
+  STATE_LIST=module.bootstrap_flux.helm_release.this run_task "$root_directory/.mise/tasks/orb/destroy.sh" local
+  [ "$status" -eq 0 ]
+  run grep -E '^tofu .* (state rm|destroy) ' "$CALLS"
+  [ "${#lines[@]}" -eq 2 ]
+  [[ "${lines[0]}" == *" state rm "*" module.bootstrap_flux "* ]]
+  [[ "${lines[1]}" == *" destroy -input=false -auto-approve -target=module.vm_orb "* ]]
+}
+
+@test "env:apply refuses a cluster whose Helm charts k0s still installs" {
+  K0S_CHARTS=chart.helm.k0sproject.io/k0s-addon-chart-cilium run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"k0s still installs Helm charts on this cluster"*"k0s-addon-chart-cilium"* ]]
+  ! grep -q ' apply -input=false' "$CALLS"
 }
 
 @test "env:apply waits for the cluster only after applying" {
@@ -181,6 +222,8 @@ upgrade_repository() {
   commit_and_push "$MISE_PROJECT_ROOT" feature/test unaffected
   commit_and_push "$MISE_PROJECT_ROOT" main baseline
   git -C "$MISE_PROJECT_ROOT" reset -q --hard origin/feature/test
+  export PODS="$BATS_TEST_TMPDIR/pods.json"
+  pods uid-steady >"$PODS"
 }
 
 # Prints a one-pod list whose pod has the given UID, as kubectl get pods -o json.
@@ -280,7 +323,7 @@ mise run --yes env:destroy local" ]
   [ "${#lines[@]}" -eq 7 ]
   [ "${lines[0]}" = "mise run --yes env:destroy local | branch=feature/test" ]
   [[ "${lines[1]}" == "mise --cd "*"/baseline run env:apply local | branch=main" ]]
-  [ "${lines[2]}" = "mise run env:verify local | branch=main" ]
+  [[ "${lines[2]}" == "mise --cd "*"/baseline run env:verify local | branch=main" ]]
   [ "${lines[3]}" = "mise run env:apply local | branch=feature/test" ]
   [ "${lines[4]}" = "mise run verify local | branch=feature/test" ]
   [ "${lines[5]}" = "mise run cilium:conformance local | branch=feature/test" ]
@@ -291,7 +334,6 @@ mise run --yes env:destroy local" ]
 @test "env:e2e --from-branch fails when the switch replaces a workload it should not touch" {
   e2e_mise_stub
   upgrade_repository
-  export PODS="$BATS_TEST_TMPDIR/pods.json"
   pods uid-before >"$PODS"
   export ON_CALL="run env:apply local"
   export ON_CALL_RUN='pods uid-after >"$PODS"'
@@ -301,6 +343,45 @@ mise run --yes env:destroy local" ]
   [[ "$output" == *"the upgrade replaced or restarted workloads it should not touch"* ]]
   [[ "$output" == *"uid-before"*"uid-after"* ]]
   [ "$(mise_calls | tail -1)" = "mise run verify local" ]
+}
+
+@test "env:e2e --from-branch fails when a listed workload selects no pod" {
+  e2e_mise_stub
+  upgrade_repository
+  printf '{"items": []}' >"$PODS"
+  usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"kube-system k8s-app=kube-dns selects no pod"* ]]
+  [[ "$output" == *"env:e2e stopped at: snapshot_workloads"* ]]
+}
+
+@test "env:e2e --from-branch records the platform versions right after the baseline apply" {
+  e2e_mise_stub
+  upgrade_repository
+  usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^orb -m firmament uname -r ' "$CALLS")" -eq 1 ]
+  [[ "$output" == *"OrbStack: "*"kernel: "* ]]
+}
+
+@test "env:e2e --from-branch refuses the checked-out branch as its own baseline" {
+  e2e_mise_stub
+  upgrade_repository
+  usage_from_branch=feature/test run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--from-branch names the checked-out branch feature/test"* ]]
+  [ -z "$(grep '^mise ' "$CALLS" 2>/dev/null)" ]
+}
+
+@test "env:e2e fails when it cannot fetch origin at the end, and keeps the cluster" {
+  e2e_mise_stub
+  e2e_repository
+  export ON_CALL="run cilium:conformance local"
+  export ON_CALL_RUN='git -C "$MISE_PROJECT_ROOT" remote set-url origin "$BATS_TEST_TMPDIR/missing.git"'
+  run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"env:e2e stopped at: remote_tip_unchanged feature/test"* ]]
+  [ "$(mise_calls | tail -1)" = "mise run cilium:conformance local" ]
 }
 
 @test "env:e2e --from-branch refuses a baseline that is not merged into main" {
@@ -463,6 +544,57 @@ fail() {
   run "$MISE_PROJECT_ROOT/.mise/tasks/flux/lint.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"no environment/*/flux build to validate"* ]]
+}
+
+@test "flux:lint validates without the network, against the vendored schemas" {
+  rm "$stubs/kubectl"
+  HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 run "$root_directory/.mise/tasks/flux/lint.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "flux:lint names flux:schemas when a kind has no vendored schema" {
+  rm "$stubs/kubectl"
+  MISE_PROJECT_ROOT=$(make_repository)
+  mkdir -p "$MISE_PROJECT_ROOT/environment/new/flux"
+  cat >"$MISE_PROJECT_ROOT/environment/new/flux/kustomization.yaml" <<'YAML'
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - secret.yaml
+YAML
+  cat >"$MISE_PROJECT_ROOT/environment/new/flux/secret.yaml" <<'YAML'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: demo
+  namespace: flux-system
+YAML
+  HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 run "$MISE_PROJECT_ROOT/.mise/tasks/flux/lint.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"run mise run flux:schemas"* ]]
+}
+
+@test "flux:schemas fetches one schema per rendered kind from the pinned catalog commit" {
+  rm "$stubs/kubectl"
+  cat >"$stubs/curl" <<'STUB'
+#!/usr/bin/env bash
+printf 'curl %s\n' "$*" >>"$CALLS"
+while (($#)); do
+  if [[ "$1" == -o ]]; then printf '{}' >"$2"; fi
+  shift
+done
+STUB
+  chmod +x "$stubs/curl"
+  repository="$BATS_TEST_TMPDIR/schemas-repository"
+  mkdir -p "$repository/.mise"
+  cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/flux-test-values.env" "$repository/.mise/"
+  cp -R "$root_directory/environment" "$root_directory/components" "$repository/"
+  MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/flux/schemas.sh"
+  [ "$status" -eq 0 ]
+  run grep -c '^curl -fsSL https://raw.githubusercontent.com/fluxcd/flux-schema/88c74c0294aaf472a8df920f92a2f28811a47d72/catalog/latest/' "$CALLS"
+  [ "$output" = 4 ]
+  [ -f "$repository/.mise/flux-schemas/core/configmap_v1.json" ]
+  [ -f "$repository/.mise/flux-schemas/helm.toolkit.fluxcd.io/helmrelease_v2.json" ]
 }
 
 @test "flux:lint rejects a Flux build that breaks its schema" {

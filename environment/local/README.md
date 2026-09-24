@@ -89,7 +89,7 @@ k0sctl reaches the machine with the SSH key OrbStack creates,
 | Command | Behavior |
 | --- | --- |
 | `mise run env:plan` | Plan the whole environment |
-| `mise run env:apply` | Apply the whole environment, then wait for Cilium, the `FluxInstance` and the Cilium HelmRelease to be ready, and the node to be Ready |
+| `mise run env:apply` | Apply the whole environment, then wait for Cilium, the `FluxInstance` and the Cilium HelmRelease to be ready, and the node to be Ready. It refuses a cluster whose Helm charts k0s still installs (rebuild it instead). On an existing cluster it does not wait for Flux to apply the pushed commit; `env:verify` does |
 | `mise run env:destroy` | Destroy the whole environment, after a confirmation prompt (`-y` skips it) |
 | `mise run orb:plan` / `orb:apply` / `orb:destroy` | `-target=module.vm_orb` only |
 | `mise run ubuntu:verify` | `-target=module.os_ubuntu` only |

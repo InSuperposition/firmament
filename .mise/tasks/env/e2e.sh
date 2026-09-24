@@ -34,8 +34,9 @@ step() {
 # Fails unless the checkout is clean, untracked files included, and HEAD is
 # the tip of the branch on origin.
 require_pushed_checkout() {
-  local branch="$1" head tip
-  if [[ -n "$(git -C "$MISE_PROJECT_ROOT" status --porcelain --untracked-files=all)" ]]; then
+  local branch="$1" changes head tip
+  changes=$(git -C "$MISE_PROJECT_ROOT" status --porcelain --untracked-files=all) || return
+  if [[ -n "$changes" ]]; then
     fail "the working tree has changes Flux cannot see; commit and push them first"
     return
   fi
@@ -49,7 +50,7 @@ require_pushed_checkout() {
 # Fails when a branch on origin no longer points at the commit the run tested.
 remote_tip_unchanged() {
   local branch="$1" tested="$2" tip
-  git -C "$MISE_PROJECT_ROOT" fetch --quiet origin
+  git -C "$MISE_PROJECT_ROOT" fetch --quiet origin || return
   tip=$(remote_branch_sha "$branch") || return
   if [[ "$tip" != "$tested" ]]; then
     fail "origin/$branch moved from $tested to $tip during the run, so the cluster did not test one commit"
@@ -64,6 +65,10 @@ tested=$(remote_branch_sha "$branch")
 
 if [[ -n "$from_branch" ]]; then
   check_branch_name "$from_branch"
+  if [[ "$from_branch" == "$branch" ]]; then
+    fail "--from-branch names the checked-out branch $branch, so there is no upgrade to test"
+    exit 1
+  fi
   baseline=$(remote_branch_sha "$from_branch")
   main=$(remote_branch_sha main)
   # The baseline's own tasks and hooks run on this machine, so only commits
@@ -89,14 +94,17 @@ fi
 
 # Records the pods and containers of the workloads the upgrade must not touch.
 snapshot_workloads() {
-  workload_identities "$(environment_kubeconfig "$environment")" "$unaffected" >"$scratch/before"
+  local kubeconfig
+  kubeconfig=$(environment_kubeconfig "$environment") || return
+  workload_identities "$kubeconfig" "$unaffected" >"$scratch/before"
 }
 
 # Fails when a workload the upgrade must not touch runs on other pods or
 # containers, or restarted, than in the snapshot taken before the switch.
 workloads_unchanged() {
-  local after
-  after=$(workload_identities "$(environment_kubeconfig "$environment")" "$unaffected") || return
+  local kubeconfig after
+  kubeconfig=$(environment_kubeconfig "$environment") || return
+  after=$(workload_identities "$kubeconfig" "$unaffected") || return
   if [[ "$after" != "$(cat "$scratch/before")" ]]; then
     fail "the upgrade replaced or restarted workloads it should not touch:"$'\n'"$(diff "$scratch/before" <(printf '%s\n' "$after"))"
   fi
@@ -104,15 +112,20 @@ workloads_unchanged() {
 
 step mise run --yes env:destroy "$environment"
 if [[ -n "$from_branch" ]]; then
-  # The baseline applies with its own configuration and tasks, against the
-  # same state, and Flux follows the baseline branch until the switch.
+  # The baseline applies and verifies with its own configuration, tasks and
+  # cluster suite, against the same state, and Flux follows the baseline
+  # branch until the switch.
   step env -u MISE_PROJECT_ROOT FIRMAMENT_GIT_BRANCH="$from_branch" MISE_TRUSTED_CONFIG_PATHS="$worktree" \
     mise --cd "$worktree" run env:apply "$environment"
-  step env FIRMAMENT_GIT_BRANCH="$from_branch" mise run env:verify "$environment"
+  step platform_versions "$environment"
+  step env -u MISE_PROJECT_ROOT FIRMAMENT_GIT_BRANCH="$from_branch" MISE_TRUSTED_CONFIG_PATHS="$worktree" \
+    mise --cd "$worktree" run env:verify "$environment"
   step snapshot_workloads
 fi
 step mise run env:apply "$environment"
-step platform_versions "$environment"
+if [[ -z "$from_branch" ]]; then
+  step platform_versions "$environment"
+fi
 step mise run verify "$environment"
 if [[ -n "$from_branch" ]]; then
   step workloads_unchanged
