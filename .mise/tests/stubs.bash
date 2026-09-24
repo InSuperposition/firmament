@@ -8,6 +8,8 @@
 # charts.helm.k0sproject.io` prints; $K0S_CHARTS_ERROR makes it fail with
 # that message instead. $NO_OUTPUTS makes `tofu output` print nothing, as
 # after a destroy, and $OUTPUT_ERROR makes it fail with that message.
+# `cilium hubble port-forward` listens on the port it is given, as the real
+# one does, until the first connection closes.
 setup_stubs() {
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
   export MISE_PROJECT_ROOT="$root_directory"
@@ -39,6 +41,7 @@ case "\$*" in
   *"get charts.helm.k0sproject.io"*)
     if [[ -n "\${K0S_CHARTS_ERROR:-}" ]]; then printf '%s\\n' "\$K0S_CHARTS_ERROR" >&2; exit 1; fi
     printf '%s' "\${K0S_CHARTS:-}" ;;
+  *"hubble port-forward"*) exec nc -l 127.0.0.1 "\${@: -1}" >/dev/null ;;
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
   "tasks ls --name-only") printf '%s\\n' a:verify b:test k0s:verify ;;
 esac

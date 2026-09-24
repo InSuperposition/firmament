@@ -15,9 +15,11 @@ environment_scripts() {
 }
 
 # Runs a task script the way mise does, with the environment argument set.
+# cilium:conformance forwards Hubble Relay to a random high port, so a real
+# forward on its default port does not collide with the tests.
 run_task() {
   local script="$1" environment="$2"
-  usage_environment="$environment" run "$script"
+  usage_environment="$environment" usage_hubble_port=$((20000 + RANDOM % 20000)) run "$script"
 }
 
 @test "every task script is executable, described and strict" {
@@ -203,20 +205,31 @@ local_state() {
   [ ! -e "$CALLS" ]
 }
 
-@test "cilium:conformance removes its test workloads after a passing suite" {
+@test "cilium:conformance validates flows through a Hubble Relay port-forward, then removes its test workloads" {
   run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
   [ "$status" -eq 0 ]
   run grep '^cilium ' "$CALLS"
-  [ "${#lines[@]}" -eq 2 ]
-  [ "${lines[0]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --log-check-only-test-time" ]
-  [ "${lines[1]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --cleanup" ]
+  [ "${#lines[@]}" -eq 3 ]
+  [[ "${lines[0]%% |*}" =~ ^"cilium --kubeconfig /state/admin.kubeconfig hubble port-forward --port-forward "([0-9]+)$ ]]
+  local port="${BASH_REMATCH[1]}"
+  [ "${lines[1]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --log-check-only-test-time --hubble-server localhost:$port --flow-validation strict" ]
+  [ "${lines[2]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --cleanup" ]
 }
 
 @test "cilium:conformance keeps the test workloads of a failing suite" {
-  printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *--log-check-only-test-time* ]]\n' >"$stubs/cilium"
+  printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" == *"hubble port-forward"* ]] && exec nc -l 127.0.0.1 "${@: -1}" >/dev/null\n[[ "$*" != *--log-check-only-test-time* ]]\n' >"$stubs/cilium"
   run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
   [ "$status" -ne 0 ]
+  grep -q -- --log-check-only-test-time "$CALLS"
   ! grep -q -- --cleanup "$CALLS"
+}
+
+@test "cilium:conformance stops before the suite when the Hubble Relay port-forward exits" {
+  printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *"hubble port-forward"* ]]\n' >"$stubs/cilium"
+  run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the process that should listen on local port"*"exited"* ]]
+  ! grep -q ' connectivity test' "$CALLS"
 }
 
 # Records each mise call with the branch Flux would follow. FAIL_CALL fails

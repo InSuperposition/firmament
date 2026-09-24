@@ -259,3 +259,22 @@ wait_for_cluster() {
   cilium --kubeconfig "$kubeconfig" status --wait --wait-duration=10m --interactive=false
   kubectl --kubeconfig "$kubeconfig" wait --for=condition=Ready node --all --timeout=5m
 }
+
+# Waits until something listens on a local TCP port that a background
+# process, such as a port-forward, is opening. Fails when that process exits
+# first or the port stays closed for the given number of seconds.
+wait_for_local_port() {
+  local pid="$1" port="$2" timeout="$3"
+  local deadline=$((SECONDS + timeout))
+  until (: >"/dev/tcp/127.0.0.1/$port") 2>/dev/null; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      fail "the process that should listen on local port $port exited"
+      return 1
+    fi
+    if ((SECONDS >= deadline)); then
+      fail "nothing listens on local port $port after ${timeout}s"
+      return 1
+    fi
+    sleep 0.2
+  done
+}

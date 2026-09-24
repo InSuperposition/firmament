@@ -183,3 +183,28 @@ setup() {
   [ "$root" = "$FIRMAMENT_STATE_HOME/environment/local/admin.kubeconfig" ]
   [ "$local_environment" = "$root" ]
 }
+
+@test "waits for a process to listen on a local port" {
+  local port=$((20000 + RANDOM % 20000))
+  nc -l 127.0.0.1 "$port" >/dev/null &
+  run wait_for_local_port "$!" "$port" 10
+  [ "$status" -eq 0 ]
+}
+
+@test "fails when the process meant to listen on a local port exits" {
+  true &
+  local pid=$!
+  wait "$pid"
+  run wait_for_local_port "$pid" 1 10
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the process that should listen on local port 1 exited"* ]]
+}
+
+@test "fails when nothing listens on a local port in time" {
+  sleep 30 &
+  local pid=$!
+  run wait_for_local_port "$pid" 1 1
+  kill "$pid"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"nothing listens on local port 1 after 1s"* ]]
+}
