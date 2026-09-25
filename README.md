@@ -126,7 +126,8 @@ shares trust with the main checkout, so no `mise trust` is needed.
 Every worktree shares one state directory and one machine per
 environment, so only one live cluster exists at a time. The tasks that
 change an environment (`*:apply`, `*:destroy`, `env:e2e`,
-`cilium:conformance`) record the worktree that owns it, and refuse to
+`cilium:conformance`, `cilium:traffic-start`, `cilium:traffic-check`)
+record the worktree that owns it, and refuse to
 run from another worktree while the owner exists. Run the task from the
 owning worktree, destroy the cluster there, or set
 `FIRMAMENT_TAKE_OVER=1` to take it over.

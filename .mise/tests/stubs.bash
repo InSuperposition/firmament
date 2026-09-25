@@ -10,7 +10,12 @@
 # ConfigMap holds and $RELEASE_VALUES what `helm get values cilium` prints;
 # both default to the same values, so the release runs what Flux applied.
 # $NO_OUTPUTS makes `tofu output` print nothing, as after a destroy, and
-# $OUTPUT_ERROR makes it fail with that message.
+# $OUTPUT_ERROR makes it fail with that message. Calls to the fortio REST
+# API print the replies fortio gave in a live run, kept in $FORTIO_REPLIES
+# (its result is from a run whose server was down for 3 s, so it counts 28
+# failed requests);
+# $FORTIO_RUN, $FORTIO_STATUS, $FORTIO_STOP and $FORTIO_RESULT name other
+# files to print instead.
 # `cilium hubble port-forward` listens on the port it is given, as the real
 # one does, until the first connection closes.
 setup_stubs() {
@@ -19,6 +24,7 @@ setup_stubs() {
   export MISE_PROJECT_ROOT="$root_directory"
   export FIRMAMENT_STATE_HOME="$BATS_TEST_TMPDIR/state"
   export CALLS="$BATS_TEST_TMPDIR/calls"
+  export FORTIO_REPLIES="$root_directory/.mise/tests/fortio"
   export FIRMAMENT_GIT_BRANCH=feature/test
   export real_mise
   real_mise=$(command -v mise)
@@ -61,6 +67,10 @@ case "\$*" in
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
   *"get configmap cilium-values "*) printf '%s\\n' "\${CILIUM_VALUES-a: 1}" ;;
   *"get values cilium "*) printf '%s\\n' "\${RELEASE_VALUES-a: 1}" ;;
+  *"/fortio/rest/run"*) cat "\${FORTIO_RUN:-\$FORTIO_REPLIES/run.json}" ;;
+  *"/fortio/rest/status"*) cat "\${FORTIO_STATUS:-\$FORTIO_REPLIES/status.json}" ;;
+  *"/fortio/rest/stop"*) cat "\${FORTIO_STOP:-\$FORTIO_REPLIES/stop.json}" ;;
+  *"/fortio/data/"*) cat "\${FORTIO_RESULT:-\$FORTIO_REPLIES/result.json}" ;;
   "tasks ls --name-only") printf '%s\\n' a:verify b:test env:verify k0s:verify ;;
 esac
 exit 0

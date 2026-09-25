@@ -1,0 +1,80 @@
+# Workloads for cilium:traffic-start and cilium:traffic-check. The client
+# runs `fortio server` too: its REST API (port 8080, /fortio/rest/) starts
+# and stops a load run against the server's ClusterIP Service, so every
+# request crosses the Service translation that the Cilium agent programs.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traffic-probe
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fortio-server
+  namespace: traffic-probe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fortio-server
+  template:
+    metadata:
+      labels:
+        app: fortio-server
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: fortio
+          image: fortio/fortio:1.75.3@sha256:942c86131c24ee9bd4a7754610be417ac1b9fe2f11d1860620a9f6932ceb712f
+          args: ["server"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fortio-server
+  namespace: traffic-probe
+spec:
+  selector:
+    app: fortio-server
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fortio-client
+  namespace: traffic-probe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fortio-client
+  template:
+    metadata:
+      labels:
+        app: fortio-client
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: fortio
+          image: fortio/fortio:1.75.3@sha256:942c86131c24ee9bd4a7754610be417ac1b9fe2f11d1860620a9f6932ceb712f
+          args: ["server"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+          readinessProbe:
+            httpGet:
+              path: /fortio/rest/status
+              port: 8080

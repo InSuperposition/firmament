@@ -95,24 +95,29 @@ real chart-value input.
 
 ### Prove Flux-owned upgrades with `env:e2e --from-branch`
 
-**What:** Run the first live upgrade test once a baseline where Flux owns
-Cilium is on main, and add a traffic probe.
+**What:** Run the first live upgrade test now that a baseline where Flux
+owns Cilium is on main.
 
 **Why:** `env:e2e --from-branch <branch>` exists and is tested offline,
 but it has never run live: every baseline before the Flux handoff
 installs Cilium through k0s, and the task refuses those.
 
 **Context:**
-- Once the Flux handoff is merged, run `mise run env:e2e --from-branch
-  main` from a branch that bumps something (for example the next Cilium
-  patch).
+- Run `mise run env:e2e --from-branch main` from a branch that bumps
+  something (for example the next Cilium patch).
 - The upgrade lane already checks that the workloads in
   `environment/local/tests/upgrade-unaffected` (CoreDNS, metrics-server)
   keep their pod UIDs, container IDs and restart counts across the
-  switch, and `verify` reports health. It does not measure traffic, so it
-  claims no traffic continuity. Add a probe that runs through the whole
-  upgrade and shows no gap before claiming it; it needs a test workload,
-  which the read-only chainsaw suite cannot deploy.
+  switch, and `verify` reports health.
+- Traffic runs through the whole switch: `cilium:traffic-start` holds
+  cilium-cli conn-disrupt connections open and starts fortio at 100 new
+  connections a second through a ClusterIP Service, and
+  `cilium:traffic-check` fails on any broken connection, failed request or
+  rate under 90% of the one requested.
+  Its last line, repeated in the run's final line, says whether the
+  traffic crossed a Cilium agent restart. A branch that leaves Cilium
+  alone passes with "continuity was not exercised", so the bump under
+  test must replace the agent pods for the run to prove continuity.
 - Accepted risks for the local cluster, to revisit before any non-local
   environment:
   - Flux follows the branch tip, not the commit `env:e2e` tested, so
@@ -122,6 +127,11 @@ installs Cilium through k0s, and the task refuses those.
     cluster-admin, and its image is selected by tag (v0.8.0); upstream
     offers no digest option, and mirroring it needs the registry deferred
     in "Run an OCI registry on the host".
+  - The fortio client that `cilium:traffic-start` deploys serves its REST
+    API, which can send requests anywhere, on port 8080 to anything in
+    the cluster that reaches the pod. It lives only between
+    `cilium:traffic-start` and a passing `cilium:traffic-check`, and a
+    failed check keeps it for inspection.
 - Known pinning exceptions, to revisit rather than fix blindly:
   - the upstream bootstrap Job image is selected by tag (v0.8.0);
   - k0s's own konnectivity, CoreDNS and metrics-server images run by tag;
@@ -145,7 +155,39 @@ installs Cilium through k0s, and the task refuses those.
 
 **Effort:** M
 **Priority:** P3
-**Depends on:** The Flux handoff merged to main.
+**Depends on:** None; the Flux handoff is on main.
+
+### Plan fault injection with Chaos Mesh
+
+**What:** Hold a planning session on adding
+[Chaos Mesh](https://chaos-mesh.org/) as a Flux component that injects
+faults, with the upgrade traffic probes (cilium-cli conn-disrupt and
+fortio) as the measurement.
+
+**Why:** The traffic probes only run during `env:e2e --from-branch`,
+which takes about 17 minutes and needs a second branch. A `PodChaos` that
+kills the Cilium agent pod causes the same agent restart in seconds, so
+continuity could be checked on demand. The same setup could later kill a
+Flux controller mid-reconcile or delay the API server, then check that
+the cluster recovers.
+
+**Context:**
+- Chaos Mesh v2.8.4 (2026-08-18), Apache-2.0, CNCF incubating. It
+  installs by Helm chart, so Flux owns it, not mise.
+- It injects faults but does not measure traffic. Its only built-in
+  check, the Workflow `StatusCheck`, is HTTP only and runs at most once a
+  second (`intervalSeconds` minimum 1), so it cannot replace the probes.
+- Its `chaos-daemon` runs privileged on every node and needs k0s's
+  containerd socket path (`/run/k0s/containerd.sock`), not the default.
+- `NetworkChaos` shapes traffic with `tc netem` inside the pod's network
+  namespace. Chaos Mesh's source never mentions netkit, which this
+  cluster's Cilium datapath uses; check that it works before relying on
+  it.
+
+**Effort:** M
+**Priority:** P4
+**Depends on:** The upgrade traffic probes (conn-disrupt and fortio)
+merged to main.
 
 ### Make destroy and apply deterministic by holding less state
 
