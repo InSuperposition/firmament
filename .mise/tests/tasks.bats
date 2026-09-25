@@ -186,13 +186,24 @@ local_state() {
   [[ "${lines[1]}" == *"kubectl --kubeconfig /state/admin.kubeconfig get nodes -o name "* ]]
 }
 
-@test "verify runs every *:verify task, one at a time, against the environment" {
+@test "verify runs every *:verify task, one at a time, env:verify first" {
   run_task "$root_directory/.mise/tasks/verify.sh" local
   [ "$status" -eq 0 ]
   run grep '^mise run' "$CALLS"
-  [ "${#lines[@]}" -eq 2 ]
-  [ "${lines[0]%% |*}" = "mise run a:verify local" ]
-  [ "${lines[1]%% |*}" = "mise run k0s:verify local" ]
+  [ "${#lines[@]}" -eq 3 ]
+  [ "${lines[0]%% |*}" = "mise run env:verify local" ]
+  [ "${lines[1]%% |*}" = "mise run a:verify local" ]
+  [ "${lines[2]%% |*}" = "mise run k0s:verify local" ]
+}
+
+@test "cilium:verify waits for the release to run Flux's values, then for the rollout, then for Cilium" {
+  run_task "$root_directory/.mise/tasks/cilium/verify.sh" local
+  [ "$status" -eq 0 ]
+  run grep -E '^(kubectl|helm|cilium) ' "$CALLS"
+  [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values "* ]]
+  [[ "${lines[1]}" == "helm --kubeconfig /state/admin.kubeconfig -n kube-system get values cilium -o yaml "* ]]
+  [[ "${lines[2]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system rollout status daemonset/cilium --timeout=10m "* ]]
+  [[ "${lines[3]}" == "cilium --kubeconfig /state/admin.kubeconfig status --wait --interactive=false "* ]]
 }
 
 @test "tofu:test initializes and tests each suite directory, and never applies" {

@@ -94,9 +94,9 @@ k0sctl reaches the machine with the SSH key OrbStack creates,
 | `mise run orb:plan` / `orb:apply` / `orb:destroy` | `-target=module.vm_orb` only |
 | `mise run ubuntu:verify` | `-target=module.os_ubuntu` only |
 | `mise run k0s:plan` / `k0s:apply` | `-target=module.orch_k0s -target=local_sensitive_file.kubeconfig`; `k0s:apply` waits for the node to register, not for Cilium |
-| `mise run verify` | Run every `*:verify` task below, one at a time |
+| `mise run verify` | Run every `*:verify` task below, one at a time, `env:verify` first so the others check what the pushed commit deploys |
 | `mise run k0s:verify` | Wait for every node to be Ready, using the kubeconfig path recorded in state |
-| `mise run cilium:verify` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI, using the kubeconfig path recorded in state |
+| `mise run cilium:verify` | Wait until the `cilium` release runs the values in the `cilium-values` ConfigMap (`helm get values`) and the agent DaemonSet has rolled out, then for the Cilium agent, operator, Hubble Relay and Hubble UI, using the kubeconfig path recorded in state |
 | `mise run env:verify` | Run the read-only chainsaw suite in `tests/cluster` against the cluster: nodes Ready, no kube-proxy, Cilium replacing it on the netkit datapath, no k0s Charts, the `FluxInstance` and both HelmReleases Ready and owning their workloads, and the root Kustomization applied at `refs/heads/<branch>@sha1:<origin tip>` |
 | `mise run env:test` | Test that the modules and components are wired together (shared API address and port, kube-proxy setting, bootstrap charts, values and runtime info) against a plan in a temporary state, with no OrbStack calls |
 | `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests, with Hubble flow logs for failed actions through a Relay port-forward (`--hubble-port`, default 4245; fails if that port is taken or Relay is unreachable; flow validation is disabled until cilium-cli can match these flows, see [BUGS.md](../../components/cni-cilium/BUGS.md#flow-validation-never-matches-reverse-nated-service-replies)), then remove its test workloads; a failed run keeps them for debugging (slow, manual only) |
