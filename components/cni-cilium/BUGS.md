@@ -378,12 +378,14 @@ scenarios pass the backend as `AltDstIP`).
 ### Cilium Version
 
 ```text
-cilium-cli: v0.20.0 compiled with go1.27.0 on darwin/arm64
+cilium-cli: v0.20.1 compiled with go1.27.1 on darwin/arm64
 cilium image (running): v1.20.2
 ```
 
-cilium-cli v0.20.0 builds its connectivity tests from cilium/cilium
-commit `ef5d47de14d0`; the links below point at that commit.
+First found with cilium-cli v0.20.0, which builds its connectivity tests
+from cilium/cilium commit `ef5d47de14d0`; the links point at that commit.
+v0.20.1 (2026-09-24, commit `7c4e5469a2fc`) has the same code and fails
+the same way.
 
 ### Kernel Version
 
@@ -503,12 +505,14 @@ on any cluster with the L7 proxy enabled and Hubble Relay reachable.
 ### Cilium Version
 
 ```text
-cilium-cli: v0.20.0 compiled with go1.27.0 on darwin/arm64
+cilium-cli: v0.20.1 compiled with go1.27.1 on darwin/arm64
 cilium image (running): v1.20.2
 ```
 
-cilium-cli v0.20.0 builds its connectivity tests from cilium/cilium
-commit `ef5d47de14d0`; the links below point at that commit.
+First found with cilium-cli v0.20.0, which builds its connectivity tests
+from cilium/cilium commit `ef5d47de14d0`; the links point at that commit.
+v0.20.1 (2026-09-24, commit `7c4e5469a2fc`) has the same code and fails
+the same way.
 
 ### Kernel Version
 
@@ -584,12 +588,14 @@ the help text says that it only tolerates an unreachable Hubble.
 ### Cilium Version
 
 ```text
-cilium-cli: v0.20.0 compiled with go1.27.0 on darwin/arm64
+cilium-cli: v0.20.1 compiled with go1.27.1 on darwin/arm64
 cilium image (running): v1.20.2
 ```
 
-cilium-cli v0.20.0 builds its connectivity tests from cilium/cilium
-commit `ef5d47de14d0`; the links below point at that commit.
+First found with cilium-cli v0.20.0, which builds its connectivity tests
+from cilium/cilium commit `ef5d47de14d0`; the links point at that commit.
+v0.20.1 (2026-09-24, commit `7c4e5469a2fc`) has the same code and fails
+the same way.
 
 ### Kernel Version
 

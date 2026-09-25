@@ -13,7 +13,7 @@ KUBECONFIG = "{{ env.FIRMAMENT_STATE_HOME }}/environment/local/admin.kubeconfig"
 [tools]
 "aqua:kyverno/chainsaw" = "0.2.15"
 bats = "1.14.0"
-cilium-cli = "0.20.0"
+cilium-cli = "0.20.1"
 cilium-hubble = "1.19.4"
 flux2 = "2.9.5"
 "github:fluxcd/flux-schema" = "0.13.0"
