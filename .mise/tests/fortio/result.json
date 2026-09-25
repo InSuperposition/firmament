@@ -1,0 +1,28 @@
+{
+  "RunType": "HTTP",
+  "StartTime": "2026-09-25T13:05:45.731186341Z",
+  "RequestedQPS": "100",
+  "RequestedDuration": "until stop",
+  "ActualQPS": 100.17354292618657,
+  "ActualDuration": 16970548813,
+  "NumThreads": 4,
+  "Version": "1.75.3",
+  "DurationHistogram": {
+    "Count": 1700,
+    "Min": 0.000167422,
+    "Max": 1.006180953,
+    "Avg": 0.01127378275764706
+  },
+  "RunID": 3,
+  "ID": "2026-09-25-130545_3",
+  "RetCodes": {
+    "-1": 28,
+    "200": 1672
+  },
+  "URL": "http://fortio-server:8080/echo",
+  "HTTPReqTimeOut": 1000000000,
+  "ConnReuseRange": [
+    1,
+    1
+  ]
+}

@@ -289,6 +289,30 @@ wait_for_node() {
   done
 }
 
+# Prints where cilium:traffic-start keeps what cilium:traffic-check reads:
+# the fortio run, the conn-disrupt restart counts and the Cilium agent pods.
+traffic_directory() {
+  printf '%s/traffic\n' "$(state_directory "$1")"
+}
+
+# Sends one request to the fortio REST API in the traffic-probe client pod
+# and prints the reply body. Arguments go to `fortio curl`, the URL last.
+# fortio curl writes the reply headers to stderr, so stderr is shown only
+# when the call fails.
+fortio_rest() {
+  local kubeconfig="$1" errors reply
+  shift
+  errors=$(mktemp)
+  if ! reply=$(kubectl --kubeconfig "$kubeconfig" -n traffic-probe exec deployment/fortio-client -- \
+    fortio curl -quiet -timeout 30s "$@" 2>"$errors"); then
+    fail "fortio did not answer ${*: -1}:"$'\n'"$(cat "$errors")"
+    rm -f "$errors"
+    return 1
+  fi
+  rm -f "$errors"
+  printf '%s\n' "$reply"
+}
+
 # Prints the YAML values on stdin as one line of JSON with sorted keys, so
 # two documents holding the same values print the same text.
 canonical_values() {

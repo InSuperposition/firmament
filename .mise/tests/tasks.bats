@@ -48,7 +48,9 @@ run_task() {
   for script in $(environment_scripts); do
     case "$(basename "$script")" in
     # e2e.sh destroys through `mise run`; its own tests check what it runs.
-    apply.sh | destroy.sh | e2e.sh) continue ;;
+    # The traffic tasks deploy workloads and measure a run started earlier;
+    # their own tests below check them.
+    apply.sh | destroy.sh | e2e.sh | traffic-start.sh | traffic-check.sh) continue ;;
     esac
     rm -f "$CALLS"
     run_task "$script" local
@@ -67,7 +69,7 @@ run_task() {
 @test "every task that changes an environment claims it first" {
   local script
   for script in "$root_directory"/.mise/tasks/*/apply.sh "$root_directory"/.mise/tasks/*/destroy.sh \
-    "$root_directory/.mise/tasks/env/e2e.sh" "$root_directory/.mise/tasks/cilium/conformance.sh"; do
+    "$root_directory/.mise/tasks/env/e2e.sh" "$root_directory"/.mise/tasks/cilium/{conformance,traffic-start,traffic-check}.sh; do
     grep -q '^claim_environment "\$environment"$' "$script" || fail "$script changes the environment without claiming it"
   done
 }
@@ -258,6 +260,183 @@ local_state() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"the process that should listen on local port"*"exited"* ]]
   ! grep -q ' connectivity test' "$CALLS"
+}
+
+@test "every traffic probe image is pinned by digest" {
+  run grep -h 'image:' "$root_directory"/.mise/traffic/*.yaml
+  [ "${#lines[@]}" -gt 0 ]
+  local line
+  for line in "${lines[@]}"; do
+    [[ "$line" =~ image:\ [^\ ]+:[^\ ]+@sha256:[0-9a-f]{64}$ ]] || fail "not pinned by digest: $line"
+  done
+}
+
+traffic_directory_of_local() {
+  printf '%s\n' "$FIRMAMENT_STATE_HOME/environment/local/traffic"
+}
+
+@test "cilium:traffic-start deploys fortio, snapshots the agent, sets up conn-disrupt, then starts the fortio run" {
+  export PODS="$BATS_TEST_TMPDIR/pods.json"
+  pods uid-agent >"$PODS"
+  run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
+  [ "$status" -eq 0 ]
+  local traffic
+  traffic=$(traffic_directory_of_local)
+  [[ "$output" == *"Traffic is running (fortio run 3). Measure it with: mise run cilium:traffic-check local"* ]]
+  run grep -E '^(kubectl|cilium) ' "$CALLS"
+  [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig apply -f $MISE_PROJECT_ROOT/.mise/traffic/fortio.yaml "* ]]
+  [[ "${lines[1]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n traffic-probe rollout status deployment/fortio-server deployment/fortio-client --timeout=3m "* ]]
+  [[ "${lines[2]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system get pods -l k8s-app=cilium -o json "* ]]
+  [[ "${lines[3]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --conn-disrupt-test-setup --include-conn-disrupt-test --conn-disrupt-client-timeout 1s --conn-disrupt-test-restarts-path $traffic/conn-disrupt-restarts --test no-interrupted-connections "* ]]
+  [[ "${lines[4]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n traffic-probe exec deployment/fortio-client -- fortio curl -quiet -timeout 30s -payload "*" http://localhost:8080/fortio/rest/run "* ]]
+  [[ "${lines[5]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/rest/status?runid=3 "* ]]
+  local payload
+  payload=$(sed -n 's/.* -payload \({.*}\) http:.*/\1/p' <<<"${lines[4]}")
+  [ "$(jq -c . <<<"$payload")" = '{"url":"http://fortio-server:8080/echo","qps":"100","t":"on","timeout":"1s","connection-reuse":"1:1","c":"4","async":"on","save":"on"}' ]
+  [ "$(cat "$traffic/fortio-run")" = 3 ]
+  grep -q uid-agent "$traffic/agent-before"
+  [[ "$(cat "$traffic/running-since")" =~ ^[0-9]+$ ]]
+}
+
+@test "cilium:traffic-start replaces the state a stopped run left behind" {
+  export PODS="$BATS_TEST_TMPDIR/pods.json"
+  pods uid-agent >"$PODS"
+  mkdir -p "$(traffic_directory_of_local)"
+  : >"$(traffic_directory_of_local)/result.json"
+  run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
+  [ "$status" -eq 0 ]
+  [ ! -e "$(traffic_directory_of_local)/result.json" ]
+}
+
+@test "cilium:traffic-start fails when fortio does not start a run" {
+  export PODS="$BATS_TEST_TMPDIR/pods.json"
+  pods uid-agent >"$PODS"
+  export FORTIO_RUN="$BATS_TEST_TMPDIR/run.json"
+  printf '{"message":"bad url","exception":"x"}\n' >"$FORTIO_RUN"
+  run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *'fortio did not start a run; it replied: {"message":"bad url","exception":"x"}'* ]]
+  [ ! -e "$(traffic_directory_of_local)/fortio-run" ]
+}
+
+# Leaves the state cilium:traffic-start writes: fortio run 3, running since
+# 5 s ago, and an agent pod with UID uid-before. $PODS lists the agent pod
+# cilium:traffic-check finds, the same one unless a test changes it.
+started_traffic() {
+  local traffic
+  traffic=$(traffic_directory_of_local)
+  mkdir -p "$traffic"
+  printf '3\n' >"$traffic/fortio-run"
+  printf '%s\n' "$(($(date +%s) - 5))" >"$traffic/running-since"
+  pods uid-before | jq -r '.items[] | [.metadata.namespace + "/" + .metadata.name, .metadata.uid, "containerd://1", 0] | @tsv' >"$traffic/agent-before"
+  export PODS="$BATS_TEST_TMPDIR/pods.json"
+  pods uid-before >"$PODS"
+  export FORTIO_RESULT="$BATS_TEST_TMPDIR/result.json"
+  fortio_result '.' >"$FORTIO_RESULT"
+}
+
+# Prints the live fortio result, reshaped into a run that started 10 s ago,
+# ran 20 s and answered all 2000 requests with 200, then filtered through
+# the given jq program.
+fortio_result() {
+  jq "$1" <(jq '.StartTime = (now - 10 | strftime("%Y-%m-%dT%H:%M:%S.123456789Z"))
+    | .ActualDuration = 20000000000 | .DurationHistogram.Count = 2000 | .RetCodes = {"200": 2000}' \
+    "$FORTIO_REPLIES/result.json")
+}
+
+@test "cilium:traffic-check fails when no traffic run started, before measuring anything" {
+  run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no traffic run started for environment 'local'; start one with: mise run cilium:traffic-start local"* ]]
+  ! grep -Eq '^(cilium|kubectl) ' "$CALLS"
+}
+
+@test "cilium:traffic-check passes traffic that crossed an agent restart, then removes the workloads and state" {
+  started_traffic
+  pods uid-after >"$PODS"
+  local traffic
+  traffic=$(traffic_directory_of_local)
+  run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fortio: 2000 of 2000 requests answered 200 over 20s; the slowest took 1006 ms"* ]]
+  [ "${lines[-1]}" = "traffic held across the Cilium agent restart" ]
+  run grep -E '^(kubectl|cilium) ' "$CALLS"
+  [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system get pods -l k8s-app=cilium -o json "* ]]
+  [[ "${lines[1]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --include-conn-disrupt-test --conn-disrupt-test-restarts-path $traffic/conn-disrupt-restarts --test no-interrupted-connections "* ]]
+  [[ "${lines[2]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/rest/stop?runid=3&wait=on "* ]]
+  [[ "${lines[3]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/data/2026-09-25-130545_3.json "* ]]
+  [[ "${lines[4]}" == "kubectl --kubeconfig /state/admin.kubeconfig delete namespace traffic-probe "* ]]
+  [[ "${lines[5]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --cleanup "* ]]
+  [ ! -e "$traffic" ]
+}
+
+@test "cilium:traffic-check passes but says continuity was not exercised when the agent kept running" {
+  started_traffic
+  run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+  [ "$status" -eq 0 ]
+  [ "${lines[-1]}" = "the Cilium agent was not restarted, so traffic continuity was not exercised" ]
+}
+
+# Runs cilium:traffic-check, expects it to fail with the given message, and
+# checks that the workloads and the state are kept for inspection.
+expect_traffic_check_failure() {
+  run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"$1"* ]] || fail "missing '$1' in: $output"
+  [[ "$output" == *"are kept for inspection"* ]]
+  ! grep -q 'delete namespace traffic-probe' "$CALLS"
+  ! grep -q -- '--cleanup' "$CALLS"
+  [ -f "$(traffic_directory_of_local)/fortio-run" ]
+}
+
+@test "cilium:traffic-check fails when a conn-disrupt connection broke, and still stops the fortio run" {
+  started_traffic
+  printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *--include-conn-disrupt-test* ]]\n' >"$stubs/cilium"
+  expect_traffic_check_failure "conn-disrupt: a connection held open since cilium:traffic-start broke"
+  grep -q '/fortio/rest/stop?runid=3&wait=on' "$CALLS"
+}
+
+@test "cilium:traffic-check fails when any fortio request failed, naming the return codes" {
+  started_traffic
+  fortio_result '.RetCodes = {"-1": 28, "200": 1972}' >"$FORTIO_RESULT"
+  expect_traffic_check_failure 'fortio: 28 of 2000 requests failed (return codes {"-1":28,"200":1972})'
+}
+
+@test "cilium:traffic-check fails when the fortio run started after traffic-start saw it running" {
+  started_traffic
+  fortio_result '.StartTime = (now + 60 | strftime("%Y-%m-%dT%H:%M:%SZ"))' >"$FORTIO_RESULT"
+  expect_traffic_check_failure "after cilium:traffic-start saw it running"
+}
+
+@test "cilium:traffic-check fails when the fortio run ended before the check began" {
+  started_traffic
+  fortio_result '.ActualDuration = 2000000000 | .DurationHistogram.Count = 200 | .RetCodes = {"200": 200}' >"$FORTIO_RESULT"
+  expect_traffic_check_failure "before cilium:traffic-check began"
+}
+
+@test "cilium:traffic-check fails when fortio sent under 90% of the requests asked for" {
+  started_traffic
+  fortio_result '.DurationHistogram.Count = 1700 | .RetCodes = {"200": 1700}' >"$FORTIO_RESULT"
+  expect_traffic_check_failure "fortio: 1700 requests in 20s is under 90% of the 100 a second asked for"
+}
+
+@test "cilium:traffic-check fails when fortio stops the run without a saved result" {
+  started_traffic
+  export FORTIO_STOP="$BATS_TEST_TMPDIR/stop.json"
+  printf '{"message":"stopping","RunID":3,"Count":0,"ResultID":"","ResultURL":""}\n' >"$FORTIO_STOP"
+  run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"fortio did not stop run 3 with a saved result"* ]]
+  ! grep -q -- '--cleanup' "$CALLS"
+}
+
+@test "cilium:traffic-check fails on a fortio result without the fields it measures" {
+  started_traffic
+  fortio_result 'del(.RetCodes)' >"$FORTIO_RESULT"
+  run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"fortio result 2026-09-25-130545_3 lacks StartTime, ActualDuration, RetCodes or DurationHistogram"* ]]
+  ! grep -q -- '--cleanup' "$CALLS"
 }
 
 # Records each mise call with the branch Flux would follow. FAIL_CALL fails
