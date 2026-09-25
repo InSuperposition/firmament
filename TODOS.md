@@ -73,6 +73,43 @@ validation is skipped on every run.
 **Priority:** P3
 **Depends on:** None
 
+### Add mise tasks to open the Hubble and Flux web UIs
+
+**What:** Add one task per web UI that port-forwards to the local
+cluster and opens the browser, plus a few read-only observability tasks
+for day-to-day checks.
+
+**Why:** Both UIs already run in every cluster, but reaching them means
+remembering a namespace, a service and a port. A task name is easier to
+find and to share than a `kubectl port-forward` line in someone's shell
+history.
+
+**Context:**
+- Hubble UI is enabled in `components/cni-cilium/values.yaml`
+  (`hubble.ui.enabled`). `cilium hubble ui` port-forwards to it on
+  local port 12000 and opens the browser. `cilium-cli` 0.20.1 is pinned
+  in `mise.toml`.
+- Flux Operator v0.60.0 serves the Flux Web UI on port 9080:
+  `kubectl -n flux-system port-forward svc/flux-operator 9080:9080`
+  (<https://fluxoperator.dev/web-ui/>). It also supports Ingress and
+  single sign-on; keep it on a port-forward for the local cluster.
+- Candidate tasks: `cilium:ui`, `flux:ui`, and `cilium:observe` (runs
+  `hubble observe` through a Relay port-forward; the `hubble` CLI 1.19.4
+  is pinned). Each takes the environment like the other tasks and
+  reads its kubeconfig.
+- Lifecycle: a port-forward runs in the foreground and stops on Ctrl-C.
+  No background process, no PID file. If a port is busy, fail with a
+  clear message, or take a `--port` flag like `cilium:conformance`
+  does with `--hubble-port`.
+- Also worth listing: a terminal UI such as k9s pinned in `mise.toml`,
+  and whether `cilium:conformance` could reuse the Relay port-forward so
+  its Hubble flow validation stops being skipped (see "Shorten the
+  single-pass e2e lane").
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
 ### Test a chart value rollout on a live cluster
 
 **What:** Add an `env:e2e` pass that changes one Helm chart value
@@ -407,6 +444,65 @@ and a lifecycle plan first.
 **Effort:** L
 **Priority:** P4
 **Depends on:** Add Flux Operator and hand Cilium and Flux to Flux.
+
+### Research eBPF observability and runtime security (Tetragon)
+
+**What:** Survey eBPF-based tools that add process, file and syscall
+visibility on top of Hubble's network view, starting with Tetragon, and
+pick at most one to plan in depth.
+
+**Why:** Hubble shows which pods talk to which. It does not show which
+process in a pod opened a file, ran a binary or made a connection.
+Tetragon, from the Cilium project, records those events in the kernel
+and can also block them.
+
+**Context:**
+- Tetragon v1.7.1 (2026-08-25). It installs by Helm chart, so Flux owns
+  it as a `components/` entry. Policies are `TracingPolicy` custom
+  resources. Its events go to JSON logs, `tetra` CLI, or a metrics
+  endpoint.
+- Other eBPF tools to compare, all to be checked before the plan:
+  Inspektor Gadget (ad hoc tracing gadgets), Parca (continuous
+  profiling), Grafana Beyla (automatic HTTP and gRPC metrics and traces),
+  Pixie.
+- Check what the OrbStack VM kernel supports: BTF (needed by Tetragon
+  and most CO-RE tools), and which program types work alongside the
+  netkit datapath this cluster's Cilium uses.
+- Decide where the output goes before adding a tool. The cluster has no
+  log or metrics store yet, so a first step may be CLI and UI only.
+- Research first; a plan with lifecycle, resource cost and policy
+  examples comes later.
+
+**Effort:** S
+**Priority:** P4
+**Depends on:** None
+
+### Plan KubeArmor when it becomes relevant
+
+**What:** When a trigger below applies, plan KubeArmor for runtime
+enforcement: restricting which processes, files and network calls each
+workload may use.
+
+**Why:** Tetragon mainly observes, with some enforcement. KubeArmor is
+built for enforcement and applies policies through Linux security
+modules (AppArmor, BPF-LSM or SELinux). Today the cluster runs only
+platform components, so there is nothing to confine yet.
+
+**Context:**
+- KubeArmor v1.7.5 (2026-09-11), a CNCF sandbox project. Policies are
+  `KubeArmorPolicy` and `KubeArmorHostPolicy` custom resources.
+- Triggers: running workloads not written here, several tenants, or a
+  compliance need for runtime rules.
+- Check first whether the OrbStack VM kernel enables BPF-LSM (`lsm=` on
+  the kernel command line) or AppArmor, and whether OrbStack lets that
+  change. Without either, KubeArmor can only audit.
+- Compare with Tetragon's enforcement and with Kyverno (admission time
+  only; see "Plan Kyverno"), so each tool keeps one job.
+
+**Effort:** S
+**Priority:** P4
+**Depends on:** Research eBPF observability and runtime security
+(Tetragon); a trigger above.
 
 ### Plan blue/green cluster upgrades
 
