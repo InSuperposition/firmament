@@ -40,7 +40,6 @@ state=$(fortio_run_state "$kubeconfig" "$run_id")
 if [[ "$state" != running ]]; then
   fail "fortio run $run_id is not running (state '${state:-none}'), so there is nothing to measure; start a new run with: mise run cilium:traffic-start $environment"
 fi
-cilium_agent_identities "$kubeconfig" >"$traffic/agent-after"
 
 if ! cilium --kubeconfig "$kubeconfig" connectivity test --include-conn-disrupt-test \
   --conn-disrupt-test-restarts-path "$traffic/conn-disrupt-restarts" --test no-interrupted-connections; then
@@ -50,17 +49,22 @@ fi
 # wait=on returns once the run has ended and fortio has saved its result.
 reply=$(fortio_rest "$kubeconfig" "rest/stop?runid=$run_id&wait=on") ||
   fail_with_problems "fortio did not stop run $run_id"
+# Taken once the measured traffic has ended, so any agent restart during it
+# counts.
+cilium_agent_identities "$kubeconfig" >"$traffic/agent-after"
 # A run that is already stopping replies with an empty ResultID.
 result_id=$(jq -er '.ResultID | strings | select(test("^[A-Za-z0-9_-]+$"))' <<<"$reply") ||
   fail_with_problems "fortio did not stop run $run_id with a saved result; it replied: $reply"
 fortio_rest "$kubeconfig" "data/$result_id.json" >"$traffic/result.json" ||
   fail_with_problems "fortio did not return result $result_id"
-# jq accepts only a complete, consistent result and passes only whole
-# numbers to bash, whose arithmetic would evaluate any other text as an
-# expression and read an error inside `if` as false. jq also computes the
-# minimum count, since fortio may report a fractional rate.
-summary=$(jq -er --argjson percent "$minimum_percent" '
-  def finite: type == "number" and (isinfinite | not) and (isnan | not);
+# jq accepts only a single, complete and consistent result, and every value
+# bash arithmetic reads is a whole number: bash would evaluate any other
+# text as an expression and read an error inside `if` as false. The rate
+# and the return codes are only printed. jq also computes the minimum
+# count, since fortio may report a fractional rate.
+summary=$(jq -ser --argjson percent "$minimum_percent" '
+  select(length == 1) | .[0]
+  | def finite: type == "number" and (isinfinite | not) and (isnan | not);
   def whole: finite and . >= 0 and . < 1e15 and . == floor;
   ((.RequestedQPS | tonumber?) // null) as $qps
   | select((.DurationHistogram.Count | whole) and .DurationHistogram.Count > 0
@@ -100,11 +104,13 @@ fi
 if [[ ! -s "$traffic/agent-before" || ! -s "$traffic/agent-after" ]]; then
   fail_with_problems "a Cilium agent snapshot in $traffic is missing or empty, so there is no verdict"
 fi
-if diff -q "$traffic/agent-before" "$traffic/agent-after" >/dev/null; then
-  verdict="the Cilium agent was not restarted, so traffic continuity was not exercised"
-else
-  verdict="traffic held across the Cilium agent restart"
-fi
+snapshots_differ=0
+diff -q "$traffic/agent-before" "$traffic/agent-after" >/dev/null || snapshots_differ=$?
+case "$snapshots_differ" in
+0) verdict="the Cilium agent was not restarted, so traffic continuity was not exercised" ;;
+1) verdict="traffic held across the Cilium agent restart" ;;
+*) fail_with_problems "the Cilium agent snapshots in $traffic could not be compared, so there is no verdict" ;;
+esac
 kubectl --kubeconfig "$kubeconfig" delete namespace traffic-probe --timeout=2m ||
   fail "$verdict, but removing the traffic-probe namespace failed"
 cilium --kubeconfig "$kubeconfig" connectivity test --cleanup ||

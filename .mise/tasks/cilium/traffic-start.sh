@@ -9,9 +9,10 @@ environment="$usage_environment"
 
 # How long, in whole seconds, a new fortio run may take to start sending.
 readonly run_start_timeout="${FIRMAMENT_FORTIO_START_TIMEOUT:-30}"
-# A leading zero would make bash arithmetic read the value as octal.
-if [[ ! "$run_start_timeout" =~ ^(0|[1-9][0-9]*)$ ]]; then
-  fail "FIRMAMENT_FORTIO_START_TIMEOUT must be whole seconds without a leading zero, not '$run_start_timeout'"
+# A leading zero would make bash arithmetic read the value as octal, and a
+# long one would overflow it.
+if [[ ! "$run_start_timeout" =~ ^(0|[1-9][0-9]{0,5})$ ]]; then
+  fail "FIRMAMENT_FORTIO_START_TIMEOUT must be whole seconds, at most 6 digits and without a leading zero, not '$run_start_timeout'"
 fi
 
 init_environment "$environment"
@@ -37,17 +38,21 @@ cilium --kubeconfig "$kubeconfig" connectivity test --conn-disrupt-test-setup --
   --conn-disrupt-client-timeout 1s --conn-disrupt-test-restarts-path "$traffic/conn-disrupt-restarts" \
   --test no-interrupted-connections
 
-# A started run that is not yet recorded in fortio-run keeps sending with
-# nothing to stop it, so a traffic-start that fails stops it on exit.
+# A run fortio may have started, but that is not recorded in fortio-run,
+# keeps sending with nothing to stop it. A traffic-start that fails after
+# asking for a run stops every run in the client, since fortio's reply, and
+# so the run id, can be lost; runid=0 means all runs to fortio.
+run_requested=false
 stop_unrecorded_run() {
-  if [[ -n "${run_id:-}" && ! -f "$traffic/fortio-run" ]]; then
-    fortio_rest "$kubeconfig" "rest/stop?runid=$run_id" >/dev/null || true
+  if [[ "$run_requested" == true && ! -f "$traffic/fortio-run" ]]; then
+    fortio_rest "$kubeconfig" "rest/stop?runid=0" >/dev/null || true
   fi
 }
 trap stop_unrecorded_run EXIT
 
 # 100 requests a second, each on a new connection with a 1 s timeout, until
 # cilium:traffic-check stops the run. The REST API reads string values only.
+run_requested=true
 reply=$(fortio_rest "$kubeconfig" \
   -payload '{"url":"http://fortio-server:8080/echo","qps":"100","t":"on","timeout":"1s","connection-reuse":"1:1","c":"4","async":"on","save":"on"}' \
   rest/run)
@@ -68,6 +73,8 @@ done
 # Taken while both kinds of traffic run: cilium:traffic-check compares these
 # pods with the ones it finds, so only a restart under traffic counts.
 cilium_agent_identities "$kubeconfig" >"$traffic/agent-before"
-# Written last: cilium:traffic-check reads a started run only from this file.
-printf '%s\n' "$run_id" >"$traffic/fortio-run"
+# Written last, and whole or not at all: cilium:traffic-check reads a
+# started run only from this file.
+printf '%s\n' "$run_id" >"$traffic/fortio-run.partial"
+mv "$traffic/fortio-run.partial" "$traffic/fortio-run"
 printf 'Traffic is running (fortio run %s). Measure it with: mise run cilium:traffic-check %s\n' "$run_id" "$environment"

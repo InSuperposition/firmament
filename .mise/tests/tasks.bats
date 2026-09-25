@@ -325,7 +325,7 @@ traffic_directory_of_local() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"fortio run 3 is not running after 1s (state 'pending')"* ]]
   [ ! -e "$(traffic_directory_of_local)/fortio-run" ]
-  grep -q '/fortio/rest/stop?runid=3 ' "$CALLS"
+  grep -q '/fortio/rest/stop?runid=0 ' "$CALLS"
 }
 
 @test "cilium:traffic-start stops before starting fortio when the fortio rollout does not finish" {
@@ -343,11 +343,11 @@ STUB
 
 @test "cilium:traffic-start refuses a start timeout that is not plain whole seconds, before deploying anything" {
   local timeout
-  for timeout in 30s 08; do
+  for timeout in 30s 08 1234567; do
     rm -f "$CALLS"
     FIRMAMENT_FORTIO_START_TIMEOUT=$timeout run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
     [ "$status" -ne 0 ]
-    [[ "$output" == *"FIRMAMENT_FORTIO_START_TIMEOUT must be whole seconds without a leading zero, not '$timeout'"* ]]
+    [[ "$output" == *"FIRMAMENT_FORTIO_START_TIMEOUT must be whole seconds, at most 6 digits and without a leading zero, not '$timeout'"* ]]
     [ ! -e "$CALLS" ]
   done
 }
@@ -412,9 +412,9 @@ fortio_result() {
   run grep -E '^(kubectl|cilium) ' "$CALLS"
   [ "${#lines[@]}" -eq 7 ]
   [[ "${lines[0]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/rest/status?runid=3 "* ]]
-  [[ "${lines[1]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system get pods -l k8s-app=cilium -o json "* ]]
-  [[ "${lines[2]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --include-conn-disrupt-test --conn-disrupt-test-restarts-path $traffic/conn-disrupt-restarts --test no-interrupted-connections "* ]]
-  [[ "${lines[3]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/rest/stop?runid=3&wait=on "* ]]
+  [[ "${lines[1]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --include-conn-disrupt-test --conn-disrupt-test-restarts-path $traffic/conn-disrupt-restarts --test no-interrupted-connections "* ]]
+  [[ "${lines[2]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/rest/stop?runid=3&wait=on "* ]]
+  [[ "${lines[3]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system get pods -l k8s-app=cilium -o json "* ]]
   [[ "${lines[4]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/data/2026-09-25-130545_3.json "* ]]
   [[ "${lines[5]}" == "kubectl --kubeconfig /state/admin.kubeconfig delete namespace traffic-probe --timeout=2m "* ]]
   [[ "${lines[6]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --cleanup "* ]]
@@ -582,7 +582,7 @@ STUB
   source "$root_directory/.mise/lib.sh"
   export FORTIO_STATUS="$BATS_TEST_TMPDIR/status.json"
   local state expected
-  for state in 0:unknown 1:pending 2:running 3:stopping 4:stopped 9:9; do
+  for state in 0:unknown 1:pending 2:running 3:stopping 4:stopped 9:9 -1:-1 2.5:2.5 '"2"':2; do
     printf '{"Statuses":{"3":{"RunID":3,"State":%s}}}\n' "${state%%:*}" >"$FORTIO_STATUS"
     expected=${state#*:}
     [ "$(fortio_run_state /state/admin.kubeconfig 3)" = "$expected" ] || fail "State ${state%%:*} printed $(fortio_run_state /state/admin.kubeconfig 3), not $expected"
@@ -639,6 +639,65 @@ STUB
   run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"traffic held across the Cilium agent restart, but removing the traffic-probe namespace failed"* ]]
+}
+
+@test "cilium:traffic-start stops every fortio run when the reply to its start is lost" {
+  cat >"$stubs/kubectl" <<'STUB'
+#!/usr/bin/env bash
+printf 'kubectl %s\n' "$*" >>"$CALLS"
+if [[ "$*" == *"/fortio/rest/run"* ]]; then echo 'error: stream closed' >&2; exit 1; fi
+STUB
+  run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
+  [ "$status" -ne 0 ]
+  grep -Eq '/fortio/rest/stop[?]runid=0$' "$CALLS"
+  [ ! -e "$(traffic_directory_of_local)/fortio-run" ]
+}
+
+@test "cilium:traffic-start stops no fortio run when it fails before asking for one" {
+  printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *--conn-disrupt-test-setup* ]]\n' >"$stubs/cilium"
+  run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
+  [ "$status" -ne 0 ]
+  ! grep -q '/fortio/rest/stop' "$CALLS"
+}
+
+@test "cilium:traffic-check refuses a result file that holds more than one result" {
+  started_traffic
+  local good
+  good=$(fortio_result -c '.')
+  printf '%s\n%s\n' "$good" "$(fortio_result -c '.RetCodes = {"-1": 100, "200": 1900}')" >"$FORTIO_RESULT"
+  expect_traffic_check_failure "fortio result 2026-09-25-130545_3 is malformed"
+  printf '%s\n{}\n' "$good" >"$FORTIO_RESULT"
+  rm -f "$CALLS"
+  expect_traffic_check_failure "fortio result 2026-09-25-130545_3 is malformed"
+}
+
+@test "cilium:traffic-check passes a run at exactly 90% of the requested rate and fails one request below it" {
+  local case
+  for case in '20000000000 1800 pass' '20000000000 1799 fail' '16970548813 1528 pass' '16970548813 1527 fail'; do
+    set -- $case
+    rm -f "$CALLS"
+    started_traffic
+    fortio_result --argjson duration "$1" --argjson count "$2" \
+      '.ActualDuration = $duration | .DurationHistogram.Count = $count | .RetCodes = {"200": $count}' >"$FORTIO_RESULT"
+    run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+    if [ "$3" = pass ]; then
+      [ "$status" -eq 0 ] || fail "$case: $output"
+    else
+      [ "$status" -ne 0 ] || fail "$case passed"
+      [[ "$output" == *"fortio: $2 requests in"*"is under 90% of the 100 a second asked for"* ]] || fail "$case: $output"
+    fi
+  done
+}
+
+@test "cilium:traffic-check gives no verdict when the agent snapshots cannot be compared" {
+  started_traffic
+  printf '#!/usr/bin/env bash\nexit 2\n' >"$stubs/diff"
+  chmod +x "$stubs/diff"
+  run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not be compared, so there is no verdict"* ]]
+  [[ "$output" != *"traffic held"* ]]
+  ! grep -q -- '--cleanup' "$CALLS"
 }
 
 @test "cilium:traffic-check fails on a fortio result without the fields it measures" {

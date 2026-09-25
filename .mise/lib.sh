@@ -330,7 +330,9 @@ cilium_agent_identities() {
 fortio_run_state() {
   fortio_rest "$1" "rest/status?runid=$2" |
     jq -r --arg run "$2" '.Statuses[$run].State // empty
-      | ["unknown", "pending", "running", "stopping", "stopped"][.] // tostring'
+      | if type == "number" and . >= 0 and . < 5 and . == floor
+        then ["unknown", "pending", "running", "stopping", "stopped"][.]
+        else tostring end'
 }
 
 # Prints the YAML values on stdin as one line of JSON with sorted keys, so

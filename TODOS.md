@@ -112,7 +112,8 @@ installs Cilium through k0s, and the task refuses those.
 - Traffic runs through the whole switch: `cilium:traffic-start` holds
   cilium-cli conn-disrupt connections open and starts fortio at 100 new
   connections a second through a ClusterIP Service, and
-  `cilium:traffic-check` fails on any broken connection or failed request.
+  `cilium:traffic-check` fails on any broken connection, failed request or
+  rate under 90% of the one requested.
   Its last line, repeated in the run's final line, says whether the
   traffic crossed a Cilium agent restart. A branch that leaves Cilium
   alone passes with "continuity was not exercised", so the bump under

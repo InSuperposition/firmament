@@ -23,9 +23,9 @@ from_branch="${usage_from_branch:-}"
 # An upgrade run keeps the workloads tests/upgrade-unaffected lists on the
 # same pods and containers across the switch. Health is checked separately
 # by verify. Traffic started before the switch must survive it:
-# cilium:traffic-check fails on a broken connection or a failed request,
-# and its last line, repeated in the final one here, says whether the
-# traffic crossed a Cilium agent restart.
+# cilium:traffic-check fails on a broken connection, a failed request or a
+# rate under 90% of the one requested, and its last line, repeated in the
+# final one here, says whether the traffic crossed a Cilium agent restart.
 
 # Runs one step, or stops the run and says how to clean up.
 step() {
