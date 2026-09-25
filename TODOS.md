@@ -93,18 +93,19 @@ gains a real chart-value input.
 **Depends on:** Add Flux Operator and hand Cilium and Flux to Flux; a
 real chart-value input.
 
-### Prove Flux-owned upgrades with `env:e2e --from-branch`
+### Test a Cilium version bump with `env:e2e --from-branch`
 
-**What:** Run the first live upgrade test now that a baseline where Flux
-owns Cilium is on main.
+**What:** Run `env:e2e --from-branch main` from a branch that bumps the
+Cilium chart to the next patch release after 1.20.2.
 
-**Why:** `env:e2e --from-branch <branch>` exists and is tested offline,
-but it has never run live: every baseline before the Flux handoff
-installs Cilium through k0s, and the task refuses those.
+**Why:** The upgrade lane has passed live, but its change only annotated
+the agent pods. A real bump also changes the images, the CRDs and the
+chart templates, which is the upgrade that will happen in practice.
 
 **Context:**
-- Run `mise run env:e2e --from-branch main` from a branch that bumps
-  something (for example the next Cilium patch).
+- The chart is pinned by digest in
+  `components/cni-cilium/ocirepository.yaml`, and the bootstrap reads the
+  same digest, so the bump is one digest and one comment.
 - The upgrade lane already checks that the workloads in
   `environment/local/tests/upgrade-unaffected` (CoreDNS, metrics-server)
   keep their pod UIDs, container IDs and restart counts across the
@@ -153,9 +154,38 @@ installs Cilium through k0s, and the task refuses those.
   address timed out while the VM IP answered, and a rerun passed. If it
   recurs, point the Helm and Kubernetes providers at the VM IP.
 
-**Effort:** M
+**Effort:** S
 **Priority:** P3
-**Depends on:** None; the Flux handoff is on main.
+**Depends on:** A Cilium patch release after 1.20.2.
+
+### Mirror the OpenTofu providers locally
+
+**What:** Plan an offline provider mirror, so `tofu init` needs no
+network: `tofu providers mirror` fills a directory, and a CLI
+configuration with a `filesystem_mirror` block in
+`provider_installation` points tofu at it.
+
+**Why:** Every environment task runs `tofu init`. On 2026-09-25 it failed
+several times with `context deadline exceeded` reaching
+registry.terraform.io, because DNS on the host network stalled, and one
+failure stopped an `env:e2e` run in its first minute.
+
+**Context:**
+- The network investigation lives outside this repository, in
+  `../tofu-registry-network-stalls.md`. The cause is DNS: some of the
+  nameservers the router hands out stop answering.
+- A mirror only covers `tofu init`. The same DNS stall also failed the
+  k0s download inside the VM, and image pulls go to the internet too
+  (see "Run an OCI registry on the host"), so fixing DNS matters more.
+- The plan must answer: where the CLI configuration lives, and how
+  `mise` sets `TF_CLI_CONFIG_FILE`; how the mirror stays in step with
+  each `.terraform.lock.hcl` and its checksums (the lock files are read
+  only during init); which platforms it holds; and how it relates to the
+  shared plugin cache in `~/.cache/firmament/tofu-plugins`.
+
+**Effort:** S
+**Priority:** P4
+**Depends on:** None
 
 ### Plan fault injection with Chaos Mesh
 
@@ -186,8 +216,8 @@ the cluster recovers.
 
 **Effort:** M
 **Priority:** P4
-**Depends on:** The upgrade traffic probes (conn-disrupt and fortio)
-merged to main.
+**Depends on:** None; the upgrade traffic probes (conn-disrupt and
+fortio) are on main.
 
 ### Make destroy and apply deterministic by holding less state
 
@@ -416,6 +446,23 @@ disaster). Its data can be rebuilt.
 **Depends on:** Add Flux Operator and hand Cilium and Flux to Flux.
 
 ## Completed
+
+### Prove Flux-owned upgrades with `env:e2e --from-branch`
+
+Done on 2026-09-25 from the `test/flux-upgrade-proof` branch at
+`d3203d5`, whose only change annotates the Cilium agent pods so Flux
+rolls them. `mise run --yes env:e2e local --from-branch main` built a
+baseline from main, switched Flux to the branch, and passed:
+- fortio got 5988 of 5988 requests answered 200 over 59 s, the slowest
+  in 14 ms, and the conn-disrupt connections held;
+- the run ended "traffic held across the Cilium agent restart";
+- the pods in `environment/local/tests/upgrade-unaffected` kept their
+  UIDs, container IDs and restart counts.
+
+Earlier attempts that day failed on host DNS stalls, not on the lane
+(see "Mirror the OpenTofu providers locally"). A real version bump is
+still untested: see "Test a Cilium version bump with
+`env:e2e --from-branch`".
 
 ### Add Flux Operator and hand Cilium and Flux to Flux
 
