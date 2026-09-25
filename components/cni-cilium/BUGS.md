@@ -272,7 +272,7 @@ lines.
   `2.2.3 (2020300)`, macOS 26.6.2 (arm64), Ubuntu 26.04.1, k0s
   `1.36.4+k0s.0`, single node.
 
-## Connectivity test flow validation cannot match service replies
+## Flow validation never matches reverse-NATed Service replies
 
 | Field | Value |
 | --- | --- |
@@ -280,26 +280,35 @@ lines.
 | Form | Bug report (`kind/community-report`, `kind/bug`, `needs/triage`) |
 | Status | Not filed |
 | Duplicate search | 2026-09-24, see below |
+| Related | cilium/cilium-cli#3255, cilium/cilium-cli#419, cilium/cilium-cli#52, cilium/cilium#32130, cilium/hubble#349 |
 
-**Title:** `cilium-cli: --flow-validation never matches the SYN-ACK of pod-to-service when the reply is reverse-NATed in bpf_lxc (Hubble reports it in SourceXlated)`
+**Title:** `cilium-cli: connectivity test flow validation matches only IP.Source, so Service replies reverse-NATed in bpf_lxc never match (ClusterIP is in IP.SourceXlated)`
 
 ### Is there an existing issue for this?
 
 - [x] I have searched the existing issues
 
-Searched on 2026-09-24 in cilium/cilium and cilium/cilium-cli for
-`"flow validation failed"`, `flow-validation strict`, `SourceXlated
-connectivity`, `missing SYN-ACK`, `pod-to-service flow validation` and
-`orbstack`. Related but not the same:
+Searched on 2026-09-24 in cilium/cilium, cilium/cilium-cli and
+cilium/hubble for `"flow validation failed"`, `flow-validation strict`,
+`SourceXlated`, `xlated`, `missing SYN-ACK`, `pod-to-service flow
+validation`, `service ip`, `ClusterIP`, `monitor aggregation` and
+`orbstack`. No open issue covers this. Related:
 
-- cilium/cilium-cli#3255 (closed as stale, not planned, 2026-09-02): the
+- cilium/cilium-cli#3255 (2026-06-18, closed as stale 2026-09-02): the
   same test fails with socket LB on (Talos, Cilium 1.19.5). There the
   SYN to the ClusterIP never appears, because the socket hook translates
-  before any packet exists. This report is the tc-level LB case.
+  before any packet exists. This report is the tc-level LB case; both
+  come from the CLI expecting the ClusterIP in the plain IP fields.
+- cilium/cilium#32130 (merged 2024-05-08): added `IP.source_xlated` to
+  Hubble flows. The CLI's IP matching has not changed since 2022 and does
+  not read it.
 - cilium/cilium-cli#419 (closed as stale): a missing SYN-ACK on
-  `pod-to-local-nodeport`.
+  `pod-to-local-nodeport`, likely the same field mismatch.
 - cilium/cilium-cli#52 (closed as stale): asks the test to fail when
-  monitor aggregation is not `none`.
+  monitor aggregation is not `none`; see the second cause below.
+- cilium/hubble#349 (open since 2020): `hubble observe --service` shows
+  no traffic for a Service, a user-facing symptom of the same
+  representation.
 - cilium/cilium#16392, #16291 (2021, closed): CI flakes on the same test
   with older code.
 
@@ -309,10 +318,11 @@ equal or higher than 1.20.2 and lower than v1.21.0
 
 ### What happened?
 
-`cilium connectivity test --flow-validation strict` fails
-`no-policies`, `allow-all-except-world` and `pod-to-itself-via-service`
-on their pod-to-service actions, although every request succeeds. The
-SYN-ACK requirement is never met:
+`cilium connectivity test` with flow validation (Hubble reachable, mode
+`warning` or `strict`) fails `no-policies`, `allow-all-except-world`
+and `pod-to-itself-via-service` on their pod-to-service actions,
+although every connection completes. The SYN-ACK requirement is never
+met:
 
 ```text
 ℹ️  SYN-ACK and(ip(src=10.105.75.67,dst=10.244.0.253),tcp(srcPort=8080),tcpflags(syn,ack)) not found
@@ -331,27 +341,21 @@ The reply is in Hubble, with the ClusterIP in the translated field:
    ([parser.go#L252-L263](https://github.com/cilium/cilium/blob/v1.20.2/pkg/hubble/parser/threefour/parser.go#L252-L263)).
 3. The CLI's IP filter compares only `ip.Source`
    ([filters.go#L387](https://github.com/cilium/cilium/blob/ef5d47de14d0/cilium-cli/connectivity/filters/filters.go#L387)),
-   and the service scenarios pass no `AltDstIP` for the backend
+   and the Service scenarios pass no `AltDstIP` for the backend
    ([service.go#L62](https://github.com/cilium/cilium/blob/ef5d47de14d0/cilium-cli/connectivity/tests/service.go#L62)).
 
-So no reply flow can ever match `src=<ClusterIP>`. A second, smaller
-cause: with the chart's default `bpf.monitorAggregation: medium`,
-`emit_trace_notify()` drops every `TRACE_FROM_*` event
+So no reply flow can match `src=<ClusterIP>`. A second cause hides the
+request side too: with the chart's default `bpf.monitorAggregation:
+medium`, `emit_trace_notify()` drops every `TRACE_FROM_*` event
 ([trace.h#L179-L194](https://github.com/cilium/cilium/blob/v1.20.2/bpf/lib/trace.h#L179-L194)),
-so the pre-DNAT SYN (`from-endpoint`) is not reported either. With
-`monitor-aggregation none` the SYN matches and only the SYN-ACK fails.
+so the pre-DNAT SYN (`from-endpoint`) is not reported. With
+`cilium config set monitor-aggregation none` the SYN matches and only
+the SYN-ACK fails. The CLI prints `Monitor aggregation detected, will
+skip some flow validation steps`, but still requires both.
 
-The same run also fails `to-fqdns` for a different reason: the test
-expects an HTTP GET flow
-([to_fqdns.go#L48](https://github.com/cilium/cilium/blob/ef5d47de14d0/cilium-cli/connectivity/builder/to_fqdns.go#L48),
-checked in [action.go#L757](https://github.com/cilium/cilium/blob/ef5d47de14d0/cilium-cli/connectivity/check/action.go#L757)),
-but its policy `client-egress-to-fqdns.yaml` has no `http` rules, so the
-traffic is never redirected to Envoy. Hubble shows
-`policy-verdict:L3-L4` then `to-network`, which matches the policy.
-
-Expected: the IP filter also accepts `IP.SourceXlated` (and
-`DestinationXlated`) for service destinations, and `to-fqdns` expects an
-HTTP flow only when its policy has an L7 rule.
+Expected: the IP filter also accepts `IP.SourceXlated` and
+`IP.DestinationXlated` for Service destinations (or the Service
+scenarios pass the backend as `AltDstIP`).
 
 ### How can we reproduce the issue?
 
@@ -360,7 +364,7 @@ HTTP flow only when its policy has an L7 rule.
    translation. We use k0s 1.36.4 on one node, `bpf.datapathMode:
    netkit`, `bpf.masquerade: true`, Hubble Relay enabled.
 2. `cilium hubble port-forward &`
-3. `cilium connectivity test --hubble-server localhost:4245 --flow-validation strict --test no-policies,allow-all-except-world,pod-to-itself-via-service,to-fqdns`
+3. `cilium connectivity test --hubble-server localhost:4245 --test no-policies,allow-all-except-world,pod-to-itself-via-service`
 
 ### Cilium Version
 
@@ -368,6 +372,9 @@ HTTP flow only when its policy has an L7 rule.
 cilium-cli: v0.20.0 compiled with go1.27.0 on darwin/arm64
 cilium image (running): v1.20.2
 ```
+
+cilium-cli v0.20.0 builds its connectivity tests from cilium/cilium
+commit `ef5d47de14d0`; the links below point at that commit.
 
 ### Kernel Version
 
@@ -389,10 +396,6 @@ Unknown. Cilium's CI runs the connectivity test with
 ([cli-test-config/action.yaml](https://github.com/cilium/cilium/blob/main/.github/actions/cli-test-config/action.yaml)),
 so these expectations are not exercised.
 
-### Sysdump
-
-Not attached. Available on request.
-
 ### Relevant log output
 
 ```text
@@ -403,11 +406,16 @@ Not attached. Available on request.
   🟥 to-fqdns/pod-to-world:http-to-one.one.one.one.-ipv4-0: ... Flow validation failed
 ```
 
+The fourth failure is the next report.
+
 ### Anything else?
 
-The traffic in every failing action is correct: each connection
-completes (`FORWARDED` SYN, SYN-ACK, data and FIN), and the same run
-with `--flow-validation warning` passes all 79 tests.
+Hubble shows each failing connection complete: `FORWARDED` SYN,
+SYN-ACK, data and FIN between the client and the backend pod.
+
+### Sysdump
+
+Not attached. Available on request.
 
 ### Cilium Users Document
 
@@ -419,17 +427,191 @@ with `--flow-validation warning` passes all 79 tests.
 
 ### Notes for this repo (not part of the issue)
 
-- `mise run cilium:conformance` runs `--flow-validation warning`: Hubble
-  Relay must be reachable, and flow mismatches are logged in the run's
-  output instead of failing it. Switch to `strict` once cilium-cli
-  matches translated addresses and fixes the `to-fqdns` expectation.
-- OrbStack is not the cause: #3255 fails the same test on Talos, and the
-  mismatch is in the parser and CLI code above. It is linked to
-  OrbStack only through `socketLB.hostNamespaceOnly: true`, which this
-  repo sets because of the
+- Not caused by OrbStack: #3255 fails the same test on Talos, and the
+  mismatch is in the parser and CLI code above. OrbStack is linked only
+  through `socketLB.hostNamespaceOnly: true`, which this repo sets
+  because of the
   [OrbStack kernel request](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy).
-  With socket LB on in pods the test still fails, as in #3255.
-- `strict` would also need `bpf.monitorAggregation: none`, which raises
-  event volume on every node; not worth it for a test alone.
+  With socket LB on in pods the test fails the other way, as in #3255.
+- Not yet compared on the veth datapath; the source path above is shared
+  by veth and netkit.
 - Evidence gathered 2026-09-24 with the versions above, OrbStack
   `2.2.3 (2020300)`, macOS 26.6.2 (arm64), Ubuntu 26.04.1.
+
+## `to-fqdns` expects an HTTP flow its policy no longer produces
+
+| Field | Value |
+| --- | --- |
+| Repository | [cilium/cilium](https://github.com/cilium/cilium/issues/new?template=bug_report.yaml) (cilium-cli lives in `cilium-cli/`) |
+| Form | Bug report (`kind/community-report`, `kind/bug`, `needs/triage`) |
+| Status | Not filed |
+| Duplicate search | 2026-09-24, same searches as above plus `to-fqdns flow validation HTTP` |
+| Introduced by | cilium/cilium#38750 (commit `62e3be9d8a`, merged 2025-04-23) |
+
+**Title:** `cilium-cli: to-fqdns flow validation expects an HTTP GET flow, but client-egress-to-fqdns.yaml has had no HTTP rule since #38750`
+
+### Is there an existing issue for this?
+
+- [x] I have searched the existing issues
+
+No issue found. cilium/cilium#16096 (2021, closed) was a flake on the
+older `pod-to-world-toFQDNs` test.
+
+### Version
+
+equal or higher than 1.20.2 and lower than v1.21.0
+
+### What happened?
+
+With flow validation on, `to-fqdns/pod-to-world:http-to-one.one.one.one.`
+fails although the request succeeds:
+
+```text
+ℹ️  HTTP and(ip(src=10.244.0.253),tcp(dstPort=80),http(method=GET,url=http://one.one.one.one/)) not found
+```
+
+Commit `62e3be9d8a` ("Add `external-target-ipv6-capable` flag", in
+#38750) split the FQDN tests. It removed the `rules: http: GET /` block
+from `client-egress-to-fqdns.yaml` and moved L7 checking to the new
+`to-fqdns-with-proxy` test, but left the HTTP expectation in `to-fqdns`
+([to_fqdns.go#L45-L54](https://github.com/cilium/cilium/blob/ef5d47de14d0/cilium-cli/connectivity/builder/to_fqdns.go#L45-L54)).
+`GetEgressRequirements` then requires an HTTP flow whenever
+`expEgress.HTTP` is set
+([action.go#L743-L757](https://github.com/cilium/cilium/blob/ef5d47de14d0/cilium-cli/connectivity/check/action.go#L743-L757)).
+The policy is L3/L4 only, so traffic is never redirected to Envoy:
+Hubble shows `policy-verdict:L3-L4` then `to-network`, which is correct.
+
+Expected: `to-fqdns` expects `check.ResultDNSOK` without an HTTP flow,
+as its policy dictates.
+
+### How can we reproduce the issue?
+
+`cilium connectivity test --hubble-server localhost:4245 --test to-fqdns`
+on any cluster with the L7 proxy enabled and Hubble Relay reachable.
+
+### Cilium Version
+
+```text
+cilium-cli: v0.20.0 compiled with go1.27.0 on darwin/arm64
+cilium image (running): v1.20.2
+```
+
+cilium-cli v0.20.0 builds its connectivity tests from cilium/cilium
+commit `ef5d47de14d0`; the links below point at that commit.
+
+### Kernel Version
+
+```text
+Linux firmament 7.0.14-orbstack-00380-ga7e0a2dc9535 #1 SMP PREEMPT Fri Aug  7 03:48:40 UTC 2026 aarch64 GNU/Linux
+```
+
+### Kubernetes Version
+
+```text
+Client Version: v1.36.4
+Server Version: v1.36.4+k0s
+```
+
+### Regression
+
+Yes, since #38750 (merged 2025-04-23). Before it, the policy had the
+HTTP rule that the expectation assumes.
+
+### Sysdump
+
+Not attached. Available on request.
+
+### Cilium Users Document
+
+- [ ] Are you a user of Cilium? Please add yourself to the [Users doc](https://github.com/cilium/cilium/blob/main/USERS.md)
+
+### Code of Conduct
+
+- [x] I agree to follow this project's Code of Conduct
+
+## `--flow-validation warning` fails the run on flow mismatches
+
+| Field | Value |
+| --- | --- |
+| Repository | [cilium/cilium](https://github.com/cilium/cilium/issues/new?template=bug_report.yaml) (cilium-cli lives in `cilium-cli/`) |
+| Form | Bug report (`kind/community-report`, `kind/bug`, `needs/triage`) |
+| Status | Not filed |
+| Duplicate search | 2026-09-24, `flow-validation warning`, `flow validation mode` |
+| Related | cilium/cilium-cli#340 (closed as stale 2024-10-13) |
+
+**Title:** `cilium-cli: --flow-validation=warning fails tests on flow mismatches exactly like strict; the modes differ only when Hubble is unreachable`
+
+### Is there an existing issue for this?
+
+- [x] I have searched the existing issues
+
+cilium/cilium-cli#340 asked to clean up the tri-state
+`--flow-validation` because "different code paths check
+`params.FlowValidation` for different values"; it was closed as stale
+without a change.
+
+### What happened?
+
+`cilium connectivity test --help` lists `--flow-validation string
+Enable Hubble flow validation { disabled | warning | strict } (default
+"warning")`. The name suggests `warning` reports mismatches without
+failing. It does not: `ValidateFlows` returns early only for
+`disabled`, and otherwise calls `a.Failf` on any mismatch
+([action.go#L1065-L1094](https://github.com/cilium/cilium/blob/ef5d47de14d0/cilium-cli/connectivity/check/action.go#L1065-L1094)).
+The only difference is when Hubble Relay is unreachable: `strict` fails,
+while `warning` logs `Unable to contact Hubble Relay, disabling Hubble
+telescope and flow validation` and passes
+([context.go#L655-L671](https://github.com/cilium/cilium/blob/ef5d47de14d0/cilium-cli/connectivity/check/context.go#L655-L671)).
+
+So with the default mode, a run is green when Hubble cannot be reached
+and red on the same cluster when it can. Our runs passed 79/79 for
+weeks only because nothing forwarded Relay to `localhost:4245`.
+
+Expected: either `warning` downgrades flow mismatches to warnings, or
+the help text says that it only tolerates an unreachable Hubble.
+
+### Cilium Version
+
+```text
+cilium-cli: v0.20.0 compiled with go1.27.0 on darwin/arm64
+cilium image (running): v1.20.2
+```
+
+cilium-cli v0.20.0 builds its connectivity tests from cilium/cilium
+commit `ef5d47de14d0`; the links below point at that commit.
+
+### Kernel Version
+
+```text
+Linux firmament 7.0.14-orbstack-00380-ga7e0a2dc9535 #1 SMP PREEMPT Fri Aug  7 03:48:40 UTC 2026 aarch64 GNU/Linux
+```
+
+### Kubernetes Version
+
+```text
+Client Version: v1.36.4
+Server Version: v1.36.4+k0s
+```
+
+### Sysdump
+
+Not attached. Available on request.
+
+### Cilium Users Document
+
+- [ ] Are you a user of Cilium? Please add yourself to the [Users doc](https://github.com/cilium/cilium/blob/main/USERS.md)
+
+### Code of Conduct
+
+- [x] I agree to follow this project's Code of Conduct
+
+### Notes for this repo (not part of the three issues above)
+
+- `mise run cilium:conformance` forwards Hubble Relay, fails when Relay
+  is unreachable, and runs `--flow-validation warning`. Because of the
+  reports above, that mode fails 4 of 79 tests (7 of 311 actions) on
+  correct traffic, so `env:e2e` is red until the mode is decided. Options
+  under review: `disabled` with the Relay forward kept, or excluding the
+  four tests.
+- `strict` or `warning` would also need `bpf.monitorAggregation: none`
+  for the SYN half, which raises event volume on every node.

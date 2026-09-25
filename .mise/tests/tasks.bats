@@ -205,7 +205,7 @@ local_state() {
   [ ! -e "$CALLS" ]
 }
 
-@test "cilium:conformance validates flows through a Hubble Relay port-forward, as warnings, then removes its test workloads" {
+@test "cilium:conformance validates flows through a Hubble Relay port-forward, then removes its test workloads" {
   run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
   [ "$status" -eq 0 ]
   run grep '^cilium ' "$CALLS"
