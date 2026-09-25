@@ -270,10 +270,16 @@ both addresses answered `/healthz` with 401 and ping was under 1 ms.
   with `XPC_ERROR_CONNECTION_INTERRUPTED` in the logs.
 - Related: #1966 (open): `.orb.local` domains are unreliable over time.
 
-**To make these fileable:** capture `orb report` right after a stall,
-the machine's `ss -tnp` and `journalctl -u ssh` for case 1, and
-`arp -an`, `route -n get 192.168.138.3` and `dscacheutil -q host -a name
-firmament.orb.local` on the host for case 2. Logs of both runs are in
+**To make these fileable:** run `mise run orb:capture-stall` in a
+terminal right after a stall, while the stalled apply is still running.
+It writes the host's `arp -an`, `dscacheutil` and `route -n get` for the
+machine's `.orb.local` name, the host's connections to the SSH proxy
+(`lsof -iTCP:32222`), `orb info`, and the machine's `ss -tnp` and
+`journalctl -u ssh` to
+`~/.local/state/firmament/stalls/<UTC time>/`, one file per command with
+its exit status. Each command gets 30 s; exit 124 means it hung. It then
+runs `orb report`, whose upload you review at the prompt; without a
+terminal it skips `orb report`. Logs of both earlier runs are in
 `~/.local/state/firmament/logs/` (`e2e-ssh-hang.log`,
 `e2e-api-timeout.log`).
 
@@ -282,4 +288,8 @@ firmament.orb.local` on the host for case 2. Logs of both runs are in
 - `env:e2e` stops at the first failure and leaves the machine, so a
   rerun is the current recovery. Stop a hung provider with one signal to
   the provider process, never a second SIGINT to tofu.
+- `orb:capture-stall` exists only for this entry. Delete it
+  (`.mise/tasks/orb/capture-stall.sh` and its `orb:capture-stall` tests in
+  `.mise/tests/tasks.bats`) once OrbStack ships a fix and an `env:e2e` run
+  on that version confirms it.
 
