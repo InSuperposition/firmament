@@ -325,6 +325,20 @@ traffic_directory_of_local() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"fortio run 3 is not running after 1s (state 'pending')"* ]]
   [ ! -e "$(traffic_directory_of_local)/fortio-run" ]
+  grep -q '/fortio/rest/stop?runid=3 ' "$CALLS"
+}
+
+@test "cilium:traffic-start stops before starting fortio when the fortio rollout does not finish" {
+  cat >"$stubs/kubectl" <<'STUB'
+#!/usr/bin/env bash
+printf 'kubectl %s\n' "$*" >>"$CALLS"
+if [[ "$*" == *"rollout status"* ]]; then echo 'error: timed out waiting for the condition' >&2; exit 1; fi
+STUB
+  run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"timed out waiting for the condition"* ]]
+  ! grep -q '/fortio/rest/run' "$CALLS"
+  [ ! -e "$(traffic_directory_of_local)/fortio-run" ]
 }
 
 @test "cilium:traffic-start refuses a start timeout that is not plain whole seconds, before deploying anything" {
@@ -549,7 +563,7 @@ STUB
   started_traffic
   local marker="$BATS_TEST_TMPDIR/evaluated"
   fortio_result --arg marker "$marker" '.DurationHistogram.Count = "x[$(touch \($marker))0]"' >"$FORTIO_RESULT"
-  expect_traffic_check_failure "lacks a numeric RequestedQPS, ActualDuration, RetCodes or DurationHistogram"
+  expect_traffic_check_failure "fortio result 2026-09-25-130545_3 is malformed"
   [ ! -e "$marker" ]
 }
 
@@ -575,12 +589,64 @@ STUB
   done
 }
 
+@test "cilium:traffic-check refuses a result whose numbers bash could misread or that do not add up" {
+  local change
+  for change in '.RequestedQPS = "nan"' '.RequestedQPS = "1e400"' '.RequestedQPS = "-5"' \
+    '.DurationHistogram.Count = 1e30 | .RetCodes = {"-1": 1e30}' \
+    '.RetCodes = {"200": 2000, "-1": 28}' \
+    '.DurationHistogram.Count = 0 | .RetCodes = {}' '.ActualDuration = 0'; do
+    rm -f "$CALLS"
+    started_traffic
+    fortio_result "$change" >"$FORTIO_RESULT"
+    run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+    [ "$status" -ne 0 ] || fail "$change passed"
+    [[ "$output" == *"fortio result 2026-09-25-130545_3 is malformed"* ]] || fail "$change: $output"
+    ! grep -q -- '--cleanup' "$CALLS"
+  done
+}
+
+@test "cilium:traffic-check refuses a result id that is not a plain token, before fetching it" {
+  started_traffic
+  export FORTIO_STOP="$BATS_TEST_TMPDIR/stop.json"
+  printf '{"message":"stopped","ResultID":"../x?y"}\n' >"$FORTIO_STOP"
+  expect_traffic_check_failure "fortio did not stop run 3 with a saved result"
+  ! grep -q '/fortio/data/' "$CALLS"
+}
+
+@test "cilium:traffic-check refuses a recorded run id that is not a fortio run id, before calling fortio" {
+  started_traffic
+  printf '0&x=1\n' >"$(traffic_directory_of_local)/fortio-run"
+  run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"holds '0&x=1', not a fortio run id"* ]]
+  ! grep -q '/fortio/' "$CALLS"
+}
+
+@test "cilium:traffic-check keeps the verdict in the failure when cleanup fails" {
+  started_traffic
+  pods uid-after >"$PODS"
+  cat >"$stubs/kubectl" <<'STUB'
+#!/usr/bin/env bash
+printf 'kubectl %s\n' "$*" >>"$CALLS"
+case "$*" in
+  *"/fortio/rest/status"*) cat "$FORTIO_REPLIES/status.json" ;;
+  *"/fortio/rest/stop"*) cat "$FORTIO_REPLIES/stop.json" ;;
+  *"/fortio/data/"*) cat "$FORTIO_RESULT" ;;
+  *" get pods "*) cat "$PODS" ;;
+  *"delete namespace"*) echo 'error: timed out waiting for the condition' >&2; exit 1 ;;
+esac
+STUB
+  run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"traffic held across the Cilium agent restart, but removing the traffic-probe namespace failed"* ]]
+}
+
 @test "cilium:traffic-check fails on a fortio result without the fields it measures" {
   started_traffic
   fortio_result 'del(.RetCodes)' >"$FORTIO_RESULT"
   run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"fortio result 2026-09-25-130545_3 lacks a numeric RequestedQPS, ActualDuration, RetCodes or DurationHistogram"* ]]
+  [[ "$output" == *"fortio result 2026-09-25-130545_3 is malformed"* ]]
   ! grep -q -- '--cleanup' "$CALLS"
 }
 

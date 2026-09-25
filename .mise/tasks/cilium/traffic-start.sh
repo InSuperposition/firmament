@@ -37,12 +37,21 @@ cilium --kubeconfig "$kubeconfig" connectivity test --conn-disrupt-test-setup --
   --conn-disrupt-client-timeout 1s --conn-disrupt-test-restarts-path "$traffic/conn-disrupt-restarts" \
   --test no-interrupted-connections
 
+# A started run that is not yet recorded in fortio-run keeps sending with
+# nothing to stop it, so a traffic-start that fails stops it on exit.
+stop_unrecorded_run() {
+  if [[ -n "${run_id:-}" && ! -f "$traffic/fortio-run" ]]; then
+    fortio_rest "$kubeconfig" "rest/stop?runid=$run_id" >/dev/null || true
+  fi
+}
+trap stop_unrecorded_run EXIT
+
 # 100 requests a second, each on a new connection with a 1 s timeout, until
 # cilium:traffic-check stops the run. The REST API reads string values only.
 reply=$(fortio_rest "$kubeconfig" \
   -payload '{"url":"http://fortio-server:8080/echo","qps":"100","t":"on","timeout":"1s","connection-reuse":"1:1","c":"4","async":"on","save":"on"}' \
   rest/run)
-run_id=$(jq -er '.RunID | numbers' <<<"$reply") || fail "fortio did not start a run; it replied: $reply"
+run_id=$(jq -er '.RunID | numbers | select(. >= 1 and . == floor)' <<<"$reply") || fail "fortio did not start a run; it replied: $reply"
 
 # fortio replies before the run begins, and the run must be sending
 # requests before whatever cilium:traffic-check measures starts.

@@ -11,7 +11,9 @@
 # both default to the same values, so the release runs what Flux applied.
 # $NO_OUTPUTS makes `tofu output` print nothing, as after a destroy, and
 # $OUTPUT_ERROR makes it fail with that message. Calls to the fortio REST
-# API print the replies fortio gave in a live run, kept in $FORTIO_REPLIES;
+# API print the replies fortio gave in a live run, kept in $FORTIO_REPLIES
+# (its result is from a run whose server was down for 3 s, so it counts 28
+# failed requests);
 # $FORTIO_RUN, $FORTIO_STATUS, $FORTIO_STOP and $FORTIO_RESULT name other
 # files to print instead.
 # `cilium hubble port-forward` listens on the port it is given, as the real

@@ -22,10 +22,15 @@ spec:
       labels:
         app: fortio-server
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: fortio
           image: fortio/fortio:1.75.3@sha256:942c86131c24ee9bd4a7754610be417ac1b9fe2f11d1860620a9f6932ceb712f
           args: ["server"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
           ports:
             - containerPort: 8080
           readinessProbe:
@@ -60,10 +65,15 @@ spec:
       labels:
         app: fortio-client
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: fortio
           image: fortio/fortio:1.75.3@sha256:942c86131c24ee9bd4a7754610be417ac1b9fe2f11d1860620a9f6932ceb712f
           args: ["server"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
           readinessProbe:
             httpGet:
               path: /fortio/rest/status

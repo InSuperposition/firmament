@@ -293,7 +293,9 @@ wait_for_node() {
 # Prints where cilium:traffic-start keeps what cilium:traffic-check reads:
 # the fortio run, the conn-disrupt restart counts and the Cilium agent pods.
 traffic_directory() {
-  printf '%s/traffic\n' "$(state_directory "$1")"
+  local state
+  state=$(state_directory "$1") || return
+  printf '%s/traffic\n' "$state"
 }
 
 # Sends one request to the fortio REST API in the traffic-probe client pod
@@ -322,8 +324,9 @@ cilium_agent_identities() {
   workload_identities "$1" <(printf 'kube-system k8s-app=cilium\n')
 }
 
-# Prints the state fortio reports for a run: pending, running, stopping or
-# stopped, or nothing when fortio no longer knows the run.
+# Prints the state fortio reports for a run: unknown, pending, running,
+# stopping or stopped, the number itself for a state fortio does not name,
+# or nothing when fortio no longer knows the run.
 fortio_run_state() {
   fortio_rest "$1" "rest/status?runid=$2" |
     jq -r --arg run "$2" '.Statuses[$run].State // empty

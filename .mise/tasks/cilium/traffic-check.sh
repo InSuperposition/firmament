@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Measure the traffic cilium:traffic-start began: fails when a conn-disrupt connection broke or any fortio request failed, prints the slowest request, and ends with whether the traffic crossed a Cilium agent restart; removes the test workloads when it passes"
+#MISE description="Measure the traffic cilium:traffic-start began: fails when a conn-disrupt connection broke, any fortio request failed or fortio sent under 90% of the requested rate, prints the slowest request, and ends with whether the traffic crossed a Cilium agent restart; removes the test workloads when it passes"
 #USAGE arg "[environment]" default="local" help="Directory name under environment/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
@@ -19,6 +19,9 @@ if [[ ! -f "$traffic/fortio-run" ]]; then
   fail "no traffic run started for environment '$environment'; start one with: mise run cilium:traffic-start $environment"
 fi
 run_id=$(<"$traffic/fortio-run")
+if [[ ! "$run_id" =~ ^[1-9][0-9]*$ ]]; then
+  fail "$traffic/fortio-run holds '$run_id', not a fortio run id; start a new run with: mise run cilium:traffic-start $environment"
+fi
 problems=()
 
 # Prints the problems found so far, then fails with the given reason and
@@ -52,26 +55,34 @@ result_id=$(jq -er '.ResultID | strings | select(test("^[A-Za-z0-9_-]+$"))' <<<"
   fail_with_problems "fortio did not stop run $run_id with a saved result; it replied: $reply"
 fortio_rest "$kubeconfig" "data/$result_id.json" >"$traffic/result.json" ||
   fail_with_problems "fortio did not return result $result_id"
-# Only numbers leave jq: bash arithmetic would evaluate any other text as
-# an expression. jq also computes the minimum count, since fortio may
-# report a fractional rate.
+# jq accepts only a complete, consistent result and passes only whole
+# numbers to bash, whose arithmetic would evaluate any other text as an
+# expression and read an error inside `if` as false. jq also computes the
+# minimum count, since fortio may report a fractional rate.
 summary=$(jq -er --argjson percent "$minimum_percent" '
-  select((.DurationHistogram.Count | type) == "number"
-    and (.DurationHistogram.Max | type) == "number"
-    and (.ActualDuration | type) == "number"
-    and (.RetCodes | type) == "object" and all(.RetCodes[]; type == "number")
-    and ((.RequestedQPS | tonumber?) // null | type) == "number")
-  | (.RequestedQPS | tonumber) as $qps
-  | [ (.DurationHistogram.Count | floor),
-      (.RetCodes["200"] // 0 | floor),
+  def finite: type == "number" and (isinfinite | not) and (isnan | not);
+  def whole: finite and . >= 0 and . < 1e15 and . == floor;
+  ((.RequestedQPS | tonumber?) // null) as $qps
+  | select((.DurationHistogram.Count | whole) and .DurationHistogram.Count > 0
+    and (.DurationHistogram.Max | finite and . >= 0)
+    and (.ActualDuration | whole) and .ActualDuration > 0
+    and (.RetCodes | type == "object") and all(.RetCodes[]; whole)
+    and ([.RetCodes[]] | add) == .DurationHistogram.Count
+    and ($qps | finite and . > 0 and . < 1e6))
+  | [ .DurationHistogram.Count,
+      (.RetCodes["200"] // 0),
       (.DurationHistogram.Max * 1000 | round),
       (.ActualDuration / 1e9 | floor),
       $qps,
       (.ActualDuration / 1e9 * $qps * $percent / 100 | ceil),
       (.RetCodes | tojson) ]
   | @tsv' "$traffic/result.json") ||
-  fail_with_problems "fortio result $result_id lacks a numeric RequestedQPS, ActualDuration, RetCodes or DurationHistogram; it is kept at $traffic/result.json"
+  fail_with_problems "fortio result $result_id is malformed: it needs a positive whole DurationHistogram.Count, RetCodes that add up to it, a positive ActualDuration and a positive RequestedQPS; it is kept at $traffic/result.json"
 read -r count answered slowest_ms duration requested_qps minimum_count codes <<<"$summary"
+for value in "$count" "$answered" "$slowest_ms" "$duration" "$minimum_count"; do
+  [[ "$value" =~ ^[0-9]+$ ]] ||
+    fail_with_problems "fortio result $result_id gave '$value' where a whole number belongs; it is kept at $traffic/result.json"
+done
 
 printf 'fortio: %s of %s requests answered 200 over %ss; the slowest took %s ms\n' "$answered" "$count" "$duration" "$slowest_ms"
 if ((answered != count)); then
@@ -94,7 +105,9 @@ if diff -q "$traffic/agent-before" "$traffic/agent-after" >/dev/null; then
 else
   verdict="traffic held across the Cilium agent restart"
 fi
-kubectl --kubeconfig "$kubeconfig" delete namespace traffic-probe --timeout=2m
-cilium --kubeconfig "$kubeconfig" connectivity test --cleanup
+kubectl --kubeconfig "$kubeconfig" delete namespace traffic-probe --timeout=2m ||
+  fail "$verdict, but removing the traffic-probe namespace failed"
+cilium --kubeconfig "$kubeconfig" connectivity test --cleanup ||
+  fail "$verdict, but removing the cilium-test namespaces failed"
 rm -rf "$traffic"
 printf '%s\n' "$verdict"
