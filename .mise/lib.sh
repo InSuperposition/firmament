@@ -1,6 +1,19 @@
 # shellcheck shell=bash
 # Helpers shared by the mise file tasks in .mise/tasks. Source this file;
-# it defines functions only and changes no state when sourced.
+# apart from forget_git_repository_env below, it defines functions only.
+
+# Clears the variables that pin git to one repository (GIT_DIR,
+# GIT_WORK_TREE, GIT_INDEX_FILE and the rest git lists). Git exports them to
+# hooks, with absolute paths in a linked worktree, so a task started from a
+# hook would otherwise aim every git command it runs, including the clones
+# tofu makes to fetch modules, at the caller's repository and index. Tasks
+# find their repository from the working directory instead.
+forget_git_repository_env() {
+  local variables
+  mapfile -t variables < <(git rev-parse --local-env-vars)
+  unset "${variables[@]}"
+}
+forget_git_repository_env
 
 fail() {
   printf '%s\n' "$*" >&2

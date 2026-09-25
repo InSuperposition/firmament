@@ -11,6 +11,7 @@
 # `cilium hubble port-forward` listens on the port it is given, as the real
 # one does, until the first connection closes.
 setup_stubs() {
+  seal_git
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
   export MISE_PROJECT_ROOT="$root_directory"
   export FIRMAMENT_STATE_HOME="$BATS_TEST_TMPDIR/state"
@@ -24,6 +25,18 @@ setup_stubs() {
     stub "$tool"
   done
   PATH="$stubs:$PATH"
+}
+
+# Confines git to the stand-in repositories a test builds. It clears the
+# variables that pin git to one repository, which git exports to hooks, so a
+# test run from a hook cannot commit, reset or push in the caller's
+# repository. It ignores the user's and the system's git configuration, and
+# allows only local transports, so no test can reach a real remote.
+seal_git() {
+  local variables
+  mapfile -t variables < <(git rev-parse --local-env-vars)
+  unset "${variables[@]}"
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_ALLOW_PROTOCOL=file
 }
 
 stub() {

@@ -112,6 +112,15 @@ formats the staged files, fixing and restaging what it can. `pre-push`
 adds `tofu:validate` and `test`, each only when the pushed commits touch
 a file that can change its result.
 
+The hooks are safe in linked worktrees (`git worktree add`). Git hands a
+worktree's hooks `GIT_DIR`, `GIT_INDEX_FILE` and similar variables with
+absolute paths. Every task clears them when it starts (`.mise/lib.sh`),
+so tofu's module clones and `env:e2e` find the repository from their
+working directory. The bats suite also seals git (`seal_git` in
+`.mise/tests/stubs.bash`): it ignores your git config and allows only
+local remotes, so its stand-in repositories can never commit, reset or
+push in yours.
+
 Deferred work is tracked in [TODOS.md](TODOS.md).
 
 ## Uninstalling

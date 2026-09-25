@@ -208,3 +208,39 @@ setup() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"nothing listens on local port 1 after 1s"* ]]
 }
+
+# Runs a script with the variables git exports to a hook in the caller
+# repository, as a linked worktree's hook sees them. The script sources the
+# given file, runs the given command, then commits in a fresh repository of
+# its own. Prints the caller's and the scratch repository's commits.
+commit_as_if_from_hook() {
+  local source_file="$1" command="$2"
+  local caller="$BATS_TEST_TMPDIR/caller" scratch="$BATS_TEST_TMPDIR/scratch"
+  git init -q -b main "$caller"
+  mkdir -p "$scratch"
+  GIT_DIR="$caller/.git" GIT_WORK_TREE="$caller" GIT_INDEX_FILE="$caller/.git/index" \
+    bash -c 'source "$1"; $2; cd "$3" && git init -q -b main && git -c user.name=test -c user.email=test@example.test commit -q --allow-empty -m scratch' \
+    _ "$source_file" "$command" "$scratch"
+  printf 'caller: %s\n' "$(git -C "$caller" log --format=%s 2>/dev/null)"
+  printf 'scratch: %s\n' "$(git -C "$scratch" log --format=%s 2>/dev/null)"
+}
+
+@test "a task started from a hook commits in its own repository, not the caller's" {
+  run commit_as_if_from_hook "$root_directory/.mise/lib.sh" true
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "caller: " ]
+  [ "${lines[1]}" = "scratch: scratch" ]
+}
+
+@test "a test run from a hook commits in its own repository, not the caller's" {
+  run commit_as_if_from_hook "$root_directory/.mise/tests/stubs.bash" seal_git
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "caller: " ]
+  [ "${lines[1]}" = "scratch: scratch" ]
+}
+
+@test "tests cannot reach a remote over the network" {
+  run git ls-remote https://github.com/cilium/cilium.git
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"transport 'https' not allowed"* ]]
+}
