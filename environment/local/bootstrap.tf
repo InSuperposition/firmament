@@ -62,6 +62,11 @@ module "bootstrap_flux" {
   managed_resources = {
     runtime_info = {
       data = local.runtime_info
+      # A change, such as a new branch to follow, reaches the root
+      # Kustomization at once instead of at its next interval.
+      labels = {
+        "reconcile.fluxcd.io/watch" = "Enabled"
+      }
     }
   }
 
