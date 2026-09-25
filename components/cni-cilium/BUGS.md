@@ -344,6 +344,14 @@ The reply is in Hubble, with the ClusterIP in the translated field:
    and the Service scenarios pass no `AltDstIP` for the backend
    ([service.go#L62](https://github.com/cilium/cilium/blob/ef5d47de14d0/cilium-cli/connectivity/tests/service.go#L62)).
 
+Hubble's own output for one such reply, the SYN-ACK arriving at the
+client (`hubble observe -o json`, veth datapath, Service
+`10.105.81.168`, backend `10.244.0.159`, client `10.244.0.18`):
+
+```json
+{"trace_observation_point":"TO_ENDPOINT","IP":{"source":"10.244.0.159","source_xlated":"10.105.81.168","destination":"10.244.0.18"}}
+```
+
 So no reply flow can match `src=<ClusterIP>`. A second cause hides the
 request side too: with the chart's default `bpf.monitorAggregation:
 medium`, `emit_trace_notify()` drops every `TRACE_FROM_*` event
@@ -362,7 +370,8 @@ scenarios pass the backend as `AltDstIP`).
 1. Install Cilium 1.20.2 with `kubeProxyReplacement: true` and
    `socketLB.hostNamespaceOnly: true`, so pods use tc-level Service
    translation. We use k0s 1.36.4 on one node, `bpf.datapathMode:
-   netkit`, `bpf.masquerade: true`, Hubble Relay enabled.
+   netkit` (the same on `veth`), `bpf.masquerade: true`, Hubble Relay
+   enabled.
 2. `cilium hubble port-forward &`
 3. `cilium connectivity test --hubble-server localhost:4245 --test no-policies,allow-all-except-world,pod-to-itself-via-service`
 
@@ -433,8 +442,10 @@ Not attached. Available on request.
   because of the
   [OrbStack kernel request](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy).
   With socket LB on in pods the test fails the other way, as in #3255.
-- Not yet compared on the veth datapath; the source path above is shared
-  by veth and netkit.
+- Compared on 2026-09-25: the same four tests (7 of 311 actions) fail on
+  `bpf.datapathMode: veth` with every other setting unchanged, and with
+  `monitor-aggregation none` the same SYN-ACK requirement still fails on
+  veth. The cause does not depend on the datapath.
 - Evidence gathered 2026-09-24 with the versions above, OrbStack
   `2.2.3 (2020300)`, macOS 26.6.2 (arm64), Ubuntu 26.04.1.
 
