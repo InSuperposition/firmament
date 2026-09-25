@@ -15,8 +15,9 @@ so its title and body can be pasted into a new issue unchanged.
 
 ## Constraints
 
-- Reports are filed by the repo owner. The kernel request was filed on
-  2026-09-25; the others are not filed yet.
+- Reports are filed by the repo owner. The `orb delete` bug and the
+  kernel request were filed on 2026-09-25; the stall tracking entry is not
+  ready to file.
 - OrbStack's bug form asks for a private diagnostic report. Generate it
   with `orb report` at filing time; it is not stored here.
 - Re-run the duplicate search before filing; the searches below are dated.
@@ -27,7 +28,7 @@ so its title and body can be pasted into a new issue unchanged.
 | --- | --- |
 | Repository | [orbstack/orbstack](https://github.com/orbstack/orbstack/issues/new?template=bug_report.yml) |
 | Template | Bug report (`t/bug`) |
-| Status | Not filed |
+| Status | Filed 2026-09-25: [orbstack/orbstack#2712](https://github.com/orbstack/orbstack/issues/2712), reproduced again the same day on 2.2.3 |
 | Duplicate search | 2026-09-23: `orb delete ID`, `orb delete nil pointer`, `orb delete panic`, `delete.go panic`; no match |
 
 **Title:** `orb delete <machine ID> panics with nil pointer dereference; deleting by name works`
@@ -85,7 +86,8 @@ resolved, the CLI prints an error instead of panicking.
 
 ### Diagnostic report (REQUIRED)
 
-Run `orb report` and paste the output here when filing.
+Filed with the `orb report` summary; the full report went to OrbStack
+through its private diagnostic upload.
 
 ### Screenshots and additional context (optional)
 
