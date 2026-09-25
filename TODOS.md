@@ -445,6 +445,58 @@ and a lifecycle plan first.
 **Priority:** P4
 **Depends on:** Add Flux Operator and hand Cilium and Flux to Flux.
 
+### Plan metrics and dashboards (Prometheus and Grafana, or an alternative)
+
+**What:** Choose and plan a metrics store and dashboard tool for the
+cluster. Prometheus with Grafana is the default candidate, compared with
+the alternatives below. Logs and traces are follow-up decisions, not part
+of the first plan.
+
+**Why:** No component exposes or stores metrics today: the Cilium
+values enable no Hubble or agent metrics, and Flux reports only through
+its UI and events. There is no history to answer "when did this start"
+or to compare an upgrade run with the one before it. The eBPF research
+item also needs somewhere to send its output.
+
+**Context:** Versions checked on 2026-09-25:
+- **Prometheus and Grafana.** Prometheus v3.15.0, Grafana v13.2.2,
+  Prometheus Operator v0.94.1, and the `kube-prometheus-stack` chart
+  91.5.2, which bundles them with Alertmanager, node-exporter,
+  kube-state-metrics and default dashboards. The most widely used
+  stack; Cilium, Hubble, Flux and Flux Operator publish dashboards and
+  `ServiceMonitor` support for it. Cost: the full chart is heavy for one
+  VM, and Grafana has its own users and state to manage.
+- **VictoriaMetrics** (v1.152.0). Speaks the Prometheus scrape and query
+  formats, understands Prometheus Operator objects through its own
+  operator, and uses less memory and disk. Pairs with Grafana, or with
+  its own `vmui` for quick queries. VictoriaLogs (v1.52.0) covers logs
+  with the same approach.
+- **Perses** (v0.54.0, CNCF sandbox). Dashboards as code, stored as
+  custom resources, so Flux could own them; less mature than Grafana.
+- **Grafana Alloy** (v1.20.0) or the **OpenTelemetry Collector**
+  (v0.161.0) as the collector, if traces and logs join later. Loki
+  (v3.7.8) is Grafana's log store.
+- **Coroot** (v1.26.8). An all-in-one, eBPF-based tool with its own UI
+  and automatic service maps; overlaps with Hubble and the Tetragon
+  research.
+
+Questions for the plan:
+- Retention and footprint on the single OrbStack VM, which has no
+  per-machine CPU or memory limits (see `modules/vm-orb/machine.tf`).
+- Which metrics to turn on first: Cilium agent and operator, Hubble
+  flows, Flux controllers, k0s and node.
+- Whether `env:e2e` should record metrics for an upgrade run, for
+  example to compare fortio numbers with Hubble drop counts.
+- Lifecycle: stored data is lost when the VM is rebuilt, which every
+  `env:e2e` run does. Decide whether that is fine for a local cluster.
+- Dashboards as code (Grafana provisioning or Perses custom resources)
+  so Flux owns them, and how to open the UI (a mise task like the Hubble
+  and Flux UI tasks).
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** None
+
 ### Research eBPF observability and runtime security (Tetragon)
 
 **What:** Survey eBPF-based tools that add process, file and syscall
@@ -469,7 +521,8 @@ and can also block them.
   and most CO-RE tools), and which program types work alongside the
   netkit datapath this cluster's Cilium uses.
 - Decide where the output goes before adding a tool. The cluster has no
-  log or metrics store yet, so a first step may be CLI and UI only.
+  log or metrics store yet (see "Plan metrics and dashboards"), so a
+  first step may be CLI and UI only.
 - Research first; a plan with lifecycle, resource cost and policy
   examples comes later.
 
