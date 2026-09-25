@@ -9,8 +9,9 @@ environment="$usage_environment"
 
 # How long, in whole seconds, a new fortio run may take to start sending.
 readonly run_start_timeout="${FIRMAMENT_FORTIO_START_TIMEOUT:-30}"
-if [[ ! "$run_start_timeout" =~ ^[0-9]+$ ]]; then
-  fail "FIRMAMENT_FORTIO_START_TIMEOUT must be whole seconds, not '$run_start_timeout'"
+# A leading zero would make bash arithmetic read the value as octal.
+if [[ ! "$run_start_timeout" =~ ^(0|[1-9][0-9]*)$ ]]; then
+  fail "FIRMAMENT_FORTIO_START_TIMEOUT must be whole seconds without a leading zero, not '$run_start_timeout'"
 fi
 
 init_environment "$environment"

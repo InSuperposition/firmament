@@ -327,11 +327,15 @@ traffic_directory_of_local() {
   [ ! -e "$(traffic_directory_of_local)/fortio-run" ]
 }
 
-@test "cilium:traffic-start refuses a start timeout that is not whole seconds, before deploying anything" {
-  FIRMAMENT_FORTIO_START_TIMEOUT=30s run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"FIRMAMENT_FORTIO_START_TIMEOUT must be whole seconds, not '30s'"* ]]
-  [ ! -e "$CALLS" ]
+@test "cilium:traffic-start refuses a start timeout that is not plain whole seconds, before deploying anything" {
+  local timeout
+  for timeout in 30s 08; do
+    rm -f "$CALLS"
+    FIRMAMENT_FORTIO_START_TIMEOUT=$timeout run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"FIRMAMENT_FORTIO_START_TIMEOUT must be whole seconds without a leading zero, not '$timeout'"* ]]
+    [ ! -e "$CALLS" ]
+  done
 }
 
 @test "cilium:traffic-start stops before starting fortio when the conn-disrupt setup fails" {
