@@ -279,8 +279,8 @@ lines.
 | Repository | [cilium/cilium](https://github.com/cilium/cilium/issues/new?template=bug_report.yaml) (cilium-cli lives in `cilium-cli/`) |
 | Form | Bug report (`kind/community-report`, `kind/bug`, `needs/triage`) |
 | Status | Not filed |
-| Duplicate search | 2026-09-24, see below |
-| Related | cilium/cilium-cli#3255, cilium/cilium-cli#419, cilium/cilium-cli#52, cilium/cilium#32130, cilium/hubble#349 |
+| Duplicate search | 2026-09-24, widened 2026-09-25 (issues and PRs in cilium/cilium and cilium/cilium-cli), see below |
+| Related | cilium/cilium-cli#3255, #419, #2103, #183, #52; cilium/cilium#32130, #47936; cilium/hubble#349 |
 
 **Title:** `cilium-cli: connectivity test flow validation matches only IP.Source, so Service replies reverse-NATed in bpf_lxc never match (ClusterIP is in IP.SourceXlated)`
 
@@ -311,6 +311,18 @@ validation`, `service ip`, `ClusterIP`, `monitor aggregation` and
   representation.
 - cilium/cilium#16392, #16291 (2021, closed): CI flakes on the same test
   with older code.
+- cilium/cilium-cli#2103 (2023, closed as stale 2024-10-13, not merged):
+  "Fix flow validation for nodeport service tests" reworked
+  `AltDstPort` handling for NodePort scenarios. Its target was a wrong
+  IP family, but it shows the scenarios' alternate-address handling was
+  known to be incomplete.
+- cilium/cilium-cli#183 (merged 2021): marks the SYN-ACK requirement
+  `SkipOnAggregation`, so with aggregation on only the SYN half is
+  checked. That is why the chart default fails on the SYN instead.
+- cilium/cilium#47936 (2026-08, closed without merging): would make
+  `TO_OVERLAY` traces of SNATed NodePort traffic report the client in
+  `source` and the SNAT address in `source_xlated`, the same convention
+  that defeats the CLI's matching here.
 
 ### Version
 
@@ -424,6 +436,25 @@ The fourth failure is the next report.
 Hubble shows each failing connection complete: `FORWARDED` SYN,
 SYN-ACK, data and FIN between the client and the backend pod.
 
+The same pattern is in every scenario that validates flows against a
+translated frontend without passing the backend as `AltDstIP`, as of
+cilium-cli 0.20.1 (commit `7c4e5469a2fc`):
+
+- `pod-to-service` ([service.go#L62](https://github.com/cilium/cilium/blob/7c4e5469a2fc/cilium-cli/connectivity/tests/service.go#L62)), the one reported here
+- `pod-to-ingress-service` ([service.go#L119](https://github.com/cilium/cilium/blob/7c4e5469a2fc/cilium-cli/connectivity/tests/service.go#L119), [#L129](https://github.com/cilium/cilium/blob/7c4e5469a2fc/cilium-cli/connectivity/tests/service.go#L129))
+- `pod-to-local-nodeport` ([service.go#L271](https://github.com/cilium/cilium/blob/7c4e5469a2fc/cilium-cli/connectivity/tests/service.go#L271)), matching the missing SYN-ACK in cilium/cilium-cli#419
+- `outside-to-ingress-service` ([service.go#L342](https://github.com/cilium/cilium/blob/7c4e5469a2fc/cilium-cli/connectivity/tests/service.go#L342))
+- L7 Service scenarios ([service.go#L401](https://github.com/cilium/cilium/blob/7c4e5469a2fc/cilium-cli/connectivity/tests/service.go#L401))
+- `lrp` ([lrp.go#L166](https://github.com/cilium/cilium/blob/7c4e5469a2fc/cilium-cli/connectivity/tests/lrp.go#L166))
+- `pod-to-k8s-on-localhost` ([k8s.go#L40](https://github.com/cilium/cilium/blob/7c4e5469a2fc/cilium-cli/connectivity/tests/k8s.go#L40))
+
+`pod-to-hostport` already passes the backend as `AltDstIP`
+([host.go#L162](https://github.com/cilium/cilium/blob/7c4e5469a2fc/cilium-cli/connectivity/tests/host.go#L162)) and passes flow validation
+here, so the same approach, or matching `IP.source_xlated`, would fix
+the others. Only `pod-to-service` and `pod-to-itself-via-service` ran on
+our single-node cluster. The others are listed from the source and are
+unverified.
+
 ### Sysdump
 
 Not attached. Available on request.
@@ -458,7 +489,7 @@ Not attached. Available on request.
 | Repository | [cilium/cilium](https://github.com/cilium/cilium/issues/new?template=bug_report.yaml) (cilium-cli lives in `cilium-cli/`) |
 | Form | Bug report (`kind/community-report`, `kind/bug`, `needs/triage`) |
 | Status | Not filed |
-| Duplicate search | 2026-09-24, same searches as above plus `to-fqdns flow validation HTTP` |
+| Duplicate search | 2026-09-25, same searches as above plus `to-fqdns flow validation HTTP`, `to-fqdns HTTP flow` |
 | Introduced by | cilium/cilium#38750 (commit `62e3be9d8a`, merged 2025-04-23) |
 
 **Title:** `cilium-cli: to-fqdns flow validation expects an HTTP GET flow, but client-egress-to-fqdns.yaml has had no HTTP rule since #38750`
@@ -467,8 +498,17 @@ Not attached. Available on request.
 
 - [x] I have searched the existing issues
 
-No issue found. cilium/cilium#16096 (2021, closed) was a flake on the
-older `pod-to-world-toFQDNs` test.
+No issue found. Related but different:
+
+- cilium/cilium#16096 (2021, closed): a flake on the older
+  `pod-to-world-toFQDNs` test.
+- cilium/cilium#48794 (open, 2026-09-17): `to-fqdns` and other DNS-rule
+  tests fail on Gardener because its DNS listens on port 8053. That is
+  a traffic failure, not a flow-validation mismatch.
+
+Every other scenario that expects an HTTP flow passed flow validation
+in two full runs (netkit and veth), so `to-fqdns` is the only one whose
+expectation and policy disagree.
 
 ### Version
 
@@ -551,8 +591,8 @@ Not attached. Available on request.
 | Repository | [cilium/cilium](https://github.com/cilium/cilium/issues/new?template=bug_report.yaml) (cilium-cli lives in `cilium-cli/`) |
 | Form | Bug report (`kind/community-report`, `kind/bug`, `needs/triage`) |
 | Status | Not filed |
-| Duplicate search | 2026-09-24, `flow-validation warning`, `flow validation mode` |
-| Related | cilium/cilium-cli#340 (closed as stale 2024-10-13) |
+| Duplicate search | 2026-09-25, `flow-validation warning`, `flow validation mode`, `flow-validation disabled` (issues and PRs) |
+| Related | cilium/cilium-cli#340 (closed as stale 2024-10-13), #293, #307 |
 
 **Title:** `cilium-cli: --flow-validation=warning fails tests on flow mismatches exactly like strict; the modes differ only when Hubble is unreachable`
 
@@ -560,7 +600,8 @@ Not attached. Available on request.
 
 - [x] I have searched the existing issues
 
-cilium/cilium-cli#340 asked to clean up the tri-state
+cilium/cilium-cli#293 and #307 (merged 2022) added `disabled`, which
+made the mode a tri-state. cilium/cilium-cli#340 asked to clean up the tri-state
 `--flow-validation` because "different code paths check
 `params.FlowValidation` for different values"; it was closed as stale
 without a change.
@@ -625,10 +666,15 @@ Not attached. Available on request.
 ### Notes for this repo (not part of the three issues above)
 
 - `mise run cilium:conformance` forwards Hubble Relay, fails when Relay
-  is unreachable, and runs `--flow-validation warning`. Because of the
-  reports above, that mode fails 4 of 79 tests (7 of 311 actions) on
-  correct traffic, so `env:e2e` is red until the mode is decided. Options
-  under review: `disabled` with the Relay forward kept, or excluding the
-  four tests.
-- `strict` or `warning` would also need `bpf.monitorAggregation: none`
-  for the SYN half, which raises event volume on every node.
+  is unreachable, and runs `--flow-validation disabled`. Hubble still
+  records each action's flows and prints them for any action that
+  fails; only the flow assertions are off. Cilium's own CI runs the
+  same way.
+- Switch to `--flow-validation strict` once a cilium-cli release fixes
+  the Service reply matching and the `to-fqdns` expectation above.
+  Check each release: run the four tests (`no-policies`,
+  `allow-all-except-world`, `pod-to-itself-via-service`, `to-fqdns`)
+  with `--flow-validation strict` against a live cluster.
+- `strict` fails the same four tests (7 actions) with cilium-cli 0.20.0
+  and 0.20.1, on both `netkit` and `veth`. `monitor-aggregation none`
+  fixes only the SYN half, and would raise event volume on every node.
