@@ -95,8 +95,8 @@ real chart-value input.
 
 ### Prove Flux-owned upgrades with `env:e2e --from-branch`
 
-**What:** Run the first live upgrade test once a baseline where Flux owns
-Cilium is on main, and add a traffic probe.
+**What:** Run the first live upgrade test now that a baseline where Flux
+owns Cilium is on main.
 
 **Why:** `env:e2e --from-branch <branch>` exists and is tested offline,
 but it has never run live: every baseline before the Flux handoff
@@ -109,10 +109,15 @@ installs Cilium through k0s, and the task refuses those.
 - The upgrade lane already checks that the workloads in
   `environment/local/tests/upgrade-unaffected` (CoreDNS, metrics-server)
   keep their pod UIDs, container IDs and restart counts across the
-  switch, and `verify` reports health. It does not measure traffic, so it
-  claims no traffic continuity. Add a probe that runs through the whole
-  upgrade and shows no gap before claiming it; it needs a test workload,
-  which the read-only chainsaw suite cannot deploy.
+  switch, and `verify` reports health.
+- Traffic runs through the whole switch: `cilium:traffic-start` holds
+  cilium-cli conn-disrupt connections open and starts fortio at 100 new
+  connections a second through a ClusterIP Service, and
+  `cilium:traffic-check` fails on any broken connection or failed request.
+  Its last line, repeated in the run's final line, says whether the
+  traffic crossed a Cilium agent restart. A branch that leaves Cilium
+  alone passes with "continuity was not exercised", so the bump under
+  test must replace the agent pods for the run to prove continuity.
 - Accepted risks for the local cluster, to revisit before any non-local
   environment:
   - Flux follows the branch tip, not the commit `env:e2e` tested, so

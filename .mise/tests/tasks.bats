@@ -441,10 +441,14 @@ expect_traffic_check_failure() {
 
 # Records each mise call with the branch Flux would follow. FAIL_CALL fails
 # the matching call; ON_CALL runs ON_CALL_RUN just before the matching call.
+# cilium:traffic-check ends with its verdict, as the real task does.
 e2e_mise_stub() {
   cat >"$stubs/mise" <<'STUB'
 #!/usr/bin/env bash
 printf 'mise %s | branch=%s\n' "$*" "${FIRMAMENT_GIT_BRANCH:-}" >>"$CALLS"
+if [[ "$*" == "run cilium:traffic-check "* ]]; then
+  printf 'traffic held across the Cilium agent restart\n'
+fi
 if [[ "$*" == "${ON_CALL:-}" ]]; then
   eval "$ON_CALL_RUN"
 fi
@@ -569,15 +573,18 @@ mise run --yes env:destroy local" ]
   usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -eq 0 ]
   [[ "$output" == *"Baseline: origin/main at $(git -C "$MISE_PROJECT_ROOT" rev-parse origin/main)"* ]]
+  [[ "${lines[-1]}" == "env:e2e passed for local at $(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD): traffic held across the Cilium agent restart; the cluster is destroyed." ]]
   run grep '^mise ' "$CALLS"
-  [ "${#lines[@]}" -eq 7 ]
+  [ "${#lines[@]}" -eq 9 ]
   [ "${lines[0]}" = "mise run --yes env:destroy local | branch=feature/test" ]
   [[ "${lines[1]}" == "mise --cd "*"/baseline run env:apply local | branch=main" ]]
   [[ "${lines[2]}" == "mise --cd "*"/baseline run env:verify local | branch=main" ]]
-  [ "${lines[3]}" = "mise run env:apply local | branch=feature/test" ]
-  [ "${lines[4]}" = "mise run verify local | branch=feature/test" ]
-  [ "${lines[5]}" = "mise run cilium:conformance local | branch=feature/test" ]
-  [ "${lines[6]}" = "mise run --yes env:destroy local | branch=feature/test" ]
+  [ "${lines[3]}" = "mise run cilium:traffic-start local | branch=feature/test" ]
+  [ "${lines[4]}" = "mise run env:apply local | branch=feature/test" ]
+  [ "${lines[5]}" = "mise run verify local | branch=feature/test" ]
+  [ "${lines[6]}" = "mise run cilium:traffic-check local | branch=feature/test" ]
+  [ "${lines[7]}" = "mise run cilium:conformance local | branch=feature/test" ]
+  [ "${lines[8]}" = "mise run --yes env:destroy local | branch=feature/test" ]
   ! git -C "$MISE_PROJECT_ROOT" worktree list | grep -q /baseline
 }
 

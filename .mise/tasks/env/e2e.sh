@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Rebuild the environment's cluster from scratch from the pushed branch and run every live check against it; destroys the cluster and leaves it destroyed (about 17 minutes)"
+#MISE description="Rebuild the environment's cluster from scratch from the pushed branch and run every live check against it; with --from-branch, also checks that traffic survives the switch; destroys the cluster and leaves it destroyed (about 17 minutes)"
 #MISE confirm="Destroy environment {{usage.environment}}, rebuild it for the end-to-end run, and leave it destroyed?"
 #USAGE arg "[environment]" default="local" help="Directory name under environment/"
 #USAGE flag "--from-branch <branch>" help="Also test an upgrade: build the cluster from this branch, already merged into origin/main, then apply the checked-out branch over it"
@@ -10,8 +10,9 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 environment="$usage_environment"
 from_branch="${usage_from_branch:-}"
 
-#   destroy > [--from-branch: apply baseline > verify baseline > snapshot >]
-#   apply > verify > [--from-branch: compare snapshot >] conformance > destroy
+#   destroy > [--from-branch: apply baseline > verify baseline > snapshot >
+#   start traffic >] apply > verify > [--from-branch: compare snapshot >
+#   check traffic >] conformance > destroy
 #
 # Flux reads the branch from origin, so the run tests exactly the pushed
 # commit: it refuses a checkout that differs from origin, and fails if
@@ -21,7 +22,10 @@ from_branch="${usage_from_branch:-}"
 #
 # An upgrade run keeps the workloads tests/upgrade-unaffected lists on the
 # same pods and containers across the switch. Health is checked separately
-# by verify; traffic continuity is not measured, so the run never claims it.
+# by verify. Traffic started before the switch must survive it:
+# cilium:traffic-check fails on a broken connection or a failed request,
+# and its last line, repeated in the final one here, says whether the
+# traffic crossed a Cilium agent restart.
 
 # Runs one step, or stops the run and says how to clean up.
 step() {
@@ -114,6 +118,11 @@ workloads_unchanged() {
   fi
 }
 
+# Measures the traffic started before the switch, keeping its verdict line.
+check_traffic() {
+  mise run cilium:traffic-check "$environment" | tee "$scratch/traffic"
+}
+
 step mise run --yes env:destroy "$environment"
 if [[ -n "$from_branch" ]]; then
   # The baseline applies and verifies with its own configuration, tasks and
@@ -125,6 +134,7 @@ if [[ -n "$from_branch" ]]; then
   step env -u MISE_PROJECT_ROOT FIRMAMENT_GIT_BRANCH="$from_branch" MISE_TRUSTED_CONFIG_PATHS="$worktree" \
     mise --cd "$worktree" run env:verify "$environment"
   step snapshot_workloads
+  step mise run cilium:traffic-start "$environment"
 fi
 step mise run env:apply "$environment"
 if [[ -z "$from_branch" ]]; then
@@ -133,6 +143,8 @@ fi
 step mise run verify "$environment"
 if [[ -n "$from_branch" ]]; then
   step workloads_unchanged
+  # Before conformance, whose cleanup removes the conn-disrupt workloads.
+  step check_traffic
 fi
 step mise run cilium:conformance "$environment"
 step remote_tip_unchanged "$branch" "$tested"
@@ -140,4 +152,8 @@ if [[ -n "$from_branch" ]]; then
   step remote_tip_unchanged "$from_branch" "$baseline"
 fi
 step mise run --yes env:destroy "$environment"
-printf 'env:e2e passed for %s at %s; the cluster is destroyed.\n' "$environment" "$tested"
+if [[ -n "$from_branch" ]]; then
+  printf 'env:e2e passed for %s at %s: %s; the cluster is destroyed.\n' "$environment" "$tested" "$(tail -n 1 "$scratch/traffic")"
+else
+  printf 'env:e2e passed for %s at %s; the cluster is destroyed.\n' "$environment" "$tested"
+fi
