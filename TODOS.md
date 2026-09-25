@@ -127,6 +127,11 @@ installs Cilium through k0s, and the task refuses those.
     cluster-admin, and its image is selected by tag (v0.8.0); upstream
     offers no digest option, and mirroring it needs the registry deferred
     in "Run an OCI registry on the host".
+  - The fortio client that `cilium:traffic-start` deploys serves its REST
+    API, which can send requests anywhere, on port 8080 to anything in
+    the cluster that reaches the pod. It lives only between
+    `cilium:traffic-start` and a passing `cilium:traffic-check`, and a
+    failed check keeps it for inspection.
 - Known pinning exceptions, to revisit rather than fix blindly:
   - the upstream bootstrap Job image is selected by tag (v0.8.0);
   - k0s's own konnectivity, CoreDNS and metrics-server images run by tag;

@@ -7,8 +7,9 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
 environment="$usage_environment"
 
-# fortio's run state while it sends requests (StateRunning).
-readonly fortio_running=2
+# fortio's run state while it sends requests (StateRunning), and how long a
+# new run may take to reach it.
+readonly fortio_running=2 run_start_timeout="${FIRMAMENT_FORTIO_START_TIMEOUT:-30}"
 
 init_environment "$environment"
 claim_environment "$environment"
@@ -19,13 +20,12 @@ traffic=$(traffic_directory "$environment")
 rm -rf "$traffic"
 mkdir -p "$traffic"
 
+# A fortio run from an earlier traffic-start that stopped before writing
+# its state keeps sending until stopped; a new namespace starts without it.
+kubectl --kubeconfig "$kubeconfig" delete namespace traffic-probe --ignore-not-found
 kubectl --kubeconfig "$kubeconfig" apply -f "$MISE_PROJECT_ROOT/.mise/traffic/fortio.yaml"
 kubectl --kubeconfig "$kubeconfig" -n traffic-probe rollout status \
   deployment/fortio-server deployment/fortio-client --timeout=3m
-
-# cilium:traffic-check compares these pods with the ones it finds, to tell
-# whether the traffic crossed an agent restart.
-workload_identities "$kubeconfig" <(printf 'kube-system k8s-app=cilium\n') >"$traffic/agent-before"
 
 # Deploys client and server pairs whose clients exit, and so restart, when a
 # reply on their open connection takes longer than 1 s, then records each
@@ -38,23 +38,25 @@ cilium --kubeconfig "$kubeconfig" connectivity test --conn-disrupt-test-setup --
 # cilium:traffic-check stops the run. The REST API reads string values only.
 reply=$(fortio_rest "$kubeconfig" \
   -payload '{"url":"http://fortio-server:8080/echo","qps":"100","t":"on","timeout":"1s","connection-reuse":"1:1","c":"4","async":"on","save":"on"}' \
-  http://localhost:8080/fortio/rest/run)
+  rest/run)
 run_id=$(jq -er '.RunID // empty' <<<"$reply") || fail "fortio did not start a run; it replied: $reply"
 
 # fortio replies before the run begins, and the run must be sending
 # requests before whatever cilium:traffic-check measures starts.
-deadline=$((SECONDS + 30))
+deadline=$((SECONDS + run_start_timeout))
 until
-  state=$(fortio_rest "$kubeconfig" "http://localhost:8080/fortio/rest/status?runid=$run_id" |
+  state=$(fortio_rest "$kubeconfig" "rest/status?runid=$run_id" |
     jq -r --arg run "$run_id" '.Statuses[$run].State // empty')
   [[ "$state" == "$fortio_running" ]]
 do
   if ((SECONDS >= deadline)); then
-    fail "fortio run $run_id is not running after 30s (state '${state:-none}')"
+    fail "fortio run $run_id is not running after ${run_start_timeout}s (state '${state:-none}')"
   fi
   sleep 1
 done
-date +%s >"$traffic/running-since"
+# Taken while both kinds of traffic run: cilium:traffic-check compares these
+# pods with the ones it finds, so only a restart under traffic counts.
+workload_identities "$kubeconfig" <(printf 'kube-system k8s-app=cilium\n') >"$traffic/agent-before"
 # Written last: cilium:traffic-check reads a started run only from this file.
 printf '%s\n' "$run_id" >"$traffic/fortio-run"
 printf 'Traffic is running (fortio run %s). Measure it with: mise run cilium:traffic-check %s\n' "$run_id" "$environment"

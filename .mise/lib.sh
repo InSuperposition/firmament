@@ -264,9 +264,10 @@ refuse_k0s_charts() {
   fi
   errors=$(mktemp)
   if ! charts=$(kubectl --kubeconfig "$kubeconfig" get charts.helm.k0sproject.io -A -o name --request-timeout=10s 2>"$errors"); then
-    fail "cannot tell whether k0s installs Helm charts on this cluster:"$'\n'"$(cat "$errors")"$'\n'"Start the machine, or rebuild it: mise run --yes env:destroy $1, then mise run env:apply $1"
+    charts=$(cat "$errors")
     rm -f "$errors"
-    return 1
+    fail "cannot tell whether k0s installs Helm charts on this cluster:"$'\n'"$charts"$'\n'"Start the machine, or rebuild it: mise run --yes env:destroy $1, then mise run env:apply $1"
+    return
   fi
   rm -f "$errors"
   if [[ -n "$charts" ]]; then
@@ -296,18 +297,20 @@ traffic_directory() {
 }
 
 # Sends one request to the fortio REST API in the traffic-probe client pod
-# and prints the reply body. Arguments go to `fortio curl`, the URL last.
-# fortio curl writes the reply headers to stderr, so stderr is shown only
-# when the call fails.
+# and prints the reply body. The last argument is the path under /fortio/,
+# the ones before it go to `fortio curl`. fortio curl writes the reply
+# headers to stderr, so stderr is shown only when the call fails.
 fortio_rest() {
-  local kubeconfig="$1" errors reply
+  local kubeconfig="$1" errors reply url
   shift
+  url="http://localhost:8080/fortio/${*: -1}"
   errors=$(mktemp)
   if ! reply=$(kubectl --kubeconfig "$kubeconfig" -n traffic-probe exec deployment/fortio-client -- \
-    fortio curl -quiet -timeout 30s "$@" 2>"$errors"); then
-    fail "fortio did not answer ${*: -1}:"$'\n'"$(cat "$errors")"
+    fortio curl -quiet -timeout 30s "${@:1:$#-1}" "$url" 2>"$errors"); then
+    reply=$(cat "$errors")
     rm -f "$errors"
-    return 1
+    fail "fortio did not answer $url:"$'\n'"$reply"
+    return
   fi
   rm -f "$errors"
   printf '%s\n' "$reply"
