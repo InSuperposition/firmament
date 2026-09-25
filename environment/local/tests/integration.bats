@@ -124,6 +124,12 @@ load setup.bash
   [ "$(yq -r '.managedResources.runtimeInfo.data.environment' <<<"$output")" = local ]
 }
 
+@test "makes Flux follow a new branch as soon as the runtime values change" {
+  run bootstrap_values
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.managedResources.runtimeInfo.labels["reconcile.fluxcd.io/watch"]' <<<"$output")" = Enabled ]
+}
+
 @test "runs the bootstrap Job on the host network, straight to the API server" {
   run bootstrap_values
   [ "$status" -eq 0 ]

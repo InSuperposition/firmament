@@ -131,6 +131,24 @@ setup() {
   [[ "$output" == *"no node registered with the API server within 0s"* ]]
 }
 
+@test "counts the cilium release current when it runs the ConfigMap's values in any key order" {
+  CILIUM_VALUES=$'# Chart values.\nb:\n  d: 2\n  c: 1\na: "1.20"' \
+    RELEASE_VALUES=$'a: "1.20"\nb:\n  c: 1\n  d: 2' \
+    run wait_for_cilium_values /kubeconfig 0 0
+  [ "$status" -eq 0 ]
+}
+
+@test "waits while the cilium release runs other values than the ConfigMap" {
+  CILIUM_VALUES='a: 2' RELEASE_VALUES='a: 1' run wait_for_cilium_values /kubeconfig 0 0
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the cilium release does not run the values in the cilium-values ConfigMap after 0s"* ]]
+}
+
+@test "never counts an empty cilium-values ConfigMap as deployed" {
+  CILIUM_VALUES='' RELEASE_VALUES='' run cilium_values_deployed /kubeconfig
+  [ "$status" -ne 0 ]
+}
+
 @test "fails for an output the state has no value for, instead of printing nothing" {
   NO_OUTPUTS=1 run environment_output local kubeconfig_path
   [ "$status" -ne 0 ]

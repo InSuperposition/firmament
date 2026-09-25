@@ -6,8 +6,11 @@
 # `kubectl get nodes -o name` prints, $PODS names the file whose JSON
 # `kubectl get pods` prints, and $K0S_CHARTS is what `kubectl get
 # charts.helm.k0sproject.io` prints; $K0S_CHARTS_ERROR makes it fail with
-# that message instead. $NO_OUTPUTS makes `tofu output` print nothing, as
-# after a destroy, and $OUTPUT_ERROR makes it fail with that message.
+# that message instead. $CILIUM_VALUES is the values.yaml the cilium-values
+# ConfigMap holds and $RELEASE_VALUES what `helm get values cilium` prints;
+# both default to the same values, so the release runs what Flux applied.
+# $NO_OUTPUTS makes `tofu output` print nothing, as after a destroy, and
+# $OUTPUT_ERROR makes it fail with that message.
 # `cilium hubble port-forward` listens on the port it is given, as the real
 # one does, until the first connection closes.
 setup_stubs() {
@@ -21,7 +24,7 @@ setup_stubs() {
   real_mise=$(command -v mise)
   stubs="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$stubs"
-  for tool in tofu cilium kubectl chainsaw orb bats mise; do
+  for tool in tofu cilium kubectl helm chainsaw orb bats mise; do
     stub "$tool"
   done
   PATH="$stubs:$PATH"
@@ -56,7 +59,9 @@ case "\$*" in
     printf '%s' "\${K0S_CHARTS:-}" ;;
   *"hubble port-forward"*) exec nc -l 127.0.0.1 "\${@: -1}" >/dev/null ;;
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
-  "tasks ls --name-only") printf '%s\\n' a:verify b:test k0s:verify ;;
+  *"get configmap cilium-values "*) printf '%s\\n' "\${CILIUM_VALUES-a: 1}" ;;
+  *"get values cilium "*) printf '%s\\n' "\${RELEASE_VALUES-a: 1}" ;;
+  "tasks ls --name-only") printf '%s\\n' a:verify b:test env:verify k0s:verify ;;
 esac
 exit 0
 STUB
