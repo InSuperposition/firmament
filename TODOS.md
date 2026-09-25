@@ -147,6 +147,38 @@ installs Cilium through k0s, and the task refuses those.
 **Priority:** P3
 **Depends on:** The Flux handoff merged to main.
 
+### Plan fault injection with Chaos Mesh
+
+**What:** Hold a planning session on adding
+[Chaos Mesh](https://chaos-mesh.org/) as a Flux component that injects
+faults, with the upgrade traffic probes (cilium-cli conn-disrupt and
+fortio) as the measurement.
+
+**Why:** The traffic probes only run during `env:e2e --from-branch`,
+which takes about 17 minutes and needs a second branch. A `PodChaos` that
+kills the Cilium agent pod causes the same agent restart in seconds, so
+continuity could be checked on demand. The same setup could later kill a
+Flux controller mid-reconcile or delay the API server, then check that
+the cluster recovers.
+
+**Context:**
+- Chaos Mesh v2.8.4 (2026-08-18), Apache-2.0, CNCF incubating. It
+  installs by Helm chart, so Flux owns it, not mise.
+- It injects faults but does not measure traffic. Its only built-in
+  check, the Workflow `StatusCheck`, is HTTP only and runs at most once a
+  second (`intervalSeconds` minimum 1), so it cannot replace the probes.
+- Its `chaos-daemon` runs privileged on every node and needs k0s's
+  containerd socket path (`/run/k0s/containerd.sock`), not the default.
+- `NetworkChaos` shapes traffic with `tc netem` inside the pod's network
+  namespace. Chaos Mesh's source never mentions netkit, which this
+  cluster's Cilium datapath uses; check that it works before relying on
+  it.
+
+**Effort:** M
+**Priority:** P4
+**Depends on:** The upgrade traffic probes (conn-disrupt and fortio)
+merged to main.
+
 ### Make destroy and apply deterministic by holding less state
 
 **What:** Decide how `env:destroy` and `env:apply` stay correct when a
