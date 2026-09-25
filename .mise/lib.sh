@@ -319,11 +319,12 @@ wait_for_cilium_values() {
   done
 }
 
-# Waits until the cluster runs what was just applied. The first Cilium wait
-# retries while k0s restarts the API server after apply, whereas kubectl
-# fails on the first refused connection. Flux then reports its own
-# reconcile and the Cilium release, and Cilium is checked again on the pods
-# an upgrade rolled out.
+# Waits until the cluster is healthy after an apply. The first Cilium wait
+# retries while k0s restarts the API server, whereas kubectl fails on the
+# first refused connection. Then the FluxInstance and the Cilium release
+# must be Ready, and Cilium is checked again in case helm-controller rolled
+# its pods meanwhile. It does not wait for Flux to apply the pushed commit;
+# env:verify does, and cilium:verify then checks the release it deploys.
 wait_for_cluster() {
   local kubeconfig
   kubeconfig=$(environment_kubeconfig "$1") || return
