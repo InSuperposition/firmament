@@ -15,7 +15,8 @@ so its title and body can be pasted into a new issue unchanged.
 
 ## Constraints
 
-- Reports are filed by the repo owner. Nothing here has been filed yet.
+- Reports are filed by the repo owner. The kernel request was filed on
+  2026-09-25; the others are not filed yet.
 - OrbStack's bug form asks for a private diagnostic report. Generate it
   with `orb report` at filing time; it is not stored here.
 - Re-run the duplicate search before filing; the searches below are dated.
@@ -106,7 +107,7 @@ to the real OrbStack ID, `env:destroy` would hit this crash.
 | --- | --- |
 | Repository | [orbstack/orbstack](https://github.com/orbstack/orbstack/issues/new?template=feature_request.md) |
 | Template | Feature request (`t/feature`) |
-| Status | Not filed |
+| Status | Filed 2026-09-25: [orbstack/orbstack#2711](https://github.com/orbstack/orbstack/issues/2711) |
 | Duplicate search | 2026-09-23: `INET_DIAG_DESTROY`, `INET_DIAG`, `socket destroy`, `sock_destroy`, `netkit`, `cilium`, `kernel config`; no match |
 | Related Cilium bug | [cni-cilium/BUGS.md](../../components/cni-cilium/BUGS.md#socket-termination-disabled-when-only-the-netlink-destroy-path-is-missing) |
 
@@ -186,7 +187,7 @@ Major distribution and platform kernels already enable it:
 - Cilium's BPF socket destroyer, which uses the `bpf_sock_destroy` kfunc
   and already works on this kernel. Cilium 1.20 disables the whole
   feature when the netlink check fails, so it never reaches that path.
-  That is being reported to Cilium separately. Enabling this option fixes
+  Reported to Cilium as cilium/cilium#49009. Enabling this option fixes
   Cilium today, and fixes `ss -K` and other netlink users regardless.
 - Disabling Cilium's socket-level load balancing. This loses connect-time
   Service translation for every pod, which is worse than the stale-socket

@@ -13,8 +13,8 @@ so its title and body can be pasted into a new issue unchanged.
 
 ## Constraints
 
-- Reports are filed by the repo owner. Nothing here has been filed yet.
-- Re-run the duplicate search before filing; the searches below are dated.
+- Reports are filed by the repo owner. All four below were filed on
+  2026-09-25, after re-running the duplicate searches.
 
 ## Socket termination disabled when only the netlink destroy path is missing
 
@@ -22,7 +22,7 @@ so its title and body can be pasted into a new issue unchanged.
 | --- | --- |
 | Repository | [cilium/cilium](https://github.com/cilium/cilium/issues/new?template=bug_report.yaml) |
 | Form | Bug report (`kind/community-report`, `kind/bug`, `needs/triage`) |
-| Status | Not filed |
+| Status | Filed 2026-09-25: [cilium/cilium#49009](https://github.com/cilium/cilium/issues/49009) |
 | Duplicate search | 2026-09-23, see below |
 | Related OrbStack request | [vm-orb/BUGS.md](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy) |
 
@@ -278,7 +278,7 @@ lines.
 | --- | --- |
 | Repository | [cilium/cilium](https://github.com/cilium/cilium/issues/new?template=bug_report.yaml) (cilium-cli lives in `cilium-cli/`) |
 | Form | Bug report (`kind/community-report`, `kind/bug`, `needs/triage`) |
-| Status | Not filed |
+| Status | Filed 2026-09-25: [cilium/cilium#49011](https://github.com/cilium/cilium/issues/49011) |
 | Duplicate search | 2026-09-24, widened 2026-09-25 (issues and PRs in cilium/cilium and cilium/cilium-cli), see below |
 | Related | cilium/cilium-cli#3255, #419, #2103, #183, #52; cilium/cilium#32130, #47936; cilium/hubble#349 |
 
@@ -429,7 +429,7 @@ so these expectations are not exercised.
   🟥 to-fqdns/pod-to-world:http-to-one.one.one.one.-ipv4-0: ... Flow validation failed
 ```
 
-The fourth failure is the next report.
+The fourth failure, `to-fqdns`, has a different cause: #49010.
 
 ### Anything else?
 
@@ -488,7 +488,7 @@ Not attached. Available on request.
 | --- | --- |
 | Repository | [cilium/cilium](https://github.com/cilium/cilium/issues/new?template=bug_report.yaml) (cilium-cli lives in `cilium-cli/`) |
 | Form | Bug report (`kind/community-report`, `kind/bug`, `needs/triage`) |
-| Status | Not filed |
+| Status | Filed 2026-09-25: [cilium/cilium#49010](https://github.com/cilium/cilium/issues/49010) |
 | Duplicate search | 2026-09-25, same searches as above plus `to-fqdns flow validation HTTP`, `to-fqdns HTTP flow` |
 | Introduced by | cilium/cilium#38750 (commit `62e3be9d8a`, merged 2025-04-23) |
 
@@ -590,7 +590,7 @@ Not attached. Available on request.
 | --- | --- |
 | Repository | [cilium/cilium](https://github.com/cilium/cilium/issues/new?template=bug_report.yaml) (cilium-cli lives in `cilium-cli/`) |
 | Form | Bug report (`kind/community-report`, `kind/bug`, `needs/triage`) |
-| Status | Not filed |
+| Status | Filed 2026-09-25: [cilium/cilium#49012](https://github.com/cilium/cilium/issues/49012) |
 | Duplicate search | 2026-09-25, `flow-validation warning`, `flow validation mode`, `flow-validation disabled` (issues and PRs) |
 | Related | cilium/cilium-cli#340 (closed as stale 2024-10-13), #293, #307 |
 
