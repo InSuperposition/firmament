@@ -21,6 +21,7 @@ Versions were checked on 2026-09-25.
 | Metrics store + dashboards | Prometheus + Grafana or an alternative | Prometheus v3.15.0, Grafana v13.2.2 | planning | "Plan metrics and dashboards" |
 | Kyverno | admission policy | v1.19.1 | coming | "Plan Kyverno" |
 | Crossplane | external resources | v2.4.2 | coming | "Plan Crossplane" |
+| CubeFS | distributed storage: CSI volumes, S3 | v3.6.0 | coming | "Plan CubeFS storage" |
 | Tetragon | eBPF process and syscall events | v1.7.1 | research | "Research eBPF observability and runtime security" |
 | KubeArmor | runtime enforcement | v1.7.5 | when an app runs | "Plan KubeArmor when it becomes relevant" |
 | Chaos Mesh | fault injection | v2.8.4 | planning | "Plan fault injection with Chaos Mesh" |
@@ -626,6 +627,56 @@ namespace, and its images belong in the OCI registry cache.
 **Priority:** P4
 **Depends on:** A real app running on the cluster, for the app phase.
 The platform phase needs only "Plan metrics and dashboards".
+
+### Plan CubeFS storage
+
+**What:** Plan CubeFS as the cluster's storage: persistent volumes
+through its CSI driver, and possibly S3-compatible object storage
+through its ObjectNode.
+
+**Why:** Nothing in the cluster has storage beyond the node's local
+disk. The opt-in persistence in "Plan metrics and dashboards", and any
+real app, will need volumes that outlive a pod and can later survive a
+node.
+
+**Context:**
+- CubeFS v3.6.0 (2026-08-12), Apache-2.0, a CNCF project. Its parts:
+  master (cluster metadata, Raft), MetaNode, DataNode, the optional
+  BlobStore (erasure coding), ObjectNode (S3 API) and a FUSE client.
+  Pods mount volumes through the CSI driver (`cubefs/cubefs-csi`).
+- Packaging risk: the official chart (`cubefs/cubefs-helm`) is at
+  version 3.2.0 (app 3.2.0.110.0), last changed 2025-03-31, far behind
+  v3.6.0. Check whether a maintained chart or operator exists. If not,
+  decide between vendoring and updating the chart, or writing the
+  manifests as a component. Flux owns it either way.
+- Single-node fit: the master and the replicas expect several nodes.
+  Check what a one-node alpha setup needs (replica count 1, directories
+  instead of raw disks, memory), and whether the OrbStack VM exposes
+  `/dev/fuse` for the client.
+- Alpha defaults: data lives inside the VM and is lost on rebuild. Only
+  an opt-in run keeps it, the same rule as the metrics store.
+- Plan the lifecycle (bootstrap, restart, VM rebuild, disaster), and
+  what happens to volumes when `env:e2e` destroys the cluster.
+
+**Integrates with:**
+- "Plan metrics and dashboards" and "Plan telemetry with OpenTelemetry":
+  opt-in persistence can use a CubeFS volume, and CubeFS exposes
+  Prometheus metrics for the Collector to scrape.
+- "Plan Kyverno": its CSI node plugin and client run privileged, so they
+  need exemptions.
+- "Plan Crossplane": decide whether Crossplane ever provisions CubeFS
+  volumes or buckets, or leaves that to the CSI driver.
+- "Add a second environment": real replication needs several nodes, so
+  a multi-node environment is where CubeFS is tested properly.
+- "Give each worktree its own live environment" and "Shorten the
+  single-pass e2e lane": several storage services add memory, pulls
+  and start-up time.
+- "Run an OCI registry on the host": its ObjectNode could later back a
+  registry or other S3 users.
+
+**Effort:** L
+**Priority:** P4
+**Depends on:** A first consumer that needs persistent volumes.
 
 ### Research eBPF observability and runtime security (Tetragon)
 
