@@ -99,6 +99,37 @@ init_environment() {
     -backend-config="path=$state/terraform.tfstate" >/dev/null
 }
 
+# Prints the checkout this run belongs to. Every worktree of the repository
+# shares one state directory and one machine per environment; a run that
+# starts others from another checkout (env:e2e's baseline) exports
+# FIRMAMENT_WORKTREE so they count as the same owner.
+current_worktree() {
+  printf '%s\n' "${FIRMAMENT_WORKTREE:-${MISE_PROJECT_ROOT:?run this through mise}}"
+}
+
+# Records this checkout as the owner of an environment's live cluster, or
+# fails when another existing worktree owns it, so one worktree cannot
+# rebuild or destroy the cluster another is testing. A recorded worktree
+# that no longer exists does not count. FIRMAMENT_TAKE_OVER=1 claims it
+# anyway.
+claim_environment() {
+  local environment="$1" worktree owner_file owner
+  worktree=$(current_worktree) || return
+  owner_file="$(state_directory "$environment")/owner"
+  owner=$(cat "$owner_file" 2>/dev/null) || owner=""
+  if [[ -n "$owner" && "$owner" != "$worktree" && -d "$owner" && "${FIRMAMENT_TAKE_OVER:-}" != 1 ]]; then
+    fail "environment '$environment' belongs to the worktree $owner; run this there, or set FIRMAMENT_TAKE_OVER=1 to take it over"
+    return
+  fi
+  mkdir -p "$(dirname -- "$owner_file")"
+  printf '%s\n' "$worktree" >"$owner_file"
+}
+
+# Forgets the owner of an environment whose cluster was destroyed.
+release_environment() {
+  rm -f "$(state_directory "$1")/owner"
+}
+
 # Initializes an OpenTofu root or module without a backend, for checks that
 # never read or write state. Providers install only as the committed lock
 # file records them.

@@ -14,6 +14,8 @@ FIRMAMENT_GIT_BRANCH=$(git_branch 2>/dev/null) || FIRMAMENT_GIT_BRANCH=main
 export FIRMAMENT_GIT_BRANCH
 
 init_environment "$environment"
+claim_environment "$environment"
 # Destroying the machine takes the bootstrap, which depends on it, along.
 forget_bootstrap "$environment"
 tofu_in_environment "$environment" destroy -input=false -auto-approve -target=module.vm_orb
+release_environment "$environment"

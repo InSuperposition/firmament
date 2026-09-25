@@ -8,5 +8,6 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 environment="$usage_environment"
 
 init_environment "$environment"
+claim_environment "$environment"
 tofu_in_environment "$environment" apply -input=false -auto-approve -target=module.vm_orb
 orb info "$(environment_output "$environment" machine_name)" --format json

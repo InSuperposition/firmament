@@ -189,6 +189,28 @@ the exact revision, `env:apply` alone does not.
 **Priority:** P3
 **Depends on:** Add Flux Operator and hand Cilium and Flux to Flux.
 
+### Give each worktree its own live environment
+
+**What:** Derive the OrbStack machine name, the state directory and the
+kubeconfig path from the worktree, so several worktrees can each run a
+live cluster at once.
+
+**Why:** Every worktree shares one state directory and one machine per
+environment. The ownership guard (`claim_environment` in `.mise/lib.sh`)
+stops one worktree from rebuilding or destroying another's cluster, but
+live testing stays serial: one cluster, one `env:e2e`, at a time.
+
+**Context:** The name would need to reach `vm_orb` (machine name),
+`orch_k0s` (host and API address), `FIRMAMENT_STATE_HOME` and the
+kubeconfig paths in each `environment/<env>/mise.toml`. Each machine
+uses about 1.5 GB of memory, so decide first how many can run at once on
+the host. Worktrunk's `{{ branch | hash_port }}` shows one way to derive
+stable per-branch values.
+
+**Effort:** M
+**Priority:** P4
+**Depends on:** None.
+
 ### Add a second environment
 
 **What:** Add a second `environment/<env>/` beside `local`, for whatever

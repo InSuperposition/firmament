@@ -244,3 +244,54 @@ commit_as_if_from_hook() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"transport 'https' not allowed"* ]]
 }
+
+owner_file() {
+  printf '%s/environment/local/owner\n' "$FIRMAMENT_STATE_HOME"
+}
+
+# Records another worktree, which exists, as the owner of the local environment.
+owned_by_other_worktree() {
+  mkdir -p "$BATS_TEST_TMPDIR/other-worktree" "$(dirname -- "$(owner_file)")"
+  printf '%s\n' "$BATS_TEST_TMPDIR/other-worktree" >"$(owner_file)"
+}
+
+@test "records the checkout that claims an environment as its owner" {
+  run claim_environment local
+  [ "$status" -eq 0 ]
+  [ "$(cat "$(owner_file)")" = "$MISE_PROJECT_ROOT" ]
+}
+
+@test "refuses an environment another existing worktree owns" {
+  owned_by_other_worktree
+  run claim_environment local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"environment 'local' belongs to the worktree $BATS_TEST_TMPDIR/other-worktree"*"FIRMAMENT_TAKE_OVER=1"* ]]
+  [ "$(cat "$(owner_file)")" = "$BATS_TEST_TMPDIR/other-worktree" ]
+}
+
+@test "claims an environment whose owning worktree no longer exists" {
+  owned_by_other_worktree
+  rmdir "$BATS_TEST_TMPDIR/other-worktree"
+  run claim_environment local
+  [ "$status" -eq 0 ]
+  [ "$(cat "$(owner_file)")" = "$MISE_PROJECT_ROOT" ]
+}
+
+@test "takes over another worktree's environment when asked" {
+  owned_by_other_worktree
+  FIRMAMENT_TAKE_OVER=1 run claim_environment local
+  [ "$status" -eq 0 ]
+  [ "$(cat "$(owner_file)")" = "$MISE_PROJECT_ROOT" ]
+}
+
+@test "counts the steps of a run as the checkout that started it" {
+  owned_by_other_worktree
+  FIRMAMENT_WORKTREE="$BATS_TEST_TMPDIR/other-worktree" run claim_environment local
+  [ "$status" -eq 0 ]
+}
+
+@test "forgets the owner of a destroyed environment" {
+  claim_environment local
+  release_environment local
+  [ ! -e "$(owner_file)" ]
+}

@@ -8,6 +8,7 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 environment="$usage_environment"
 
 init_environment "$environment"
+claim_environment "$environment"
 tofu_in_environment "$environment" apply -input=false -auto-approve -target=module.orch_k0s -target=local_sensitive_file.kubeconfig
 kubeconfig=$(environment_kubeconfig "$environment")
 wait_for_node "$kubeconfig"

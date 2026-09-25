@@ -58,6 +58,10 @@ remote_tip_unchanged() {
 }
 
 environment_directory "$environment" >/dev/null
+# Every step, the baseline's included, runs as this checkout.
+FIRMAMENT_WORKTREE=$(current_worktree)
+export FIRMAMENT_WORKTREE
+claim_environment "$environment"
 branch=$(git_branch)
 git -C "$MISE_PROJECT_ROOT" fetch --quiet origin
 require_pushed_checkout "$branch"

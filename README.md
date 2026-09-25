@@ -112,7 +112,26 @@ formats the staged files, fixing and restaging what it can. `pre-push`
 adds `tofu:validate` and `test`, each only when the pushed commits touch
 a file that can change its result.
 
-The hooks are safe in linked worktrees (`git worktree add`). Git hands a
+Deferred work is tracked in [TODOS.md](TODOS.md).
+
+### Worktrees
+
+Create worktrees with [Worktrunk](https://worktrunk.dev):
+`wt switch --create <branch>`. Its `pre-start` hook
+([.config/wt.toml](.config/wt.toml)) runs `mise install` in the new
+worktree; approve it once with `wt config approvals add`. For a plain
+`git worktree add`, run `mise install` in the new worktree yourself. mise
+shares trust with the main checkout, so no `mise trust` is needed.
+
+Every worktree shares one state directory and one machine per
+environment, so only one live cluster exists at a time. The tasks that
+change an environment (`*:apply`, `*:destroy`, `env:e2e`,
+`cilium:conformance`) record the worktree that owns it, and refuse to
+run from another worktree while the owner exists. Run the task from the
+owning worktree, destroy the cluster there, or set
+`FIRMAMENT_TAKE_OVER=1` to take it over.
+
+The hooks are safe in linked worktrees. Git hands a
 worktree's hooks `GIT_DIR`, `GIT_INDEX_FILE` and similar variables with
 absolute paths. Every task clears them when it starts (`.mise/lib.sh`),
 so tofu's module clones and `env:e2e` find the repository from their
@@ -120,8 +139,6 @@ working directory. The bats suite also seals git (`seal_git` in
 `.mise/tests/stubs.bash`): it ignores your git config and allows only
 local remotes, so its stand-in repositories can never commit, reset or
 push in yours.
-
-Deferred work is tracked in [TODOS.md](TODOS.md).
 
 ## Uninstalling
 

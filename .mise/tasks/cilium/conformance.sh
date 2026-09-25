@@ -10,6 +10,7 @@ environment="$usage_environment"
 hubble_port="${usage_hubble_port:-4245}"
 
 init_environment "$environment"
+claim_environment "$environment"
 kubeconfig=$(environment_kubeconfig "$environment")
 # The suite reaches Hubble Relay only on a local address and opens no
 # port-forward itself. Without one it disables flow validation and still

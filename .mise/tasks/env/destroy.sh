@@ -14,5 +14,7 @@ FIRMAMENT_GIT_BRANCH=$(git_branch 2>/dev/null) || FIRMAMENT_GIT_BRANCH=main
 export FIRMAMENT_GIT_BRANCH
 
 init_environment "$environment"
+claim_environment "$environment"
 forget_bootstrap "$environment"
 tofu_in_environment "$environment" destroy -input=false -auto-approve
+release_environment "$environment"

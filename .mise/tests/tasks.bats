@@ -64,6 +64,23 @@ run_task() {
   done
 }
 
+@test "every task that changes an environment claims it first" {
+  local script
+  for script in "$root_directory"/.mise/tasks/*/apply.sh "$root_directory"/.mise/tasks/*/destroy.sh \
+    "$root_directory/.mise/tasks/env/e2e.sh" "$root_directory/.mise/tasks/cilium/conformance.sh"; do
+    grep -q '^claim_environment "\$environment"$' "$script" || fail "$script changes the environment without claiming it"
+  done
+}
+
+@test "env:apply refuses an environment another worktree owns, before applying" {
+  mkdir -p "$BATS_TEST_TMPDIR/other-worktree" "$FIRMAMENT_STATE_HOME/environment/local"
+  printf '%s\n' "$BATS_TEST_TMPDIR/other-worktree" >"$FIRMAMENT_STATE_HOME/environment/local/owner"
+  run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"belongs to the worktree $BATS_TEST_TMPDIR/other-worktree"* ]]
+  ! grep -q ' apply -input=false' "$CALLS"
+}
+
 # Gives the local environment a state file, as any applied environment has.
 local_state() {
   mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
