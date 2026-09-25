@@ -316,6 +316,12 @@ fortio_rest() {
   printf '%s\n' "$reply"
 }
 
+# Prints the pod identities of the Cilium agents, as workload_identities
+# does; two snapshots that differ mean an agent restarted in between.
+cilium_agent_identities() {
+  workload_identities "$1" <(printf 'kube-system k8s-app=cilium\n')
+}
+
 # Prints the state fortio reports for a run: pending, running, stopping or
 # stopped, or nothing when fortio no longer knows the run.
 fortio_run_state() {

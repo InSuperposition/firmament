@@ -103,9 +103,8 @@ but it has never run live: every baseline before the Flux handoff
 installs Cilium through k0s, and the task refuses those.
 
 **Context:**
-- Once the Flux handoff is merged, run `mise run env:e2e --from-branch
-  main` from a branch that bumps something (for example the next Cilium
-  patch).
+- Run `mise run env:e2e --from-branch main` from a branch that bumps
+  something (for example the next Cilium patch).
 - The upgrade lane already checks that the workloads in
   `environment/local/tests/upgrade-unaffected` (CoreDNS, metrics-server)
   keep their pod UIDs, container IDs and restart counts across the
@@ -155,7 +154,7 @@ installs Cilium through k0s, and the task refuses those.
 
 **Effort:** M
 **Priority:** P3
-**Depends on:** The Flux handoff merged to main.
+**Depends on:** None; the Flux handoff is on main.
 
 ### Plan fault injection with Chaos Mesh
 

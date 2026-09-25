@@ -362,9 +362,9 @@ started_traffic() {
 }
 
 # Prints the live fortio result, reshaped into a run of 20 s that answered
-# all 2000 requests with 200, then filtered through the given jq program.
+# all 2000 requests with 200, then filtered through the given jq arguments.
 fortio_result() {
-  jq "$1" <(jq '.ActualDuration = 20000000000 | .DurationHistogram.Count = 2000 | .RetCodes = {"200": 2000}' \
+  jq "$@" <(jq '.ActualDuration = 20000000000 | .DurationHistogram.Count = 2000 | .RetCodes = {"200": 2000}' \
     "$FORTIO_REPLIES/result.json")
 }
 
@@ -507,12 +507,80 @@ STUB
   ! grep -q -- '--cleanup' "$CALLS"
 }
 
+@test "cilium:traffic-start fails on a run id that is not a number" {
+  export FORTIO_RUN="$BATS_TEST_TMPDIR/run.json"
+  printf '{"message":"started","RunID":"3"}\n' >"$FORTIO_RUN"
+  run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *'fortio did not start a run'* ]]
+  [ ! -e "$(traffic_directory_of_local)/fortio-run" ]
+}
+
+@test "cilium:traffic-check keeps a broken connection in the report when fortio then fails to stop" {
+  started_traffic
+  printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *--include-conn-disrupt-test* ]]\n' >"$stubs/cilium"
+  export FORTIO_STOP="$BATS_TEST_TMPDIR/stop.json"
+  printf '{"message":"stopping","ResultID":""}\n' >"$FORTIO_STOP"
+  expect_traffic_check_failure "conn-disrupt: a connection held open since cilium:traffic-start broke" "fortio did not stop run 3 with a saved result"
+}
+
+@test "cilium:traffic-check fails and keeps the workloads when fortio does not return the result" {
+  started_traffic
+  cat >"$stubs/kubectl" <<'STUB'
+#!/usr/bin/env bash
+printf 'kubectl %s\n' "$*" >>"$CALLS"
+case "$*" in
+  *"/fortio/rest/status"*) cat "$FORTIO_REPLIES/status.json" ;;
+  *"/fortio/rest/stop"*) cat "$FORTIO_REPLIES/stop.json" ;;
+  *"/fortio/data/"*) echo 'error: connection reset' >&2; exit 1 ;;
+  *" get pods "*) cat "$PODS" ;;
+esac
+STUB
+  expect_traffic_check_failure "fortio did not answer http://localhost:8080/fortio/data/2026-09-25-130545_3.json" "fortio did not return result 2026-09-25-130545_3"
+}
+
+@test "cilium:traffic-check counts every request as failed when none answered 200" {
+  started_traffic
+  fortio_result '.RetCodes = {"-1": 2000}' >"$FORTIO_RESULT"
+  expect_traffic_check_failure 'fortio: 2000 of 2000 requests failed (return codes {"-1":2000})'
+}
+
+@test "cilium:traffic-check never evaluates result text as a bash expression" {
+  started_traffic
+  local marker="$BATS_TEST_TMPDIR/evaluated"
+  fortio_result --arg marker "$marker" '.DurationHistogram.Count = "x[$(touch \($marker))0]"' >"$FORTIO_RESULT"
+  expect_traffic_check_failure "lacks a numeric RequestedQPS, ActualDuration, RetCodes or DurationHistogram"
+  [ ! -e "$marker" ]
+}
+
+@test "cilium:traffic-check gives no verdict and keeps the workloads when an agent snapshot is missing" {
+  started_traffic
+  rm "$(traffic_directory_of_local)/agent-before"
+  run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"a Cilium agent snapshot in $(traffic_directory_of_local) is missing or empty, so there is no verdict"* ]]
+  [[ "$output" != *"traffic held"* ]]
+  ! grep -q 'delete namespace traffic-probe' "$CALLS"
+  ! grep -q -- '--cleanup' "$CALLS"
+}
+
+@test "fortio_run_state names every fortio run state and passes unknown numbers through" {
+  source "$root_directory/.mise/lib.sh"
+  export FORTIO_STATUS="$BATS_TEST_TMPDIR/status.json"
+  local state expected
+  for state in 0:unknown 1:pending 2:running 3:stopping 4:stopped 9:9; do
+    printf '{"Statuses":{"3":{"RunID":3,"State":%s}}}\n' "${state%%:*}" >"$FORTIO_STATUS"
+    expected=${state#*:}
+    [ "$(fortio_run_state /state/admin.kubeconfig 3)" = "$expected" ] || fail "State ${state%%:*} printed $(fortio_run_state /state/admin.kubeconfig 3), not $expected"
+  done
+}
+
 @test "cilium:traffic-check fails on a fortio result without the fields it measures" {
   started_traffic
   fortio_result 'del(.RetCodes)' >"$FORTIO_RESULT"
   run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"fortio result 2026-09-25-130545_3 lacks RequestedQPS, ActualDuration, RetCodes or DurationHistogram"* ]]
+  [[ "$output" == *"fortio result 2026-09-25-130545_3 lacks a numeric RequestedQPS, ActualDuration, RetCodes or DurationHistogram"* ]]
   ! grep -q -- '--cleanup' "$CALLS"
 }
 

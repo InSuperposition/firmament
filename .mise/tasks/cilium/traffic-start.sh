@@ -42,7 +42,7 @@ cilium --kubeconfig "$kubeconfig" connectivity test --conn-disrupt-test-setup --
 reply=$(fortio_rest "$kubeconfig" \
   -payload '{"url":"http://fortio-server:8080/echo","qps":"100","t":"on","timeout":"1s","connection-reuse":"1:1","c":"4","async":"on","save":"on"}' \
   rest/run)
-run_id=$(jq -er '.RunID // empty' <<<"$reply") || fail "fortio did not start a run; it replied: $reply"
+run_id=$(jq -er '.RunID | numbers' <<<"$reply") || fail "fortio did not start a run; it replied: $reply"
 
 # fortio replies before the run begins, and the run must be sending
 # requests before whatever cilium:traffic-check measures starts.
@@ -58,7 +58,7 @@ do
 done
 # Taken while both kinds of traffic run: cilium:traffic-check compares these
 # pods with the ones it finds, so only a restart under traffic counts.
-workload_identities "$kubeconfig" <(printf 'kube-system k8s-app=cilium\n') >"$traffic/agent-before"
+cilium_agent_identities "$kubeconfig" >"$traffic/agent-before"
 # Written last: cilium:traffic-check reads a started run only from this file.
 printf '%s\n' "$run_id" >"$traffic/fortio-run"
 printf 'Traffic is running (fortio run %s). Measure it with: mise run cilium:traffic-check %s\n' "$run_id" "$environment"
