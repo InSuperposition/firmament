@@ -7,9 +7,11 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
 environment="$usage_environment"
 
-# fortio's run state while it sends requests (StateRunning), and how long a
-# new run may take to reach it.
-readonly fortio_running=2 run_start_timeout="${FIRMAMENT_FORTIO_START_TIMEOUT:-30}"
+# How long, in whole seconds, a new fortio run may take to start sending.
+readonly run_start_timeout="${FIRMAMENT_FORTIO_START_TIMEOUT:-30}"
+if [[ ! "$run_start_timeout" =~ ^[0-9]+$ ]]; then
+  fail "FIRMAMENT_FORTIO_START_TIMEOUT must be whole seconds, not '$run_start_timeout'"
+fi
 
 init_environment "$environment"
 claim_environment "$environment"
@@ -22,7 +24,7 @@ mkdir -p "$traffic"
 
 # A fortio run from an earlier traffic-start that stopped before writing
 # its state keeps sending until stopped; a new namespace starts without it.
-kubectl --kubeconfig "$kubeconfig" delete namespace traffic-probe --ignore-not-found
+kubectl --kubeconfig "$kubeconfig" delete namespace traffic-probe --ignore-not-found --timeout=2m
 kubectl --kubeconfig "$kubeconfig" apply -f "$MISE_PROJECT_ROOT/.mise/traffic/fortio.yaml"
 kubectl --kubeconfig "$kubeconfig" -n traffic-probe rollout status \
   deployment/fortio-server deployment/fortio-client --timeout=3m
@@ -45,9 +47,8 @@ run_id=$(jq -er '.RunID // empty' <<<"$reply") || fail "fortio did not start a r
 # requests before whatever cilium:traffic-check measures starts.
 deadline=$((SECONDS + run_start_timeout))
 until
-  state=$(fortio_rest "$kubeconfig" "rest/status?runid=$run_id" |
-    jq -r --arg run "$run_id" '.Statuses[$run].State // empty')
-  [[ "$state" == "$fortio_running" ]]
+  state=$(fortio_run_state "$kubeconfig" "$run_id")
+  [[ "$state" == running ]]
 do
   if ((SECONDS >= deadline)); then
     fail "fortio run $run_id is not running after ${run_start_timeout}s (state '${state:-none}')"

@@ -285,7 +285,7 @@ traffic_directory_of_local() {
   [[ "$output" == *"Traffic is running (fortio run 3). Measure it with: mise run cilium:traffic-check local"* ]]
   run grep -E '^(kubectl|cilium) ' "$CALLS"
   [ "${#lines[@]}" -eq 7 ]
-  [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig delete namespace traffic-probe --ignore-not-found "* ]]
+  [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig delete namespace traffic-probe --ignore-not-found --timeout=2m "* ]]
   [[ "${lines[1]}" == "kubectl --kubeconfig /state/admin.kubeconfig apply -f $MISE_PROJECT_ROOT/.mise/traffic/fortio.yaml "* ]]
   [[ "${lines[2]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n traffic-probe rollout status deployment/fortio-server deployment/fortio-client --timeout=3m "* ]]
   [[ "${lines[3]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --conn-disrupt-test-setup --include-conn-disrupt-test --conn-disrupt-client-timeout 1s --conn-disrupt-test-restarts-path $traffic/conn-disrupt-restarts --test no-interrupted-connections "* ]]
@@ -323,8 +323,15 @@ traffic_directory_of_local() {
   printf '{"Statuses":{"3":{"RunID":3,"State":1}}}\n' >"$FORTIO_STATUS"
   run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"fortio run 3 is not running after 1s (state '1')"* ]]
+  [[ "$output" == *"fortio run 3 is not running after 1s (state 'pending')"* ]]
   [ ! -e "$(traffic_directory_of_local)/fortio-run" ]
+}
+
+@test "cilium:traffic-start refuses a start timeout that is not whole seconds, before deploying anything" {
+  FIRMAMENT_FORTIO_START_TIMEOUT=30s run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FIRMAMENT_FORTIO_START_TIMEOUT must be whole seconds, not '30s'"* ]]
+  [ ! -e "$CALLS" ]
 }
 
 @test "cilium:traffic-start stops before starting fortio when the conn-disrupt setup fails" {
@@ -391,7 +398,7 @@ fortio_result() {
   [[ "${lines[2]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --include-conn-disrupt-test --conn-disrupt-test-restarts-path $traffic/conn-disrupt-restarts --test no-interrupted-connections "* ]]
   [[ "${lines[3]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/rest/stop?runid=3&wait=on "* ]]
   [[ "${lines[4]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/data/2026-09-25-130545_3.json "* ]]
-  [[ "${lines[5]}" == "kubectl --kubeconfig /state/admin.kubeconfig delete namespace traffic-probe "* ]]
+  [[ "${lines[5]}" == "kubectl --kubeconfig /state/admin.kubeconfig delete namespace traffic-probe --timeout=2m "* ]]
   [[ "${lines[6]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --cleanup "* ]]
   [ ! -e "$traffic" ]
 }
@@ -444,6 +451,21 @@ expect_traffic_check_failure() {
   started_traffic
   fortio_result '.RequestedQPS = "200"' >"$FORTIO_RESULT"
   expect_traffic_check_failure "fortio: 2000 requests in 20s is under 90% of the 200 a second asked for"
+}
+
+@test "cilium:traffic-check fails a run under 90% of a fractional requested rate" {
+  started_traffic
+  fortio_result '.RequestedQPS = "100.5" | .DurationHistogram.Count = 1500 | .RetCodes = {"200": 1500}' >"$FORTIO_RESULT"
+  expect_traffic_check_failure "fortio: 1500 requests in 20s is under 90% of the 100.5 a second asked for"
+}
+
+@test "cilium:traffic-check names the state of a run that is no longer running" {
+  started_traffic
+  export FORTIO_STATUS="$BATS_TEST_TMPDIR/status.json"
+  printf '{"Statuses":{"3":{"RunID":3,"State":4}}}\n' >"$FORTIO_STATUS"
+  run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"fortio run 3 is not running (state 'stopped')"* ]]
 }
 
 @test "cilium:traffic-check reports every problem it finds" {

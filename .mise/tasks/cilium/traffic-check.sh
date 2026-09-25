@@ -7,9 +7,9 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
 environment="$usage_environment"
 
-# fortio's run state while it sends requests (StateRunning), and the share
-# of the requested rate a run must reach to count as having run throughout.
-readonly fortio_running=2 minimum_percent=90
+# The share of the requested rate a run must reach to count as having run
+# throughout.
+readonly minimum_percent=90
 
 init_environment "$environment"
 claim_environment "$environment"
@@ -22,9 +22,8 @@ run_id=$(<"$traffic/fortio-run")
 # cilium:traffic-start saw the run sending before it returned; still
 # sending now means it covered everything in between. A run already
 # stopped, or state left from a destroyed cluster, has nothing to measure.
-state=$(fortio_rest "$kubeconfig" "rest/status?runid=$run_id" |
-  jq -r --arg run "$run_id" '.Statuses[$run].State // empty')
-if [[ "$state" != "$fortio_running" ]]; then
+state=$(fortio_run_state "$kubeconfig" "$run_id")
+if [[ "$state" != running ]]; then
   fail "fortio run $run_id is not running (state '${state:-none}'), so there is nothing to measure; start a new run with: mise run cilium:traffic-start $environment"
 fi
 workload_identities "$kubeconfig" <(printf 'kube-system k8s-app=cilium\n') >"$traffic/agent-after"
@@ -41,23 +40,25 @@ reply=$(fortio_rest "$kubeconfig" "rest/stop?runid=$run_id&wait=on")
 result_id=$(jq -er '.ResultID | strings | select(. != "")' <<<"$reply") ||
   fail "fortio did not stop run $run_id with a saved result; it replied: $reply"
 fortio_rest "$kubeconfig" "data/$result_id.json" >"$traffic/result.json"
-summary=$(jq -er '
+# fortio may report a fractional rate, so jq computes the minimum count.
+summary=$(jq -er --argjson percent "$minimum_percent" '
   select(has("RequestedQPS") and has("ActualDuration") and has("RetCodes") and has("DurationHistogram"))
   | [ .DurationHistogram.Count,
       (.RetCodes["200"] // 0),
       (.DurationHistogram.Max * 1000 | round),
       (.ActualDuration / 1e9 | floor),
-      (.RequestedQPS | tonumber),
+      .RequestedQPS,
+      (.ActualDuration / 1e9 * (.RequestedQPS | tonumber) * $percent / 100 | ceil),
       (.RetCodes | tojson) ]
   | @tsv' "$traffic/result.json") ||
   fail "fortio result $result_id lacks RequestedQPS, ActualDuration, RetCodes or DurationHistogram; it is kept at $traffic/result.json"
-read -r count answered slowest_ms duration requested_qps codes <<<"$summary"
+read -r count answered slowest_ms duration requested_qps minimum_count codes <<<"$summary"
 
 printf 'fortio: %s of %s requests answered 200 over %ss; the slowest took %s ms\n' "$answered" "$count" "$duration" "$slowest_ms"
 if ((answered != count)); then
   problems+=("fortio: $((count - answered)) of $count requests failed (return codes $codes)")
 fi
-if ((count * 100 < duration * requested_qps * minimum_percent)); then
+if ((count < minimum_count)); then
   problems+=("fortio: $count requests in ${duration}s is under $minimum_percent% of the $requested_qps a second asked for")
 fi
 
@@ -66,7 +67,7 @@ if ((${#problems[@]} > 0)); then
   fail "The traffic-probe and cilium-test-1 namespaces and $traffic are kept for inspection; the next cilium:traffic-start replaces them."
 fi
 
-kubectl --kubeconfig "$kubeconfig" delete namespace traffic-probe
+kubectl --kubeconfig "$kubeconfig" delete namespace traffic-probe --timeout=2m
 cilium --kubeconfig "$kubeconfig" connectivity test --cleanup
 if diff -q "$traffic/agent-before" "$traffic/agent-after" >/dev/null; then
   verdict="the Cilium agent was not restarted, so traffic continuity was not exercised"
