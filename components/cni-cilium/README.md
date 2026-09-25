@@ -1,37 +1,51 @@
 # cni-cilium
 
-Abstract: OpenTofu module that declares the Cilium Helm chart, with
-Hubble Relay and Hubble UI enabled, for a cluster's Helm chart
-installer. It renders data only: it has no providers, no resources, and
-no state, so it can be planned and tested without a cluster.
+Abstract: The Flux component that runs Cilium, with Hubble Relay and
+Hubble UI, as the cluster network. The OpenTofu bootstrap installs the
+chart once, before any pod network exists; Flux then adopts the release
+and upgrades it from these manifests.
 
 ## Goals
 
-- One place that pins the Cilium chart version and its values.
-- Output shaped for `modules/orch-k0s`'s `helm_charts` input, so k0s
-  installs Cilium during cluster bring-up.
+- One place that pins the Cilium chart and its values, read by both the
+  bootstrap and Flux.
+- Upgrades flow through Git, and a failed upgrade rolls back.
 
 ## Constraints
 
-- The chart is pinned to `cilium/cilium` `1.20.2` from
-  <https://helm.cilium.io>, installed into `kube-system`.
+- The chart `quay.io/cilium/charts/cilium` is pinned by digest (1.20.2)
+  in `ocirepository.yaml`, and every enabled image is pulled by digest.
+- The release is `cilium`, in `kube-system`, stored there by Helm. The
+  bootstrap installs it under the same identity, so Flux adopts it
+  instead of installing a second copy.
 - IPAM mode, kube-proxy replacement and the pod datapath cannot change on
   a live cluster. Changing any of them means rebuilding the cluster.
+- `upgradeCompatibility` stays at `1.20`, the version first installed,
+  until an explicitly tested migration changes it. Upgrade minors one at
+  a time, after the latest patch of the current minor.
 
-## Inputs
+## Files
 
-| Input | Default | Behavior |
+| File | Role |
+| --- | --- |
+| `ocirepository.yaml` | Chart source, by digest |
+| `helmrelease.yaml` | Release identity, `valuesFrom` the `cilium-values` ConfigMap, upgrade remediation (3 retries, then rollback; never forced), prune disabled |
+| `values.yaml` | Chart values; `kustomization.yaml` turns it into the `cilium-values` ConfigMap, labeled so a change triggers an upgrade |
+
+## Runtime values
+
+`values.yaml` has no conditionals: Flux substitution is plain text
+replacement. The environment computes each value in OpenTofu and passes it
+through the `flux-runtime-info` ConfigMap. The bootstrap substitutes them
+once, and Flux on every reconcile.
+
+| Variable | Sets | Local value |
 | --- | --- | --- |
-| `api_host` | required | Kubernetes API host the agent connects to directly (`k8sServiceHost`) |
-| `api_port` | `6443` | Kubernetes API port (`k8sServicePort`); must match the cluster's API port |
-| `kube_proxy_replacement` | required | Renders `kubeProxyReplacement` and selects the datapath; must match the cluster's kube-proxy setting |
-| `operator_replicas` | `2` | Cilium operator replicas; at least 1. The chart requires operator replicas on different nodes, so a single-node cluster needs 1 |
-
-## Output
-
-`helm_chart`: `repository` (`name`, `url`) and `chart` (`name`,
-`chartname`, `version`, `namespace`, `forceUpgrade`, `values`). `values`
-is the YAML rendered from [`values.yaml.tftpl`](values.yaml.tftpl).
+| `api_address` | `k8sServiceHost` (always a string) | the machine's OrbStack DNS name |
+| `api_port` | `k8sServicePort` | `6443` |
+| `kube_proxy_replacement` | `kubeProxyReplacement`, `bpf.masquerade` | `true` |
+| `cilium_datapath_mode` | `bpf.datapathMode` | `netkit` (`veth` beside kube-proxy) |
+| `cilium_operator_replicas` | `operator.replicas` | `1`; the chart spreads operator replicas across nodes, so one node needs 1 |
 
 ## Values
 
@@ -45,10 +59,9 @@ is the YAML rendered from [`values.yaml.tftpl`](values.yaml.tftpl).
 | `rollOutCiliumPods`, `envoy.rollOutPods`, `operator.rollOutPods`, `hubble.relay.rollOutPods`, `hubble.ui.rollOutPods` | `true` | A values change restarts the affected pods on apply. The chart default (`false`) updates the ConfigMap and leaves running pods on the old configuration |
 | `hubble.tls.auto.method` | `cronJob` | A CronJob renews the Hubble mTLS certificates (valid 365 days) every four months. The chart default (`helm`) renews them only when the chart is upgraded |
 
-The chart declaration also sets `forceUpgrade: false`. k0s upgrades
-charts with `helm upgrade --force` by default, which recreates objects
-instead of patching them. The certificate Job cannot be recreated in
-place, so a forced upgrade fails and k0s retries it indefinitely.
+The HelmRelease sets `upgrade.force: false`. A forced upgrade recreates
+objects instead of patching them, and the hubble-generate-certs Job
+cannot be recreated in place.
 
 ## Socket termination
 
@@ -81,7 +94,7 @@ balancing and keep the gap.
 start-up error does not fail the suite; agent errors logged while the
 tests run still do. The Cilium bug report is in [BUGS.md](BUGS.md), and
 the OrbStack kernel request is in
-[vm-orb/BUGS.md](../vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy).
+[vm-orb/BUGS.md](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy).
 
 ## Commands
 
@@ -89,10 +102,9 @@ Run from the repo root:
 
 | Command | Behavior |
 | --- | --- |
-| `mise run tofu:test` | Run `tests/unit.tftest.hcl` (and every other OpenTofu suite) against rendered plans, no cluster |
-| `mise run cilium:test` | Run `tests/inputs.bats`, which checks that OpenTofu refuses a plan without the required inputs |
+| `mise run cilium:test` | Run `tests/values.bats`: renders `values.yaml` with `flux envsubst --strict` and checks the release, source and values, no cluster |
 | `mise run cilium:verify` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI |
-| `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests, then remove its test workloads; a failed run keeps them for debugging (slow, manual only) |
+| `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests, with Hubble flow logs for failed actions through a Relay port-forward (`--hubble-port`, default 4245; fails if that port is taken or Relay is unreachable; flow validation is disabled until cilium-cli can match these flows, see [BUGS.md](BUGS.md#flow-validation-never-matches-reverse-nated-service-replies)), then remove its test workloads; a failed run keeps them for debugging (slow, manual only) |
 
 To open the Hubble UI or observe flows against the live cluster:
 

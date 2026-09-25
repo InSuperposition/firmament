@@ -12,11 +12,10 @@ default `firmament`), `api_port` (optional, default `6443`; rendered as
 `spec.api.port`), `kube_proxy_replacement` (optional, default `true`;
 fixed at cluster creation: the module records it in
 `terraform_data.kube_proxy_replacement_at_creation`, and a plan with a
-different value fails), `helm_charts` (optional, default `[]`; each
-item is a `repository` and a `chart`, as `modules/cni-cilium` outputs;
-`chart.forceUpgrade` is optional and defaults to `true`, as in k0s; chart
-names must be unique, a repository name must point at one URL, and
-`values` must be valid YAML).
+different value fails), `drain_before_upgrade` (optional, default
+`true`; rendered as the provider's `no_drain = !drain_before_upgrade`.
+On one node a drain evicts every pod with nowhere to go, so single-node
+clusters set `false`).
 In this repo, [`environment/local`](../../environment/local/README.md)
 supplies all of these by deriving them from `module.vm_orb`'s outputs;
 against a non-OrbStack Ubuntu host, supply its real SSH endpoint and a
@@ -31,8 +30,7 @@ it; this module doesn't write files itself).
 ## Contract
 
 `cluster.tf` is the source of truth for the cluster: k0s version,
-single-node role, custom CNI, kube-proxy setting, Pod/Service CIDRs, and
-the Helm extension.
+single-node role, custom CNI, kube-proxy setting, and Pod/Service CIDRs.
 There is no separate render step — `plan` is the preview; the rendered
 `k0sctl.yaml` equivalent is only known after `apply` (the `k0s_yaml`
 output) since the provider builds it internally during `Create`, not
@@ -43,11 +41,11 @@ k0s is pinned to `1.36.4+k0s.0` in `cluster.tf`. The provider is pinned to
 published to the Terraform Registry (the GitHub repo's `v0.0.4` tag
 exists but was never released there).
 
-The apply owns k0s, its managed containerd, and the charts in
-`helm_charts`. k0s installs each chart through its Helm extension
-(`spec.extensions.helm`) with `--atomic --wait`, and uninstalls any chart
-later removed from the list. With `helm_charts = []` the config has no
-`extensions` key. This module does not install Flux or workloads.
+The apply owns k0s and its managed containerd. The cluster config has no
+`extensions` key: k0s installs no Helm charts, since in-cluster add-ons,
+the CNI included, belong to Flux. The node stays NotReady until a CNI
+runs; k0sctl waits only for the API server on a `controller+worker`
+host, so the apply finishes without one.
 
 ## Reading the cluster
 
@@ -73,7 +71,7 @@ the full task list:
 
 | Command | Behavior |
 | --- | --- |
-| `mise run k0s:apply` | Apply the cluster and kubeconfig, then wait for the node to be Ready and Cilium to report healthy |
+| `mise run k0s:apply` | Apply only the cluster and kubeconfig, then wait for the node to register; Cilium and Flux come from `env:apply` |
 | `mise run k0s:plan` | Plan without applying |
 | `mise run k0s:verify` | Wait for every node to be Ready, using the rendered kubeconfig |
 | `mise run tofu:test` | Run `tests/unit.tftest.hcl` and `tests/creation.tftest.hcl` (and every other OpenTofu suite) against rendered plans, no live host |

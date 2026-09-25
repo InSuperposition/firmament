@@ -13,18 +13,28 @@ local fast = new Mapping<String, Step> {
     glob = List("environment/*/tests/cluster/**/*.yaml")
     check = "mise run chainsaw:lint"
   }
+  // Renders and schema-validates each environment's Flux build.
+  ["flux"] {
+    glob = List("components/**", "environment/*/flux/**", ".mise/flux-test-values.env", ".mise/flux-schemas/**")
+    check = "mise run flux:lint"
+  }
 }
 
 // Whole-repository checks, too slow for every commit. Each runs once, and
 // only when a pushed change touches a file that can affect its result.
+// Both initialize the same OpenTofu roots, and a fresh worktree has no
+// module cache yet, so running them together races two module clones into
+// one directory. `exclusive` runs each alone.
 local slow = new Mapping<String, Step> {
   ["tofu-validate"] {
     glob = List("**/*.tf", "**/.terraform.lock.hcl")
     check = "mise run tofu:validate"
+    exclusive = true
   }
   ["test"] {
-    glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "environment/*/tests/cluster/**/*.yaml")
+    glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "environment/*/tests/cluster/**/*.yaml", "components/**", "environment/*/flux/**", ".mise/flux-test-values.env", "environment/*/tests/upgrade-unaffected")
     check = "mise run test"
+    exclusive = true
   }
 }
 

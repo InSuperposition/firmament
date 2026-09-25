@@ -1,0 +1,16 @@
+# The Cilium chart, pinned by digest. The bootstrap installs the same digest,
+# read from this file.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: cilium
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://quay.io/cilium/charts/cilium
+  ref:
+    # chart 1.20.2
+    digest: sha256:a7c12d330dd96bfcda3bf057b24be8f36566c34868265f930f776dff6f42d838
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy

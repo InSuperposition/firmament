@@ -1,0 +1,4 @@
+# Workloads an upgrade of Cilium, Flux or Flux Operator must leave on the
+# same pods and containers: "<namespace> <label selector>" per line.
+kube-system k8s-app=kube-dns
+kube-system k8s-app=metrics-server

@@ -89,12 +89,34 @@ run "rejects_a_fractional_api_port" {
   expect_failures = [var.api_port]
 }
 
-run "renders_no_extensions_without_helm_charts" {
+run "installs_no_helm_charts_through_k0s" {
   command = plan
 
   assert {
     condition     = !contains(keys(yamldecode(k0sctl_config.this.spec.k0s.config).spec), "extensions")
-    error_message = "Without Helm charts, the cluster config must have no extensions."
+    error_message = "The cluster config must have no extensions: in-cluster add-ons belong to Flux."
+  }
+}
+
+run "drains_nodes_before_upgrading_by_default" {
+  command = plan
+
+  assert {
+    condition     = k0sctl_config.this.no_drain == false
+    error_message = "k0sctl must drain nodes before upgrading them unless told otherwise."
+  }
+}
+
+run "skips_the_drain_when_asked" {
+  command = plan
+
+  variables {
+    drain_before_upgrade = false
+  }
+
+  assert {
+    condition     = k0sctl_config.this.no_drain == true
+    error_message = "drain_before_upgrade = false must reach k0sctl as no_drain = true."
   }
 }
 
@@ -109,124 +131,6 @@ run "runs_kube_proxy_when_the_cni_does_not_replace_it" {
     condition     = yamldecode(k0sctl_config.this.spec.k0s.config).spec.network.kubeProxy.disabled == false
     error_message = "k0s must run kube-proxy when the CNI does not replace it."
   }
-}
-
-run "renders_helm_charts_into_the_k0s_helm_extension" {
-  command = plan
-
-  variables {
-    helm_charts = [
-      {
-        repository = { name = "example", url = "https://charts.example.com" }
-        chart = {
-          name      = "demo"
-          chartname = "example/demo"
-          version   = "1.2.3"
-          namespace = "kube-system"
-          values    = "replicas: 1\n"
-        }
-      },
-    ]
-  }
-
-  assert {
-    condition     = yamldecode(k0sctl_config.this.spec.k0s.config).spec.extensions.helm.repositories == [{ name = "example", url = "https://charts.example.com" }]
-    error_message = "The chart's repository must be declared once."
-  }
-  assert {
-    condition = yamldecode(k0sctl_config.this.spec.k0s.config).spec.extensions.helm.charts == [{
-      name         = "demo"
-      chartname    = "example/demo"
-      version      = "1.2.3"
-      namespace    = "kube-system"
-      values       = "replicas: 1\n"
-      forceUpgrade = true
-    }]
-    error_message = "The chart must render as declared, with forceUpgrade defaulting to true."
-  }
-  assert {
-    condition     = yamldecode(yamldecode(k0sctl_config.this.spec.k0s.config).spec.extensions.helm.charts[0].values).replicas == 1
-    error_message = "The chart values must stay valid YAML."
-  }
-}
-
-run "shares_one_repository_between_charts_that_come_from_it" {
-  command = plan
-
-  variables {
-    helm_charts = [
-      {
-        repository = { name = "example", url = "https://charts.example.com" }
-        chart      = { name = "first", chartname = "example/first", version = "1.0.0", namespace = "kube-system", values = "" }
-      },
-      {
-        repository = { name = "example", url = "https://charts.example.com" }
-        chart      = { name = "second", chartname = "example/second", version = "2.0.0", namespace = "default", values = "" }
-      },
-    ]
-  }
-
-  assert {
-    condition     = length(yamldecode(k0sctl_config.this.spec.k0s.config).spec.extensions.helm.repositories) == 1
-    error_message = "Charts from one repository must share its declaration."
-  }
-  assert {
-    condition     = [for chart in yamldecode(k0sctl_config.this.spec.k0s.config).spec.extensions.helm.charts : [chart.name, chart.namespace]] == [["first", "kube-system"], ["second", "default"]]
-    error_message = "Both charts must render, in order, with their own namespaces."
-  }
-}
-
-run "rejects_one_repository_name_pointing_at_two_urls" {
-  command = plan
-
-  variables {
-    helm_charts = [
-      {
-        repository = { name = "example", url = "https://a.example.com" }
-        chart      = { name = "first", chartname = "example/first", version = "1.0.0", namespace = "kube-system", values = "" }
-      },
-      {
-        repository = { name = "example", url = "https://b.example.com" }
-        chart      = { name = "second", chartname = "example/second", version = "1.0.0", namespace = "kube-system", values = "" }
-      },
-    ]
-  }
-
-  expect_failures = [var.helm_charts]
-}
-
-run "rejects_two_helm_charts_with_the_same_name" {
-  command = plan
-
-  variables {
-    helm_charts = [
-      {
-        repository = { name = "example", url = "https://charts.example.com" }
-        chart      = { name = "demo", chartname = "example/demo", version = "1.0.0", namespace = "kube-system", values = "" }
-      },
-      {
-        repository = { name = "example", url = "https://charts.example.com" }
-        chart      = { name = "demo", chartname = "example/demo", version = "1.0.0", namespace = "default", values = "" }
-      },
-    ]
-  }
-
-  expect_failures = [var.helm_charts]
-}
-
-run "rejects_helm_chart_values_that_are_not_valid_yaml" {
-  command = plan
-
-  variables {
-    helm_charts = [
-      {
-        repository = { name = "example", url = "https://charts.example.com" }
-        chart      = { name = "demo", chartname = "example/demo", version = "1.0.0", namespace = "kube-system", values = "replicas: [1\n" }
-      },
-    ]
-  }
-
-  expect_failures = [var.helm_charts]
 }
 
 run "rejects_unsafe_connection_values" {

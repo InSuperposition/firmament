@@ -1,0 +1,495 @@
+{
+  "properties": {
+    "apiVersion": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "spec": {
+      "additionalProperties": false,
+      "properties": {
+        "cluster": {
+          "additionalProperties": false,
+          "properties": {
+            "domain": {
+              "default": "cluster.local",
+              "type": "string"
+            },
+            "multitenant": {
+              "default": false,
+              "type": "boolean"
+            },
+            "multitenantWorkloadIdentity": {
+              "default": false,
+              "type": "boolean"
+            },
+            "networkPolicy": {
+              "default": true,
+              "type": "boolean"
+            },
+            "objectLevelWorkloadIdentity": {
+              "type": "boolean"
+            },
+            "size": {
+              "enum": [
+                "small",
+                "medium",
+                "large"
+              ],
+              "type": "string"
+            },
+            "tenantDefaultDecryptionServiceAccount": {
+              "type": "string"
+            },
+            "tenantDefaultKubeConfigServiceAccount": {
+              "type": "string"
+            },
+            "tenantDefaultServiceAccount": {
+              "type": "string"
+            },
+            "type": {
+              "default": "kubernetes",
+              "enum": [
+                "kubernetes",
+                "openshift",
+                "aws",
+                "azure",
+                "gcp"
+              ],
+              "type": "string"
+            }
+          },
+          "type": "object",
+          "x-kubernetes-validations": [
+            {
+              "message": ".objectLevelWorkloadIdentity must be set to true when .multitenantWorkloadIdentity is set to true",
+              "rule": "(has(self.objectLevelWorkloadIdentity) && self.objectLevelWorkloadIdentity) || !has(self.multitenantWorkloadIdentity) || !self.multitenantWorkloadIdentity"
+            }
+          ]
+        },
+        "commonMetadata": {
+          "additionalProperties": false,
+          "properties": {
+            "annotations": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "labels": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "components": {
+          "items": {
+            "enum": [
+              "source-controller",
+              "kustomize-controller",
+              "helm-controller",
+              "notification-controller",
+              "image-reflector-controller",
+              "image-automation-controller",
+              "source-watcher"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "distribution": {
+          "additionalProperties": false,
+          "properties": {
+            "artifact": {
+              "pattern": "^oci://.*$",
+              "type": "string"
+            },
+            "artifactPullSecret": {
+              "type": "string"
+            },
+            "imagePullSecret": {
+              "type": "string"
+            },
+            "registry": {
+              "type": "string"
+            },
+            "variant": {
+              "enum": [
+                "upstream-alpine",
+                "enterprise-alpine",
+                "enterprise-distroless",
+                "enterprise-distroless-fips"
+              ],
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "registry",
+            "version"
+          ],
+          "type": "object"
+        },
+        "kustomize": {
+          "additionalProperties": false,
+          "properties": {
+            "patches": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "patch": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "annotationSelector": {
+                        "type": "string"
+                      },
+                      "group": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "labelSelector": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "namespace": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "patch"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "migrateResources": {
+          "default": true,
+          "type": "boolean"
+        },
+        "sharding": {
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "default": "sharding.fluxcd.io/key",
+              "type": "string"
+            },
+            "shards": {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "storage": {
+              "enum": [
+                "ephemeral",
+                "persistent"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "shards"
+          ],
+          "type": "object"
+        },
+        "storage": {
+          "additionalProperties": false,
+          "properties": {
+            "class": {
+              "type": "string"
+            },
+            "size": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "class",
+            "size"
+          ],
+          "type": "object"
+        },
+        "sync": {
+          "additionalProperties": false,
+          "properties": {
+            "interval": {
+              "default": "1m",
+              "pattern": "^([0-9]+(\\.[0-9]+)?(ms|s|m|h))+$",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "OCIRepository",
+                "GitRepository",
+                "Bucket"
+              ],
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 63,
+              "type": "string",
+              "x-kubernetes-validations": [
+                {
+                  "message": "Sync name is immutable",
+                  "rule": "self == oldSelf"
+                }
+              ]
+            },
+            "path": {
+              "type": "string"
+            },
+            "provider": {
+              "enum": [
+                "generic",
+                "aws",
+                "azure",
+                "gcp",
+                "github"
+              ],
+              "type": "string"
+            },
+            "pullSecret": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "path",
+            "ref",
+            "url"
+          ],
+          "type": "object",
+          "x-kubernetes-validations": [
+            {
+              "message": "sync.provider 'gcp' is only supported for OCIRepository and Bucket",
+              "rule": "!has(self.provider) || self.provider != 'gcp' || self.kind == 'OCIRepository' || self.kind == 'Bucket'"
+            },
+            {
+              "message": "sync.provider 'github' is only supported for GitRepository",
+              "rule": "!has(self.provider) || self.provider != 'github' || self.kind == 'GitRepository'"
+            }
+          ]
+        },
+        "wait": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "distribution"
+      ],
+      "type": "object",
+      "x-kubernetes-validations": [
+        {
+          "message": ".spec.storage must be set when .spec.sharding.storage is 'persistent'",
+          "rule": "!has(self.sharding) || !has(self.sharding.storage) || self.sharding.storage != 'persistent' || has(self.storage)"
+        }
+      ]
+    },
+    "status": {
+      "additionalProperties": false,
+      "properties": {
+        "components": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "repository": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "repository",
+              "tag"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "conditions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "lastTransitionTime": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "message": {
+                "maxLength": 32768,
+                "type": "string"
+              },
+              "observedGeneration": {
+                "format": "int64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "reason": {
+                "maxLength": 1024,
+                "minLength": 1,
+                "pattern": "^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$",
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "True",
+                  "False",
+                  "Unknown"
+                ],
+                "type": "string"
+              },
+              "type": {
+                "maxLength": 316,
+                "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "lastTransitionTime",
+              "message",
+              "reason",
+              "status",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "history": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "type": "string"
+              },
+              "firstReconciled": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "lastReconciled": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "lastReconciledDuration": {
+                "type": "string"
+              },
+              "lastReconciledStatus": {
+                "type": "string"
+              },
+              "metadata": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "totalReconciliations": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "digest",
+              "firstReconciled",
+              "lastReconciled",
+              "lastReconciledDuration",
+              "lastReconciledStatus",
+              "totalReconciliations"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "inventory": {
+          "additionalProperties": false,
+          "properties": {
+            "entries": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "v": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "v"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "entries"
+          ],
+          "type": "object"
+        },
+        "lastAppliedRevision": {
+          "type": "string"
+        },
+        "lastArtifactRevision": {
+          "type": "string"
+        },
+        "lastAttemptedRevision": {
+          "type": "string"
+        },
+        "lastHandledForceAt": {
+          "type": "string"
+        },
+        "lastHandledReconcileAt": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "type": "object",
+  "x-kubernetes-validations": [
+    {
+      "message": "the only accepted name for a FluxInstance is 'flux'",
+      "rule": "self.metadata.name == 'flux'"
+    }
+  ]
+}

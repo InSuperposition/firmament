@@ -12,5 +12,15 @@ if [[ ! -d "$suite" ]]; then
   fail "environment '$environment' has no cluster suite at $suite"
 fi
 
+# The suite checks that Flux applied the checked-out branch at the tip
+# origin had when last fetched. Flux polls Git on its own interval, so the
+# task first waits for that revision instead of racing it.
+branch=$(git_branch)
+git -C "$MISE_PROJECT_ROOT" fetch --quiet origin
+revision=$(flux_revision "$branch")
+
 init_environment "$environment"
-chainsaw_in_environment "$environment" test --test-dir "$suite"
+kubeconfig=$(environment_kubeconfig "$environment")
+kubectl --kubeconfig "$kubeconfig" -n flux-system wait kustomization/flux-system \
+  --for=jsonpath='{.status.lastAppliedRevision}'="$revision" --timeout=10m
+chainsaw_in_environment "$environment" test --test-dir "$suite" --set-string flux_revision="$revision"

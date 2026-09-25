@@ -93,44 +93,44 @@ url = "https://github.com/bats-core/bats-core/archive/refs/tags/v1.14.0.tar.gz"
 url_api = "https://api.github.com/repos/bats-core/bats-core/tarball/v1.14.0"
 
 [[tools.cilium-cli]]
-version = "0.20.0"
+version = "0.20.1"
 backend = "aqua:cilium/cilium-cli"
-specifiers = ["0.20.0"]
+specifiers = ["0.20.1"]
 
 [tools.cilium-cli."platforms.linux-arm64"]
-checksum = "sha256:9a9281dc79bd10a61fa35078b8ab63eaf491ab2f47edc6b9a3541b2fe4ede3ff"
-url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.0/cilium-linux-arm64.tar.gz"
-url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/530475789"
+checksum = "sha256:d237550b882af6f2e01e8985e1e024d57c0774611c0a527c7a20dcee7dc4fd07"
+url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.1/cilium-linux-arm64.tar.gz"
+url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/585358779"
 
 [tools.cilium-cli."platforms.linux-arm64-musl"]
-checksum = "sha256:9a9281dc79bd10a61fa35078b8ab63eaf491ab2f47edc6b9a3541b2fe4ede3ff"
-url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.0/cilium-linux-arm64.tar.gz"
-url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/530475789"
+checksum = "sha256:d237550b882af6f2e01e8985e1e024d57c0774611c0a527c7a20dcee7dc4fd07"
+url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.1/cilium-linux-arm64.tar.gz"
+url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/585358779"
 
 [tools.cilium-cli."platforms.linux-x64"]
-checksum = "sha256:94adc5c3be44d8240df91cec520536686f8a1eb29e5bc70c4c1c80137f00d764"
-url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.0/cilium-linux-amd64.tar.gz"
-url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/530475792"
+checksum = "sha256:24e817dcfcc8a12e325ce7547617bcbcf171c5b0b335bb24d2bb1207ba047f61"
+url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.1/cilium-linux-amd64.tar.gz"
+url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/585358772"
 
 [tools.cilium-cli."platforms.linux-x64-musl"]
-checksum = "sha256:94adc5c3be44d8240df91cec520536686f8a1eb29e5bc70c4c1c80137f00d764"
-url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.0/cilium-linux-amd64.tar.gz"
-url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/530475792"
+checksum = "sha256:24e817dcfcc8a12e325ce7547617bcbcf171c5b0b335bb24d2bb1207ba047f61"
+url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.1/cilium-linux-amd64.tar.gz"
+url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/585358772"
 
 [tools.cilium-cli."platforms.macos-arm64"]
-checksum = "sha256:2850449e321c21e9556c312d0b6885838523d294b7e0b58955697507463a57cc"
-url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.0/cilium-darwin-arm64.tar.gz"
-url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/530475790"
+checksum = "sha256:3521cb6af8f621d64dac63c7537fd9aa2ff878fb1f7a6f50e69b31bf45c02cb8"
+url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.1/cilium-darwin-arm64.tar.gz"
+url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/585358773"
 
 [tools.cilium-cli."platforms.macos-x64"]
-checksum = "sha256:cc338e326235e76e3924f032d8a6eb41bf751d94bb04fce70d5f80014fc179d9"
-url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.0/cilium-darwin-amd64.tar.gz"
-url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/530475794"
+checksum = "sha256:b5ac658a9a87c933a3cc662f035d8ab4a3cbfdf67d942526b37566907a0d88ad"
+url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.1/cilium-darwin-amd64.tar.gz"
+url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/585358780"
 
 [tools.cilium-cli."platforms.windows-x64"]
-checksum = "sha256:d96cf9811608cf945326196ccf4dd251ba91358ead3587f52023680e4460ba19"
-url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.0/cilium-windows-amd64.zip"
-url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/530475785"
+checksum = "sha256:869bc322c880db7c566995f8e251dd3270e15814f26e4c7c8c13922319a939e3"
+url = "https://github.com/cilium/cilium-cli/releases/download/v0.20.1/cilium-windows-amd64.zip"
+url_api = "https://api.github.com/repos/cilium/cilium-cli/releases/assets/585358777"
 
 [[tools.cilium-hubble]]
 version = "1.19.4"
@@ -171,6 +171,114 @@ url_api = "https://api.github.com/repos/cilium/hubble/releases/assets/439544237"
 checksum = "sha256:860f976bd11e93272d8305876b9a41eda9839f35d3dbd07452e7ae07d05e529e"
 url = "https://github.com/cilium/hubble/releases/download/v1.19.4/hubble-windows-amd64.tar.gz"
 url_api = "https://api.github.com/repos/cilium/hubble/releases/assets/439544308"
+
+[[tools.flux2]]
+version = "2.9.5"
+backend = "aqua:fluxcd/flux2"
+specifiers = ["2.9.5"]
+
+[tools.flux2."platforms.linux-arm64"]
+checksum = "sha256:f3e159af616ec0b9bd0a405c2185cf09d06b74652c1de3c7f377e8166826651a"
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282890"
+
+[tools.flux2."platforms.linux-arm64".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
+
+[tools.flux2."platforms.linux-arm64-musl"]
+checksum = "sha256:f3e159af616ec0b9bd0a405c2185cf09d06b74652c1de3c7f377e8166826651a"
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282890"
+
+[tools.flux2."platforms.linux-arm64-musl".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
+
+[tools.flux2."platforms.linux-x64"]
+checksum = "sha256:b853df82adfd7736f580692f9f734473d571606307139f8fd20c2a80dd1ff473"
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282891"
+
+[tools.flux2."platforms.linux-x64".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
+
+[tools.flux2."platforms.linux-x64-musl"]
+checksum = "sha256:b853df82adfd7736f580692f9f734473d571606307139f8fd20c2a80dd1ff473"
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282891"
+
+[tools.flux2."platforms.linux-x64-musl".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
+
+[tools.flux2."platforms.macos-arm64"]
+checksum = "sha256:2869ef7151a6f1b27e6b5d2a6804f3ef23c7bdaa06a74e00d3fe5bfc646547fd"
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282876"
+
+[tools.flux2."platforms.macos-arm64".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
+
+[tools.flux2."platforms.macos-x64"]
+checksum = "sha256:5748583cf5da035ca2d751190d2c15f5f656d305c166ec28a312a2f3b6799e31"
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_darwin_amd64.tar.gz"
+url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282892"
+
+[tools.flux2."platforms.macos-x64".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
+
+[tools.flux2."platforms.windows-x64"]
+checksum = "sha256:1a23053bf9abbedbdac07237f5c6ae9b0da0bcb77ddbd103faa99839c6a7f562"
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_windows_amd64.zip"
+url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282898"
+
+[tools.flux2."platforms.windows-x64".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
+
+[[tools."github:fluxcd/flux-schema"]]
+version = "0.13.0"
+backend = "github:fluxcd/flux-schema"
+specifiers = ["0.13.0"]
+
+[tools."github:fluxcd/flux-schema"."platforms.linux-arm64"]
+checksum = "sha256:f0a621dd897c39f0759edc635e5be143374feedcc045301f419b27a157cf0c83"
+url = "https://github.com/fluxcd/flux-schema/releases/download/v0.13.0/flux-schema_0.13.0_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/fluxcd/flux-schema/releases/assets/553169052"
+provenance = "github-attestations"
+
+[tools."github:fluxcd/flux-schema"."platforms.linux-arm64-musl"]
+checksum = "sha256:f0a621dd897c39f0759edc635e5be143374feedcc045301f419b27a157cf0c83"
+url = "https://github.com/fluxcd/flux-schema/releases/download/v0.13.0/flux-schema_0.13.0_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/fluxcd/flux-schema/releases/assets/553169052"
+provenance = "github-attestations"
+
+[tools."github:fluxcd/flux-schema"."platforms.linux-x64"]
+checksum = "sha256:809dea3dc3e5236b4750ca8058a36603ad220095c6b50b702fff47d0aaa47ba6"
+url = "https://github.com/fluxcd/flux-schema/releases/download/v0.13.0/flux-schema_0.13.0_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/fluxcd/flux-schema/releases/assets/553169054"
+provenance = "github-attestations"
+
+[tools."github:fluxcd/flux-schema"."platforms.linux-x64-musl"]
+checksum = "sha256:809dea3dc3e5236b4750ca8058a36603ad220095c6b50b702fff47d0aaa47ba6"
+url = "https://github.com/fluxcd/flux-schema/releases/download/v0.13.0/flux-schema_0.13.0_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/fluxcd/flux-schema/releases/assets/553169054"
+provenance = "github-attestations"
+
+[tools."github:fluxcd/flux-schema"."platforms.macos-arm64"]
+checksum = "sha256:6f226ed964cdb9a8ed949e45329f029a68c9cf1711b19ed70b3d57da4e33d5d9"
+url = "https://github.com/fluxcd/flux-schema/releases/download/v0.13.0/flux-schema_0.13.0_darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/fluxcd/flux-schema/releases/assets/553169051"
+provenance = "github-attestations"
+
+[tools."github:fluxcd/flux-schema"."platforms.macos-x64"]
+checksum = "sha256:93a43b0a9404f3cf9519dc32128d404daba30ba8e06073349f67e0246ea05e5e"
+url = "https://github.com/fluxcd/flux-schema/releases/download/v0.13.0/flux-schema_0.13.0_darwin_amd64.tar.gz"
+url_api = "https://api.github.com/repos/fluxcd/flux-schema/releases/assets/553169056"
+provenance = "github-attestations"
+
+[tools."github:fluxcd/flux-schema"."platforms.windows-x64"]
+checksum = "sha256:ba550030e629fd0879a727cc701e419aadebf30db138b016bbd97838fc29295d"
+url = "https://github.com/fluxcd/flux-schema/releases/download/v0.13.0/flux-schema_0.13.0_windows_amd64.zip"
+url_api = "https://api.github.com/repos/fluxcd/flux-schema/releases/assets/553169092"
+provenance = "github-attestations"
 
 [[tools.hk]]
 version = "2.0.1"

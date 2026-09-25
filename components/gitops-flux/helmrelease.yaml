@@ -1,0 +1,29 @@
+# Adopts the flux-operator release the bootstrap installed: same release
+# name, in flux-system. The bootstrap installs spec.values as well.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: flux-operator
+  namespace: flux-system
+  annotations:
+    # Removing the operator takes an explicit teardown, never a Git deletion.
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  interval: 1h
+  releaseName: flux-operator
+  chartRef:
+    kind: OCIRepository
+    name: flux-operator
+  upgrade:
+    force: false
+    strategy:
+      name: RemediateOnFailure
+    remediation:
+      retries: 3
+      strategy: rollback
+      remediateLastFailure: true
+  rollback:
+    force: false
+  values:
+    image:
+      tag: v0.60.0@sha256:954176b87a0a9726cd2d5750b2782ccb3f0258dd2a41fcf6173629320cdb88f9

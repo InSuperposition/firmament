@@ -108,7 +108,7 @@ to the real OrbStack ID, `env:destroy` would hit this crash.
 | Template | Feature request (`t/feature`) |
 | Status | Not filed |
 | Duplicate search | 2026-09-23: `INET_DIAG_DESTROY`, `INET_DIAG`, `socket destroy`, `sock_destroy`, `netkit`, `cilium`, `kernel config`; no match |
-| Related Cilium bug | [cni-cilium/BUGS.md](../cni-cilium/BUGS.md#socket-termination-disabled-when-only-the-netlink-destroy-path-is-missing) |
+| Related Cilium bug | [cni-cilium/BUGS.md](../../components/cni-cilium/BUGS.md#socket-termination-disabled-when-only-the-netlink-destroy-path-is-missing) |
 
 **Title:** `[Kernel] Enable CONFIG_INET_DIAG_DESTROY (socket termination for Cilium and ss -K)`
 
@@ -205,10 +205,78 @@ Major distribution and platform kernels already enable it:
 ### Notes for this repo (not part of the issue)
 
 - Once this ships, remove `--log-check-only-test-time` from
-  `cilium:conformance` in `mise.toml`, reconsider
-  `socketLB.hostNamespaceOnly` in `modules/cni-cilium`, and update the
+  `cilium:conformance` (`.mise/tasks/cilium/conformance.sh`), reconsider
+  `socketLB.hostNamespaceOnly` in `components/cni-cilium`, and update the
   socket termination section in
-  [modules/cni-cilium/README.md](../cni-cilium/README.md#socket-termination).
+  [components/cni-cilium/README.md](../../components/cni-cilium/README.md#socket-termination).
 - Unlike `CONFIG_PSI` (#1309, declined for measured performance
   regressions), this option does nothing until a privileged process
   sends a destroy request.
+- `socketLB.hostNamespaceOnly: true`, the workaround this request would
+  remove, also shapes how Hubble reports Service replies. It is not the
+  cause of the `cilium:conformance` flow-validation failures, which are a
+  cilium-cli bug on any platform; see
+  [cni-cilium/BUGS.md](../../components/cni-cilium/BUGS.md#flow-validation-never-matches-reverse-nated-service-replies).
+  No OrbStack issue mentions Cilium, Hubble or netkit tracing (searched
+  2026-09-24 for `cilium`, `cilium hubble`, `cilium netkit`, `ebpf netkit`,
+  `kube-proxy replacement`).
+
+## Tracking: SSH and network stalls during `env:e2e`
+
+| Field | Value |
+| --- | --- |
+| Repository | [orbstack/orbstack](https://github.com/orbstack/orbstack/issues/new?template=bug_report.yml) |
+| Template | Bug report (`t/bug`) |
+| Status | Not ready to file: seen once each, no reproduction yet |
+| Duplicate search | 2026-09-24: `ssh`, `ssh hang`, `ssh stuck`, `scp hang`, `sftp`, `orb.local`, `orb.local timeout`, `machine ip unreachable`, `network drops` |
+| Related | orbstack/orbstack#2646, #2676, #2527, #2382, #1966 |
+
+Two stalls on 2026-09-24, each on a fresh machine created by `env:e2e`,
+each gone on the next run. Neither involves Cilium: both happened before
+any pod network existed.
+
+**1. SSH session stalls after a large upload.** k0sctl (through the
+`mirantis/k0sctl` 0.0.3 provider) uploaded the 240 MB k0s binary over
+OrbStack's SSH proxy (`127.0.0.1:32222`); the file landed complete
+(`/usr/local/bin/k0s`, 22:20), then the session sat idle for 23 minutes
+with nothing running in the machine and one established connection
+from the provider to `127.0.0.1:32222`. Stopping the provider process
+ended the apply; the next run passed.
+
+- Related: #2646 (open), an SSH throughput regression between OrbStack
+  2.1.3 and 2.2.0, still present in 2.2.3. Same versions, same built-in
+  SSH server, but that report is about slowness, not a stall.
+- Earlier sessions saw `k0sctl reset` hang the same way after the reset
+  finished.
+
+**2. Host loses the machine's `.orb.local` address.** During `tofu
+apply`, 30 s after k0s came up, the Kubernetes provider failed:
+
+```text
+Post "https://firmament.orb.local:6443/api/v1/namespaces": dial tcp 192.168.138.3:6443: connect: operation timed out
+```
+
+`firmament.orb.local` resolved to the relay address `192.168.138.3`,
+while the machine's own address was `192.168.139.209`. A minute later
+both addresses answered `/healthz` with 401 and ping was under 1 ms.
+
+- Related: #2676 (open): the host cannot reach machines by IP or
+  `.orb.local`; ARP never resolves for the per-machine relay address.
+- Related: #2527 (open): the host cannot reach `*.orb.local` on macOS 26.
+- Related: #2382 (open): intermittent VM network drops of about 10 s,
+  with `XPC_ERROR_CONNECTION_INTERRUPTED` in the logs.
+- Related: #1966 (open): `.orb.local` domains are unreliable over time.
+
+**To make these fileable:** capture `orb report` right after a stall,
+the machine's `ss -tnp` and `journalctl -u ssh` for case 1, and
+`arp -an`, `route -n get 192.168.138.3` and `dscacheutil -q host -a name
+firmament.orb.local` on the host for case 2. Logs of both runs are in
+`~/.local/state/firmament/logs/` (`e2e-ssh-hang.log`,
+`e2e-api-timeout.log`).
+
+### Notes for this repo (not part of the issue)
+
+- `env:e2e` stops at the first failure and leaves the machine, so a
+  rerun is the current recovery. Stop a hung provider with one signal to
+  the provider process, never a second SIGINT to tofu.
+

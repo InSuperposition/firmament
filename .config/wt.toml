@@ -1,0 +1,8 @@
+# Worktrunk project hooks: https://worktrunk.dev/hook/
+#
+# Runs once when `wt switch --create` makes a worktree, and blocks until done,
+# so the new worktree is ready before you enter it. `mise install` installs
+# the tool versions this checkout's mise.toml pins, at project level; mise's
+# postinstall hook then runs `repo:setup` (Git hooks and environment
+# configs). No trust step: mise shares trust with the main checkout.
+pre-start = "mise install"

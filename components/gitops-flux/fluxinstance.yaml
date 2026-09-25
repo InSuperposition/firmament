@@ -1,0 +1,49 @@
+# Flux itself, installed from the manifests embedded in the Flux Operator
+# image, and the sync that points Flux at this repository. ${git_branch} and
+# ${environment} come from the flux-runtime-info ConfigMap: the bootstrap
+# substitutes them once, and the root Kustomization on every reconcile.
+apiVersion: fluxcd.controlplane.io/v1
+kind: FluxInstance
+metadata:
+  name: flux
+  namespace: flux-system
+  annotations:
+    # Removing Flux takes an explicit teardown, never a Git deletion.
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  distribution:
+    version: 2.9.5
+    registry: ghcr.io/fluxcd
+  components:
+    - source-controller
+    - kustomize-controller
+    - helm-controller
+    - notification-controller
+  sync:
+    kind: GitRepository
+    url: https://github.com/InSuperposition/firmament.git
+    ref: refs/heads/${git_branch}
+    path: environment/${environment}/flux
+  kustomize:
+    patches:
+      - target:
+          kind: Kustomization
+          name: flux-system
+        patch: |
+          - op: add
+            path: /spec/postBuild
+            value:
+              substituteFrom:
+                - kind: ConfigMap
+                  name: flux-runtime-info
+          - op: add
+            path: /spec/healthChecks
+            value:
+              - apiVersion: helm.toolkit.fluxcd.io/v2
+                kind: HelmRelease
+                name: cilium
+                namespace: flux-system
+              - apiVersion: helm.toolkit.fluxcd.io/v2
+                kind: HelmRelease
+                name: flux-operator
+                namespace: flux-system

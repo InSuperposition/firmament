@@ -1,6 +1,19 @@
 # shellcheck shell=bash
 # Helpers shared by the mise file tasks in .mise/tasks. Source this file;
-# it defines functions only and changes no state when sourced.
+# apart from forget_git_repository_env below, it defines functions only.
+
+# Clears the variables that pin git to one repository (GIT_DIR,
+# GIT_WORK_TREE, GIT_INDEX_FILE and the rest git lists). Git exports them to
+# hooks, with absolute paths in a linked worktree, so a task started from a
+# hook would otherwise aim every git command it runs, including the clones
+# tofu makes to fetch modules, at the caller's repository and index. Tasks
+# find their repository from the working directory instead.
+forget_git_repository_env() {
+  local variables
+  mapfile -t variables < <(git rev-parse --local-env-vars)
+  unset "${variables[@]}"
+}
+forget_git_repository_env
 
 fail() {
   printf '%s\n' "$*" >&2
@@ -25,32 +38,103 @@ state_directory() {
   printf '%s/environment/%s\n' "${FIRMAMENT_STATE_HOME:?FIRMAMENT_STATE_HOME is unset; run this through mise}" "$1"
 }
 
+# Fails unless a branch name is one Git accepts and uses only letters,
+# digits and . _ / -, since the Flux bootstrap Job interpolates it into a
+# shell command.
+check_branch_name() {
+  if [[ ! "$1" =~ ^[A-Za-z0-9._/-]+$ ]] || ! git check-ref-format --branch "$1" >/dev/null 2>&1; then
+    fail "invalid branch name '$1': use a name Git accepts, made of letters, digits and . _ / - only"
+  fi
+}
+
+# Prints the branch of this repository that Flux follows: FIRMAMENT_GIT_BRANCH
+# when the caller sets it, otherwise the checked-out branch. A detached HEAD
+# names no branch, so it fails instead of guessing one.
+git_branch() {
+  local branch="${FIRMAMENT_GIT_BRANCH:-}"
+  if [[ -z "$branch" ]]; then
+    branch=$(git -C "${MISE_PROJECT_ROOT:?run this through mise}" symbolic-ref --short -q HEAD) ||
+      fail "HEAD is detached; set FIRMAMENT_GIT_BRANCH to the branch Flux should follow" || return
+  fi
+  check_branch_name "$branch" || return
+  printf '%s\n' "$branch"
+}
+
+# Prints the commit a branch pointed at on origin when it was last fetched.
+remote_branch_sha() {
+  git -C "${MISE_PROJECT_ROOT:?run this through mise}" rev-parse --verify -q "refs/remotes/origin/$1^{commit}" ||
+    fail "origin/$1 does not exist; push the branch first"
+}
+
+# Prints the revision Flux reports once it has applied a branch at the tip
+# origin had when last fetched.
+flux_revision() {
+  local sha
+  sha=$(remote_branch_sha "$1") || return
+  printf 'refs/heads/%s@sha1:%s\n' "$1" "$sha"
+}
+
 # Runs tofu in an environment's root, telling it where its state directory
-# is. Every other input belongs to the environment's own configuration.
+# is and which branch Flux follows. Every other input belongs to the
+# environment's own configuration.
 tofu_in_environment() {
   local environment="$1"
   shift
-  local directory state
+  local directory state branch
   directory=$(environment_directory "$environment") || return
   state=$(state_directory "$environment") || return
-  TF_VAR_state_directory="$state" tofu -chdir="$directory" "$@"
+  branch=$(git_branch) || return
+  TF_VAR_state_directory="$state" TF_VAR_git_branch="$branch" tofu -chdir="$directory" "$@"
 }
 
-# Points an environment's OpenTofu backend at its state file.
+# Points an environment's OpenTofu backend at its state file. Providers
+# install only as the committed lock file records them.
 init_environment() {
   local environment="$1"
   local state
   environment_directory "$environment" >/dev/null || return
   state=$(state_directory "$environment") || return
   mkdir -p "$state"
-  tofu_in_environment "$environment" init -input=false -reconfigure \
+  tofu_in_environment "$environment" init -input=false -reconfigure -lockfile=readonly \
     -backend-config="path=$state/terraform.tfstate" >/dev/null
 }
 
+# Prints the checkout this run belongs to. Every worktree of the repository
+# shares one state directory and one machine per environment; a run that
+# starts others from another checkout (env:e2e's baseline) exports
+# FIRMAMENT_WORKTREE so they count as the same owner.
+current_worktree() {
+  printf '%s\n' "${FIRMAMENT_WORKTREE:-${MISE_PROJECT_ROOT:?run this through mise}}"
+}
+
+# Records this checkout as the owner of an environment's live cluster, or
+# fails when another existing worktree owns it, so one worktree cannot
+# rebuild or destroy the cluster another is testing. A recorded worktree
+# that no longer exists does not count. FIRMAMENT_TAKE_OVER=1 claims it
+# anyway.
+claim_environment() {
+  local environment="$1" worktree owner_file owner
+  worktree=$(current_worktree) || return
+  owner_file="$(state_directory "$environment")/owner"
+  owner=$(cat "$owner_file" 2>/dev/null) || owner=""
+  if [[ -n "$owner" && "$owner" != "$worktree" && -d "$owner" && "${FIRMAMENT_TAKE_OVER:-}" != 1 ]]; then
+    fail "environment '$environment' belongs to the worktree $owner; run this there, or set FIRMAMENT_TAKE_OVER=1 to take it over"
+    return
+  fi
+  mkdir -p "$(dirname -- "$owner_file")"
+  printf '%s\n' "$worktree" >"$owner_file"
+}
+
+# Forgets the owner of an environment whose cluster was destroyed.
+release_environment() {
+  rm -f "$(state_directory "$1")/owner"
+}
+
 # Initializes an OpenTofu root or module without a backend, for checks that
-# never read or write state.
+# never read or write state. Providers install only as the committed lock
+# file records them.
 init_offline() {
-  tofu -chdir="$1" init -backend=false -input=false -reconfigure >/dev/null
+  tofu -chdir="$1" init -backend=false -input=false -reconfigure -lockfile=readonly >/dev/null
 }
 
 # Prints each module or environment directory that holds an OpenTofu test
@@ -64,9 +148,27 @@ tofu_test_directories() {
   done | sort -u
 }
 
-# Prints one output from an environment's state.
+# Prints one output from an environment's state, or nothing when the state
+# has no value for it, as after a destroy. Fails only when the state cannot
+# be read. It reads the JSON form: with no outputs, `tofu output -raw` prints
+# a warning to stdout and still exits 0, while the JSON form prints an empty
+# object.
+environment_output_or_empty() {
+  local outputs
+  outputs=$(tofu_in_environment "$1" output -json) || return
+  jq -r --arg name "$2" '.[$name].value // empty' <<<"$outputs"
+}
+
+# Prints one output from an environment's state. Fails when the state has no
+# value for it, as after a destroy, or cannot be read.
 environment_output() {
-  tofu_in_environment "$1" output -raw "$2"
+  local value
+  value=$(environment_output_or_empty "$1" "$2") || return
+  if [[ -z "$value" ]]; then
+    fail "environment '$1' has no $2 in its state; apply it first"
+    return
+  fi
+  printf '%s' "$value"
 }
 
 # Prints the kubeconfig path recorded in an environment's state.
@@ -84,57 +186,103 @@ chainsaw_in_environment() {
   KUBECONFIG="$kubeconfig" chainsaw "$@"
 }
 
-# Prints one "<state> <chart>" line per k0s Helm chart, where state is:
-#   ready    k0s installed the current spec;
-#   pending  k0s has not yet reconciled the current spec;
-#   failed   k0s tried the current spec and recorded an error.
-# k0s stores sha256(release name + values) of the spec it last reconciled in
-# .status.valuesHash, whether or not that attempt failed, so comparing it with
-# the current spec tells a pending upgrade from a finished one.
-chart_states() {
-  local charts rows name hash payload version_matches error expected
-  charts=$(kubectl --kubeconfig "$1" -n kube-system get charts.helm.k0sproject.io -o json) || return
-  rows=$(jq -r '.items[] | [
-      .metadata.name,
-      (.status.valuesHash // "-"),
-      (((.spec.releaseName // .metadata.name) + (.spec.values // "")) | @base64),
-      ((.status.version // "") == .spec.version),
-      (.status.error // "")
-    ] | @tsv' <<<"$charts") || return
-  [[ -n "$rows" ]] || return 0
-  while IFS=$'\t' read -r name hash payload version_matches error; do
-    expected=$(printf '%s' "$payload" | base64 --decode | shasum -a 256)
-    expected=${expected%% *}
-    if [[ "$hash" != "$expected" ]]; then
-      printf 'pending %s\n' "$name"
-    elif [[ -n "$error" ]]; then
-      printf 'failed %s\n' "$name"
-    elif [[ "$version_matches" != true ]]; then
-      printf 'pending %s\n' "$name"
-    else
-      printf 'ready %s\n' "$name"
-    fi
-  done <<<"$rows"
+# Prints the OrbStack and guest kernel versions an environment's machine
+# runs on. Both sit outside what this repository pins, so live runs record
+# them.
+platform_versions() {
+  local machine
+  machine=$(environment_output "$1" machine_name) || return
+  printf 'OrbStack: %s\n' "$(orb version | head -n 1)"
+  printf 'kernel: %s\n' "$(orb -m "$machine" uname -r)"
 }
 
-# Waits until every k0s Helm chart runs its current spec. Fails as soon as
-# k0s records an error for the current spec, or when the timeout (seconds)
-# passes, printing the charts so the Helm error is visible.
-wait_for_charts() {
-  local kubeconfig="$1" timeout="${2:-600}" interval="${3:-5}"
-  local deadline=$((SECONDS + timeout)) states
-  while true; do
-    if states=$(chart_states "$kubeconfig"); then
-      if grep -q '^failed ' <<<"$states"; then
-        fail "k0s could not install a Helm chart:"$'\n'"$states"
-        kubectl --kubeconfig "$kubeconfig" -n kube-system get charts.helm.k0sproject.io -o yaml >&2
-        return 1
-      fi
-      grep -q '^pending ' <<<"$states" || return 0
+# Prints one sorted "namespace/pod uid container-ids restarts" line for each
+# pod an identity list selects. Each list line is "<namespace> <selector>".
+# Two snapshots that match mean the same pods kept running, with no
+# container restarted or replaced. A line that selects no pod fails, since
+# two empty snapshots would match without checking anything.
+workload_identities() {
+  local kubeconfig="$1" list="$2" namespace selector identities
+  while read -r namespace selector; do
+    [[ -n "$namespace" && "$namespace" != \#* ]] || continue
+    identities=$(kubectl --kubeconfig "$kubeconfig" -n "$namespace" get pods -l "$selector" -o json |
+      jq -r '.items[] | [
+          .metadata.namespace + "/" + .metadata.name,
+          .metadata.uid,
+          ([.status.containerStatuses[]?.containerID] | sort | join(",")),
+          ([.status.containerStatuses[]?.restartCount] | add // 0)
+        ] | @tsv') || return
+    if [[ -z "$identities" ]]; then
+      fail "$namespace $selector selects no pod"
+      return
     fi
+    printf '%s\n' "$identities"
+  done <"$list" | sort
+}
+
+# Prints the stand-in runtime values in .mise/flux-test-values.env as
+# KEY=value lines, without comments or blank lines.
+flux_test_values() {
+  grep -Ev '^[[:space:]]*(#|$)' "${MISE_PROJECT_ROOT:?run this through mise}/.mise/flux-test-values.env"
+}
+
+# Renders what Flux applies from an environment's flux directory, with the
+# stand-in values in place of the runtime values OpenTofu computes. Fails on
+# a variable left without a value.
+render_flux_build() {
+  local -a values
+  mapfile -t values < <(flux_test_values)
+  kubectl kustomize "$1" | env "${values[@]}" flux envsubst --strict
+}
+
+# Removes the Flux bootstrap from an environment's state, so destroy works
+# when the API server is already gone: its objects live in the cluster and
+# go with the machine. Does nothing without a state file or a bootstrap in
+# it. state rm writes its backup into the working directory unless told
+# otherwise; the state directory keeps it next to the state, out of Git.
+forget_bootstrap() {
+  local environment="$1" state resources
+  state=$(state_directory "$environment") || return
+  [[ -f "$state/terraform.tfstate" ]] || return 0
+  resources=$(tofu_in_environment "$environment" state list) || return
+  grep -q '^module\.bootstrap_flux\.' <<<"$resources" || return 0
+  tofu_in_environment "$environment" state rm \
+    -backup="$state/terraform.tfstate.bootstrap.backup" module.bootstrap_flux
+}
+
+# Fails when the environment's cluster has Helm charts that k0s installs.
+# k0s uninstalls a chart once it leaves its configuration, and this
+# configuration installs none, so applying over such a cluster would remove
+# its Cilium. Passes when the state records no cluster yet; fails when the
+# state cannot be read or a recorded cluster cannot answer, since either
+# says nothing about its charts.
+refuse_k0s_charts() {
+  local kubeconfig charts errors
+  kubeconfig=$(environment_output_or_empty "$1" kubeconfig_path) || return
+  if [[ -z "$kubeconfig" ]]; then
+    return 0
+  fi
+  errors=$(mktemp)
+  if ! charts=$(kubectl --kubeconfig "$kubeconfig" get charts.helm.k0sproject.io -A -o name --request-timeout=10s 2>"$errors"); then
+    fail "cannot tell whether k0s installs Helm charts on this cluster:"$'\n'"$(cat "$errors")"$'\n'"Start the machine, or rebuild it: mise run --yes env:destroy $1, then mise run env:apply $1"
+    rm -f "$errors"
+    return 1
+  fi
+  rm -f "$errors"
+  if [[ -n "$charts" ]]; then
+    fail "k0s still installs Helm charts on this cluster, and applying would uninstall them:"$'\n'"$charts"$'\n'"Rebuild it instead: mise run --yes env:destroy $1, then mise run env:apply $1"
+  fi
+}
+
+# Waits until the node the cluster just created has registered with the API
+# server. Retries while k0s starts the API server, whereas kubectl wait fails
+# on a node that does not exist yet.
+wait_for_node() {
+  local kubeconfig="$1" timeout="${2:-300}" interval="${3:-5}"
+  local deadline=$((SECONDS + timeout))
+  until [[ -n "$(kubectl --kubeconfig "$kubeconfig" get nodes -o name 2>/dev/null)" ]]; do
     if ((SECONDS >= deadline)); then
-      fail "k0s did not reconcile the Helm charts within ${timeout}s:"$'\n'"${states:-charts unavailable}"
-      kubectl --kubeconfig "$kubeconfig" -n kube-system get charts.helm.k0sproject.io -o yaml >&2
+      fail "no node registered with the API server within ${timeout}s"
       return 1
     fi
     sleep "$interval"
@@ -143,14 +291,34 @@ wait_for_charts() {
 
 # Waits until the cluster runs what was just applied. The first Cilium wait
 # retries while k0s restarts the API server after apply, whereas kubectl
-# fails on the first refused connection. That wait can pass on the old pods
-# while k0s upgrades the chart in the background, so the chart wait follows,
-# then Cilium is checked again on the pods the upgrade rolled out.
+# fails on the first refused connection. Flux then reports its own
+# reconcile and the Cilium release, and Cilium is checked again on the pods
+# an upgrade rolled out.
 wait_for_cluster() {
   local kubeconfig
   kubeconfig=$(environment_kubeconfig "$1") || return
   cilium --kubeconfig "$kubeconfig" status --wait --wait-duration=10m --interactive=false
-  wait_for_charts "$kubeconfig"
+  kubectl --kubeconfig "$kubeconfig" -n flux-system wait --for=condition=Ready fluxinstance/flux --timeout=10m
+  kubectl --kubeconfig "$kubeconfig" -n flux-system wait --for=condition=Ready helmrelease/cilium --timeout=10m
   cilium --kubeconfig "$kubeconfig" status --wait --wait-duration=10m --interactive=false
   kubectl --kubeconfig "$kubeconfig" wait --for=condition=Ready node --all --timeout=5m
+}
+
+# Waits until something listens on a local TCP port that a background
+# process, such as a port-forward, is opening. Fails when that process exits
+# first or the port stays closed for the given number of seconds.
+wait_for_local_port() {
+  local pid="$1" port="$2" timeout="$3"
+  local deadline=$((SECONDS + timeout))
+  until (: >"/dev/tcp/127.0.0.1/$port") 2>/dev/null; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      fail "the process that should listen on local port $port exited"
+      return 1
+    fi
+    if ((SECONDS >= deadline)); then
+      fail "nothing listens on local port $port after ${timeout}s"
+      return 1
+    fi
+    sleep 0.2
+  done
 }

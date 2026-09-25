@@ -71,37 +71,8 @@ variable "kube_proxy_replacement" {
   description = "Whether the CNI replaces kube-proxy, so k0s does not run it. Fixed at cluster creation."
 }
 
-variable "helm_charts" {
-  type = list(object({
-    repository = object({
-      name = string
-      url  = string
-    })
-    chart = object({
-      name      = string
-      chartname = string
-      version   = string
-      namespace = string
-      values    = string
-      # k0s upgrades with --force unless this is false; --force recreates objects that cannot be replaced in place, such as Jobs.
-      forceUpgrade = optional(bool, true)
-    })
-  }))
-  default     = []
-  description = "Helm charts k0s installs during cluster bring-up, each with the repository it comes from."
-
-  validation {
-    condition     = length(distinct([for helm_chart in var.helm_charts : helm_chart.repository.name])) == length(distinct([for helm_chart in var.helm_charts : helm_chart.repository]))
-    error_message = "each Helm repository name must point at one URL."
-  }
-
-  validation {
-    condition     = length(distinct([for helm_chart in var.helm_charts : helm_chart.chart.name])) == length(var.helm_charts)
-    error_message = "each Helm chart name must be unique; k0s names the Chart resource and the release after it."
-  }
-
-  validation {
-    condition     = alltrue([for helm_chart in var.helm_charts : trimspace(helm_chart.chart.values) == "" || can(yamldecode(helm_chart.chart.values))])
-    error_message = "each Helm chart's values must be valid YAML."
-  }
+variable "drain_before_upgrade" {
+  type        = bool
+  default     = true
+  description = "Whether k0sctl drains each node before upgrading it. On a single node a drain evicts every pod with nowhere to go, so single-node clusters set false."
 }

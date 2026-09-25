@@ -1,0 +1,8 @@
+# Flux Operator and the FluxInstance it reconciles. The OpenTofu bootstrap
+# installs both once; from then on Flux upgrades them from these manifests.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ocirepository.yaml
+  - helmrelease.yaml
+  - fluxinstance.yaml
