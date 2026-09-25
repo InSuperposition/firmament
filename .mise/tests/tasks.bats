@@ -732,3 +732,44 @@ YAML
   [ "$status" -ne 0 ]
   [[ "$output" == *'variable not set (strict mode): "not_a_runtime_value"'* ]]
 }
+
+# Runs orb:capture-stall for the machine "demo" without a terminal, with the
+# host network tools replaced by recording stand-ins, and prints the capture
+# directory.
+run_capture_stall() {
+  local tool
+  for tool in arp dscacheutil route lsof; do
+    [ -e "$stubs/$tool" ] || stub "$tool"
+  done
+  usage_machine=demo run "$root_directory/.mise/tasks/orb/capture-stall.sh" </dev/null
+}
+
+@test "orb:capture-stall records each command, its output and its exit status" {
+  run_capture_stall
+  [ "$status" -eq 0 ] || fail "$output"
+  local directory
+  directory=$(printf '%s\n' "$FIRMAMENT_STATE_HOME"/stalls/*)
+  [[ "$output" == *"Captured in $directory"* ]]
+  [ "$(head -1 "$directory/host-route.txt")" = '$ route -n get demo.orb.local' ]
+  [ "$(tail -1 "$directory/host-route.txt")" = 'exit 0' ]
+  grep -qx 'orb -m demo -u root ss -tnp | state= branch=' "$CALLS"
+  grep -qx 'orb -m demo -u root journalctl -u ssh --since -1h --no-pager | state= branch=' "$CALLS"
+  grep -qx 'lsof -nP -iTCP:32222 | state= branch=' "$CALLS"
+  ! grep -q '^tofu ' "$CALLS" || fail "read tofu state, which a stalled apply has not written: $(cat "$CALLS")"
+}
+
+@test "orb:capture-stall keeps capturing after a command fails" {
+  printf '#!/usr/bin/env bash\nexit 3\n' >"$stubs/arp"
+  chmod +x "$stubs/arp"
+  run_capture_stall
+  [ "$status" -eq 0 ] || fail "$output"
+  [ "$(tail -1 "$FIRMAMENT_STATE_HOME"/stalls/*/host-arp.txt)" = 'exit 3' ]
+  grep -q '^orb -m demo -u root journalctl ' "$CALLS"
+}
+
+@test "orb:capture-stall never uploads an orb report no one can review" {
+  run_capture_stall
+  [ "$status" -eq 0 ] || fail "$output"
+  ! grep -q '^orb report' "$CALLS"
+  [[ "$output" == *"Skipped orb report: no terminal to review it."* ]]
+}
