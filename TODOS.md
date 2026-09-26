@@ -17,15 +17,26 @@ Versions were checked on 2026-09-25.
 | OpenTofu, OrbStack, Ubuntu, k0s | VM, OS and Kubernetes node (L1) | pinned in repo | running | none |
 | Cilium + Hubble | CNI, network flows, UI | 1.20.2 | running | "Test a Cilium version bump" |
 | Flux + Flux Operator | GitOps, web UI | Operator v0.60.0 | running | "Add mise tasks to open the Hubble and Flux web UIs" |
-| OpenTelemetry | telemetry: metrics, logs, traces | Collector v0.161.0, Operator v0.159.0 | chosen | "Plan telemetry with OpenTelemetry" |
-| Metrics store + dashboards | Prometheus + Grafana or an alternative | Prometheus v3.15.0, Grafana v13.2.2 | planning | "Plan metrics and dashboards" |
 | Kyverno | admission policy | v1.19.1 | coming | "Plan Kyverno" |
 | Crossplane | external resources | v2.4.2 | coming | "Plan Crossplane" |
+| KEDA | event-driven autoscaling | v2.21.0 | coming; needs a time-series store | "Plan KEDA autoscaling" |
 | CubeFS | distributed storage: CSI volumes, S3 | v3.6.0 | coming | "Plan CubeFS storage" |
 | Tetragon | eBPF process and syscall events | v1.7.1 | research | "Research eBPF observability and runtime security" |
 | KubeArmor | runtime enforcement | v1.7.5 | when an app runs | "Plan KubeArmor when it becomes relevant" |
 | Chaos Mesh | fault injection | v2.8.4 | planning | "Plan fault injection with Chaos Mesh" |
 | Timoni | typed component modules | v0.34.0 | planning | "Plan Timoni for Flux components" |
+
+### Observability: undecided
+
+Telemetry, metrics and observability need more research. Nothing here is
+chosen: the tools named are suggestions to compare, and the decision
+must avoid overlap with what already runs (Hubble) and with the other
+candidates (Tetragon, Coroot).
+
+| Part | Role | Suggestions (latest) | Status | Item |
+|---|---|---|---|---|
+| Telemetry pipeline | collect metrics, logs, traces | OpenTelemetry Collector v0.161.0 and Operator v0.159.0; Grafana Alloy v1.20.0; direct Prometheus scraping | research | "Decide on a telemetry pipeline" |
+| Time-series store + dashboards | store and view metrics; KEDA's data source | Prometheus v3.15.0 + Grafana v13.2.2; VictoriaMetrics v1.152.0; Perses v0.54.0 | research | "Plan metrics and dashboards" |
 
 ## Infrastructure
 
@@ -54,8 +65,9 @@ was written, so make the check required only after it has run reliably.
 
 **Integrates with:** Each coming component adds its offline check to
 `mise run check`: Kyverno policy tests (`kyverno test`), Crossplane
-composition validation with its CLI, OpenTelemetry Collector config
-validation (`otelcol validate`), and `flux:lint` for every new
+composition validation with its CLI, the telemetry collector's config
+check if one is adopted (`otelcol validate` for OpenTelemetry), and
+`flux:lint` for every new
 component.
 
 **Effort:** S
@@ -99,7 +111,7 @@ disabling Hubble telescope and flow validation": the suite runs from
 the host, which cannot reach the Relay without a port-forward, so flow
 validation is skipped on every run.
 
-**Integrates with:** Every coming component (OpenTelemetry, the metrics
+**Integrates with:** Every coming component (a telemetry collector, the metrics
 store, Kyverno, Crossplane) adds image pulls and start-up time. Budget
 the lane per component, and let the "Run an OCI registry on the host"
 cache cover their images.
@@ -234,7 +246,7 @@ chart templates, which is the upgrade that will happen in practice.
   address timed out while the VM IP answered, and a rerun passed. If it
   recurs, point the Helm and Kubernetes providers at the VM IP.
 
-**Integrates with:** With OpenTelemetry and a metrics store in place,
+**Integrates with:** With telemetry and a metrics store in place,
 record Hubble drop counts and agent restarts during the run, next to the
 fortio numbers.
 
@@ -301,7 +313,7 @@ the cluster recovers.
   cluster's Cilium datapath uses; check that it works before relying on
   it.
 
-**Integrates with:** Telemetry from "Plan telemetry with OpenTelemetry"
+**Integrates with:** Telemetry from "Decide on a telemetry pipeline"
 gives chaos runs a measurement beyond the probes. Kyverno and KubeArmor
 policies must exempt the privileged `chaos-daemon`, and chaos
 experiments are a good way to test those policies.
@@ -376,7 +388,7 @@ the host. Worktrunk's `{{ branch | hash_port }}` shows one way to derive
 stable per-branch values.
 
 **Integrates with:** Each coming component adds memory per machine:
-OpenTelemetry Collector, the metrics store, Kyverno, Crossplane. Re-
+a telemetry collector, the metrics store, Kyverno, Crossplane. Re-
 measure the per-machine footprint as they land.
 
 **Effort:** M
@@ -427,7 +439,7 @@ autopilot `Plan`s. Autopilot would move k0s version ownership from
 OpenTofu into Git, so decide that against the ownership rules first.
 
 **Integrates with:** Crossplane may provision it (see "Plan
-Crossplane"). Kyverno policies and the OpenTelemetry pipeline should be
+Crossplane"). Kyverno policies and the telemetry pipeline should be
 components every environment gets from Git, not per-environment copies.
 
 **Effort:** M
@@ -457,7 +469,7 @@ mise can pin it as `aqua:stefanprodan/timoni`. Guide:
 <https://timoni.sh/gitops-flux/>.
 
 **Integrates with:** Kyverno policies, Crossplane compositions and
-OpenTelemetry Collector configs are the components that would gain the
+telemetry collector configs are the components that would gain the
 most from typed modules.
 
 **Effort:** S
@@ -484,9 +496,9 @@ resources and the bootstrap namespace. Test repairs while Kyverno is
 down.
 
 **Integrates with:** Exempt the platform namespaces (`flux-system`,
-`kube-system`, Crossplane, OpenTelemetry) and the privileged DaemonSets
+`kube-system`, Crossplane, telemetry) and the privileged DaemonSets
 (Cilium, Tetragon, KubeArmor, `chaos-daemon`). Kyverno exports metrics
-and traces, so it joins the OpenTelemetry pipeline. Policies can check
+and traces, so it joins the telemetry pipeline. Policies can check
 Crossplane claims before they reach a provider.
 
 **Effort:** M
@@ -520,8 +532,8 @@ questions from the 2026-09-24 review:
   it, not the bootstrap Job.
 
 **Integrates with:** Kyverno can validate claims and composite
-resources. Provider health and reconcile errors should flow into
-OpenTelemetry. Providers are OCI packages, so they can come from "Run an
+resources. Provider health and reconcile errors should flow into the
+telemetry pipeline. Providers are OCI packages, so they can come from "Run an
 OCI registry on the host".
 
 **Effort:** L
@@ -532,9 +544,10 @@ OCI registry on the host".
 
 **What:** Choose and plan a metrics store and dashboard tool for the
 cluster. Prometheus with Grafana is the default candidate, compared with
-the alternatives below. The OpenTelemetry Collector is the chosen
-collector (see "Plan telemetry with OpenTelemetry"), so the store only
-needs to accept what the Collector sends.
+the alternatives below. All of it is undecided: the tools are
+suggestions. The collector is a separate decision (see "Decide on a
+telemetry pipeline"), and the store must accept what that collector
+sends. KEDA will read scaling metrics from this store.
 
 **Why:** No component exposes or stores metrics today: the Cilium
 values enable no Hubble or agent metrics, and Flux reports only through
@@ -557,10 +570,10 @@ item also needs somewhere to send its output.
   with the same approach.
 - **Perses** (v0.54.0, CNCF sandbox). Dashboards as code, stored as
   custom resources, so Flux could own them; less mature than Grafana.
-- The collector is decided: the OpenTelemetry Collector (v0.161.0),
-  not Grafana Alloy (v1.20.0). Alloy is Grafana's build of the same
-  idea; keep it only as a fallback. Loki (v3.7.8) and VictoriaLogs are
-  the log store candidates for later.
+- The collector is a separate decision: the OpenTelemetry Collector
+  (v0.161.0), Grafana Alloy (v1.20.0), or no collector, with the store
+  scraping directly. Loki (v3.7.8) and VictoriaLogs are the log store
+  candidates for later.
 - **Coroot** (v1.26.8). An all-in-one, eBPF-based tool with its own UI
   and automatic service maps; overlaps with Hubble and the Tetragon
   research.
@@ -587,46 +600,86 @@ Questions for the plan:
 **Priority:** P3
 **Depends on:** None
 
-### Plan telemetry with OpenTelemetry
+### Plan KEDA autoscaling
 
-**What:** Plan OpenTelemetry as the one telemetry path for the platform
-and for apps: metrics, logs and traces go through the OpenTelemetry
-Collector to whichever stores "Plan metrics and dashboards" picks.
+**What:** Plan KEDA for event-driven autoscaling: scaling workloads,
+including to zero, on metrics and events rather than only CPU and
+memory.
+
+**Why:** Apps coming to the cluster will need to scale on demand. KEDA
+scales on queue length, request rate or any query against a metrics
+store, which the built-in HorizontalPodAutoscaler cannot do alone.
+
+**Context:**
+- KEDA v2.21.0 (2026-09-23), a CNCF graduated project. It installs by
+  Helm chart, so Flux owns it. `ScaledObject` and `ScaledJob` custom
+  resources describe what scales and on which trigger.
+- It needs a time-series store to query, which is still undecided (see
+  "Plan metrics and dashboards"). Check which of the candidates KEDA has
+  a scaler for (Prometheus, and whether VictoriaMetrics works through
+  the Prometheus scaler), and whether a telemetry pipeline adds a
+  useful scaler.
+- KEDA runs a metrics API server; only one component in a cluster can
+  serve `external.metrics.k8s.io`. Check that nothing else claims it.
+- Nothing to scale yet: plan it with the first real app.
+
+**Integrates with:**
+- "Plan metrics and dashboards": its data source.
+- "Decide on a telemetry pipeline": a possible metrics path and scaler.
+- "Plan Kyverno": policies on replica counts and PodDisruptionBudgets
+  must allow KEDA's scaling, including to zero.
+- "Test a chart value rollout on a live cluster": a scaled workload
+  changes what a safe rollout looks like.
+
+**Effort:** M
+**Priority:** P4
+**Depends on:** "Plan metrics and dashboards"; a real app to scale.
+
+### Decide on a telemetry pipeline (OpenTelemetry or an alternative)
+
+**What:** Decide whether the cluster needs a telemetry pipeline, and if
+so which one, without overlapping the tools that already run or are
+planned. OpenTelemetry is the leading suggestion, not a decision.
 
 **Why:** Telemetry is how a new feature is tested and how a bug or a
 misconfiguration is found, across the stack: Cilium, Flux, and the
-coming Kyverno, Crossplane, Tetragon and KubeArmor. One standard
-collector means each new component plugs into the same pipeline instead
-of bringing its own agent.
+coming Kyverno, Crossplane, CubeFS and KEDA. A shared pipeline would let
+each component plug into one path instead of bringing its own agent,
+but only if it adds something the other tools do not.
 
 **Context:**
-- Versions on 2026-09-25: OpenTelemetry Collector v0.161.0 (the
-  `opentelemetry-collector-releases` builds), OpenTelemetry Operator
-  v0.159.0. The Operator manages Collectors as custom resources and can
-  inject auto-instrumentation into app pods, so Flux owns both.
-- Two phases:
-  - Platform: the Collector scrapes the Prometheus endpoints the stack
-    already has or can turn on (Cilium, Hubble, Flux, Kyverno,
-    Crossplane) and collects pod logs. This helps debug the platform
-    itself and can start once a store is picked.
-  - Apps: traces and SDK or auto-instrumentation, once a real app runs.
-    That is the trigger for this item's priority, as for KubeArmor.
+- Suggestions, versions on 2026-09-25:
+  - OpenTelemetry Collector v0.161.0 (`opentelemetry-collector-releases`
+    builds) and Operator v0.159.0. The Operator manages Collectors as
+    custom resources and can inject auto-instrumentation into app pods.
+  - Grafana Alloy v1.20.0, Grafana's collector.
+  - No collector: the time-series store scrapes the Prometheus
+    endpoints directly, and logs wait.
+- Overlap to resolve, one job per tool:
+  - Hubble already covers network flows and can export flow metrics.
+  - Tetragon (research) covers process and syscall events.
+  - Coroot (a metrics-item candidate) collects with eBPF on its own.
+  - The time-series store may scrape on its own, which makes a
+    collector optional for metrics.
+- If adopted, two phases:
+  - Platform: metrics and logs from the existing stack, to debug
+    Cilium, Flux, Kyverno, Crossplane and CubeFS.
+  - Apps: traces and instrumentation, once a real app runs. That is the
+    trigger for this item's priority, as for KubeArmor.
 - Alpha defaults: nothing persists unless a run opts in (see "Plan
   metrics and dashboards").
-- Validate Collector configs offline in `mise run check`
-  (`otelcol validate`), like the other components.
-- Check which components can export OTLP directly and which need a
-  Prometheus scrape or a log file receiver.
+- A chosen collector's config gets an offline check in `mise run check`
+  (for OpenTelemetry, `otelcol validate`).
 
 **Integrates with:** every item in "Planned stack". The metrics store,
-the UI tasks, the Cilium bump run, Chaos Mesh, Tetragon and KubeArmor
-all send or read through this pipeline. Kyverno must exempt its
-namespace, and its images belong in the OCI registry cache.
+KEDA, the UI tasks, the Cilium bump run, Chaos Mesh, CubeFS, Tetragon
+and KubeArmor would send or read through the pipeline. Kyverno must
+exempt its namespace, and its images belong in the OCI registry cache.
 
 **Effort:** M
 **Priority:** P4
 **Depends on:** A real app running on the cluster, for the app phase.
-The platform phase needs only "Plan metrics and dashboards".
+The platform phase needs "Plan metrics and dashboards" decided first.
 
 ### Plan CubeFS storage
 
@@ -659,9 +712,9 @@ node.
   what happens to volumes when `env:e2e` destroys the cluster.
 
 **Integrates with:**
-- "Plan metrics and dashboards" and "Plan telemetry with OpenTelemetry":
+- "Plan metrics and dashboards" and "Decide on a telemetry pipeline":
   opt-in persistence can use a CubeFS volume, and CubeFS exposes
-  Prometheus metrics for the Collector to scrape.
+  Prometheus metrics for the pipeline to scrape.
 - "Plan Kyverno": its CSI node plugin and client run privileged, so they
   need exemptions.
 - "Plan Crossplane": decide whether Crossplane ever provisions CubeFS
@@ -707,8 +760,8 @@ and can also block them.
 - Research first; a plan with lifecycle, resource cost and policy
   examples comes later.
 
-**Integrates with:** Tetragon events and metrics go to the OpenTelemetry
-Collector. KubeArmor overlaps on enforcement, so decide which one
+**Integrates with:** Tetragon events and metrics go to the telemetry
+pipeline. KubeArmor overlaps on enforcement, so decide which one
 enforces.
 
 **Effort:** S
@@ -737,8 +790,8 @@ platform components, so there is nothing to confine yet.
 - Compare with Tetragon's enforcement and with Kyverno (admission time
   only; see "Plan Kyverno"), so each tool keeps one job.
 
-**Integrates with:** Its alerts and logs go to the OpenTelemetry
-Collector. Kyverno checks resources at admission and KubeArmor at
+**Integrates with:** Its alerts and logs go to the telemetry
+pipeline. Kyverno checks resources at admission and KubeArmor at
 runtime, so a workload rule lives in one of them, not both.
 
 **Effort:** S
