@@ -15,10 +15,15 @@ Versions were checked on 2026-09-25.
 | Part | Role | Latest | Status | Item |
 |---|---|---|---|---|
 | OpenTofu, OrbStack, Ubuntu, k0s | VM, OS and Kubernetes node (L1) | pinned in repo | running | none |
-| Cilium + Hubble | CNI, network flows, UI | 1.20.2 | running | "Test a Cilium version bump" |
+| Cilium + Hubble | CNI, network flows, UI; mutual auth deprecated in 1.20 | 1.20.2 | running | "Test a Cilium version bump" |
+| Cilium Gateway API + LB-IPAM | traffic into the cluster | Cilium 1.20.2, Gateway API v1.6.2 | coming | "Route traffic into the cluster with Cilium" |
 | Flux + Flux Operator | GitOps, web UI | Operator v0.60.0 | running | "Add mise tasks to open the Hubble and Flux web UIs" |
+| OpenBao | secrets (SOPS through Transit), signing keys | v2.7.0 | coming, before Kyverno and Crossplane | "Plan OpenBao secrets and signatures for Flux" |
+| cert-manager + trust-manager | issue certificates; distribute trust bundles | v1.21.2, v0.25.0 | coming | "Plan cert-manager and trust-manager" |
 | Kyverno | admission policy | v1.19.1 | coming | "Plan Kyverno" |
 | Crossplane | external resources | v2.4.2 | coming | "Plan Crossplane" |
+| Workload identity (SPIFFE) | pod identity, mTLS | csi-driver-spiffe v0.15.0, SPIRE v1.15.3, Cilium ztunnel (beta) | research | "Plan workload identity (SPIFFE)" |
+| Dex | sign-in for developers | v2.45.1 | research | "Plan developer sign-in with Dex" |
 | KEDA | event-driven autoscaling | v2.21.0 | coming; needs a time-series store | "Plan KEDA autoscaling" |
 | CubeFS | distributed storage: CSI volumes, S3 | v3.6.0 | coming | "Plan CubeFS storage" |
 | Tetragon | eBPF process and syscall events | v1.7.1 | research | "Research eBPF observability and runtime security" |
@@ -476,6 +481,147 @@ most from typed modules.
 **Priority:** P4
 **Depends on:** Add Flux Operator and hand Cilium and Flux to Flux.
 
+### Plan OpenBao secrets and signatures for Flux
+
+**What:** Plan OpenBao as the secret and signing backend for Flux,
+following <https://fluxcd.io/blog/2026/07/flux-openbao-secrets-signatures/>:
+- SOPS-encrypted files in Git, decrypted through OpenBao's Transit
+  engine;
+- Flux artifacts signed with cosign, using a key that never leaves
+  OpenBao.
+
+This comes before "Plan Kyverno" and "Plan Crossplane".
+
+**Why:** The cluster has no way to keep a secret in Git, and Crossplane
+provider credentials would have nowhere to live. Signed artifacts also
+give Kyverno something to verify. Starting with Flux v2.9,
+kustomize-controller authenticates to OpenBao with Kubernetes
+ServiceAccount tokens, so there is no static bootstrap token to store.
+This cluster already runs Flux 2.9.5.
+
+**Context:**
+- Decryption: kustomize-controller reads an allowlist of OpenBao
+  instances from a ConfigMap (the `--sops-vault-configmap` flag, entries
+  with `address` and `loginPath: auth/kubernetes/login`). It exchanges a
+  ServiceAccount token for a short-lived OpenBao token. A policy allows
+  `update` on `transit/decrypt/sops`. A Kustomization sets
+  `spec.decryption.provider: sops`. Setting
+  `spec.decryption.serviceAccountName` per Kustomization needs the
+  `ObjectLevelWorkloadIdentity` feature gate.
+- Signing: `cosign generate-key-pair --kms openbao://<key>` keeps the
+  private key in Transit. `cosign sign --key openbao://<key>
+  --tlog-upload=false <artifact@sha256:...>` signs without the public
+  Rekor log. `OCIRepository` checks it with `spec.verify.provider:
+  cosign` and a `secretRef` holding the public key. Nothing depends on
+  an internet service. Keyless Sigstore signing is the alternative.
+- **Lifecycle, the main question.** SOPS files stay encrypted with a
+  Transit key, so losing OpenBao means losing every secret in Git.
+  `env:e2e` destroys the cluster, so OpenBao cannot live only inside
+  it. Options:
+  - run OpenBao on the host next to OrbStack, like "Run an OCI registry
+    on the host";
+  - add a second SOPS recipient (an age key) as a recovery path;
+  - back up the Transit keys.
+
+  Trace bootstrap, restart, reboot and disaster, including unsealing
+  and where the unseal or recovery keys live.
+- Developer experience:
+  - `.sops.yaml` in the repository sets the encryption defaults;
+  - a developer or CI role gets only `update` on
+    `transit/encrypt/sops`, and the controller gets only decrypt;
+  - mise tasks to encrypt and edit secrets;
+  - `cosign login` is separate from `flux push artifact --creds`.
+- Decide whether External Secrets (v2.11.0 chart) is also needed for
+  app secrets at runtime, or whether SOPS through Flux is enough.
+
+**Integrates with:**
+- "Plan Kyverno": `verifyImages` can use the same cosign public key.
+- "Plan Crossplane": provider credentials come from OpenBao.
+- "Plan cert-manager and trust-manager": OpenBao's PKI engine could act
+  as the root CA behind a cert-manager issuer.
+- "Plan workload identity (SPIFFE)": OpenBao can accept SPIFFE JWTs.
+- "Plan developer sign-in with Dex": Dex password hashes and client
+  secrets are secrets to store here.
+- "Run an OCI registry on the host": a candidate home for OpenBao, and
+  where signed artifacts get pushed.
+- "Run the offline checks in CI": check that no unencrypted secret
+  reaches Git.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** None
+
+### Plan cert-manager and trust-manager
+
+**What:** Plan cert-manager (v1.21.2) to issue certificates in the
+cluster, and trust-manager (v0.25.0) to distribute the trust bundles
+that check them.
+
+**Why:** Gateway TLS, SPIFFE certificates, and mTLS between components
+all need an issuer. Today only Hubble has certificates, from its own
+`cronJob` method.
+
+**Context:**
+- The two do separate jobs and do not conflict. cert-manager, and
+  csi-driver-spiffe on top of it, issue certificates. trust-manager
+  copies CA bundles into namespaces through `Bundle` resources.
+  csi-driver-spiffe can mount a CA bundle itself
+  (`app.driver.sourceCABundle`), but its documentation calls that much
+  weaker and recommends trust-manager.
+- csi-driver-spiffe runs its own approver Deployment for requests
+  annotated `spiffe.csi.cert-manager.io/identity`. Plan approval so it
+  does not overlap with cert-manager's default approver.
+- Decide whether Hubble moves from `tls.auto.method: cronJob` to
+  cert-manager (`certmanager` is one of the chart's methods).
+- Which CA sits at the root: a self-signed issuer (alpha), or OpenBao
+  PKI.
+
+**Integrates with:** "Route traffic into the cluster with Cilium"
+(Gateway certificates), "Plan workload identity (SPIFFE)", "Plan OpenBao
+secrets and signatures for Flux" (root CA), the telemetry pipeline
+(mTLS), and "Plan Kyverno" (exempt its webhooks).
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
+### Route traffic into the cluster with Cilium
+
+**What:** Plan how traffic reaches the cluster using only Cilium: its
+Gateway API support (`gatewayAPI` in the chart) with its built-in Envoy,
+and LB-IPAM with `l2announcements` for LoadBalancer addresses. No
+separate ingress controller.
+
+**Why:** Today the only way in is `kubectl port-forward`. Cilium and its
+Envoy already run, so relying on them adds no new component and keeps
+one datapath to debug.
+
+**Context:**
+- Gateway API v1.6.2. Its CRDs must exist before Cilium enables
+  `gatewayAPI`, so decide which component owns the CRDs and the order
+  they apply in.
+- LB-IPAM (`CiliumLoadBalancerIPPool`) and L2 announcements
+  (`CiliumL2AnnouncementPolicy`) must hand out addresses the Mac can
+  reach on OrbStack's network (the VM is on 192.168.139.x). Check that
+  L2 announcements work on that bridge.
+- Hostnames for developers: OrbStack's `*.orb.local` names or a local
+  domain, and TLS from cert-manager.
+- external-dns (v0.23.0) only matters for a real environment.
+- Once this works, the UI tasks could offer HTTPRoutes next to
+  port-forwards.
+
+**Integrates with:**
+- "Add mise tasks to open the Hubble and Flux web UIs": the UIs gain
+  routes.
+- "Plan cert-manager and trust-manager": listener certificates.
+- "Plan developer sign-in with Dex": sign-in for exposed UIs.
+- "Plan Kyverno": rules for who may create Gateways and routes.
+- "Add a second environment": a real load balancer instead of L2.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** "Plan cert-manager and trust-manager" for TLS.
+
 ### Plan Kyverno
 
 **What:** Decide whether admission policy is needed, and with which
@@ -499,11 +645,12 @@ down.
 `kube-system`, Crossplane, telemetry) and the privileged DaemonSets
 (Cilium, Tetragon, KubeArmor, `chaos-daemon`). Kyverno exports metrics
 and traces, so it joins the telemetry pipeline. Policies can check
-Crossplane claims before they reach a provider.
+Crossplane claims before they reach a provider. `verifyImages` can
+check cosign signatures made with the OpenBao key.
 
 **Effort:** M
 **Priority:** P4
-**Depends on:** Add Flux Operator and hand Cilium and Flux to Flux.
+**Depends on:** "Plan OpenBao secrets and signatures for Flux".
 
 ### Plan Crossplane
 
@@ -538,7 +685,83 @@ OCI registry on the host".
 
 **Effort:** L
 **Priority:** P4
-**Depends on:** Add Flux Operator and hand Cilium and Flux to Flux.
+**Depends on:** "Plan OpenBao secrets and signatures for Flux", for
+provider credentials.
+
+### Plan workload identity (SPIFFE)
+
+**What:** Give each workload a SPIFFE identity for mTLS and for access
+to other systems, and choose how.
+
+**Why:** Pods are known only by IP and labels. Cilium's mutual
+authentication with SPIRE was the obvious path, but it is deprecated in
+Cilium 1.20 and will likely be removed in 1.21
+(<https://github.com/cilium/cilium/issues/47132>). Do not enable
+`authentication.mutual.spire`.
+
+**Context:** Options to compare:
+- cert-manager csi-driver-spiffe (v0.15.0) with trust-manager: SPIFFE
+  certificates mounted into pods, with no SPIRE server. The lightest,
+  and it reuses "Plan cert-manager and trust-manager".
+- SPIRE (v1.15.3) on its own: node and workload attestation,
+  federation between trust domains, and JWT identities for cloud access.
+  It runs a server with a CA key and a datastore, so it needs a full
+  lifecycle plan.
+- Cilium ztunnel (`encryption.type: ztunnel`, beta since 1.20): L4 mTLS
+  between pods, and the direction Cilium chose over mutual auth. TCP
+  only, both ends must be enrolled, it needs iptables support, and it
+  does not support Cluster Mesh. Check its identity model and whether it
+  works with netkit and kube-proxy replacement.
+- Cilium WireGuard or IPsec encryption, if only encryption is needed and
+  not identity.
+
+**Integrates with:**
+- "Plan OpenBao secrets and signatures for Flux": OpenBao can accept
+  SPIFFE JWTs, and its PKI could be the upstream CA.
+- "Plan Crossplane": cloud access with no stored keys.
+- The telemetry pipeline: mTLS between collectors.
+- "Plan Kyverno": exempt the privileged node agents.
+- "Add a second environment": federation between clusters.
+
+**Effort:** M
+**Priority:** P4
+**Depends on:** "Plan cert-manager and trust-manager".
+
+### Plan developer sign-in with Dex
+
+**What:** Research Dex (v2.45.1) as the sign-in service for developers:
+kubectl through OIDC, and single sign-on for the Flux Web UI and later
+dashboards. Start with its local connector
+(<https://dexidp.io/docs/connectors/local/>).
+
+**Why:** The only way into the cluster is the admin kubeconfig. Named
+users make RBAC, audit logs and shared UIs possible, and they make the
+setup feel like a real platform for developers.
+
+**Context:**
+- The local connector: `enablePasswordDB: true`, and users either in
+  `staticPasswords` (email, bcrypt `hash`, username, `userID`) or
+  managed through Dex's gRPC API. `oauth2.passwordConnector: local`
+  enables the password grant. It can be the alpha identity provider
+  before a real one (GitHub or another OIDC provider) is connected.
+- Kubernetes: configure the API server for OIDC (structured
+  authentication config) through k0s, and use a kubectl plugin such as
+  kubelogin. Check what k0s exposes for this.
+- Flux Operator's Web UI supports single sign-on; check that it accepts
+  Dex.
+- Compare with Pinniped before deciding. Dex's last release was
+  2026-03-03, so check how active it is.
+- More research is needed before a plan.
+
+**Integrates with:** "Plan OpenBao secrets and signatures for Flux"
+(password hashes and client secrets), "Route traffic into the cluster
+with Cilium" (a route for the sign-in page), "Add mise tasks to open the
+Hubble and Flux web UIs" (sign-in instead of port-forwards), and "Plan
+Kyverno" (RBAC and policy by user or group).
+
+**Effort:** M
+**Priority:** P4
+**Depends on:** "Route traffic into the cluster with Cilium".
 
 ### Plan metrics and dashboards (Prometheus and Grafana, or an alternative)
 
