@@ -12,6 +12,11 @@ neighbours instead of discovering them later. Each item's
 latest release of each part, and re-check versions when a plan starts.
 Versions were checked on 2026-09-25.
 
+Keep each part modular, with strict boundaries: it talks to its
+neighbours through a standard interface (OIDC, CSI, Gateway API,
+Prometheus or OTLP, SPIFFE, SOPS), so a choice made in alpha can be
+replaced later without touching the parts around it.
+
 | Part | Role | Latest | Status | Item |
 |---|---|---|---|---|
 | OpenTofu, OrbStack, Ubuntu, k0s | VM, OS and Kubernetes node (L1) | pinned in repo | running | none |
@@ -22,8 +27,8 @@ Versions were checked on 2026-09-25.
 | cert-manager + trust-manager | issue certificates; distribute trust bundles | v1.21.2, v0.25.0 | coming | "Plan cert-manager and trust-manager" |
 | Kyverno | admission policy | v1.19.1 | coming | "Plan Kyverno" |
 | Crossplane | external resources | v2.4.2 | coming | "Plan Crossplane" |
-| Workload identity (SPIFFE) | pod identity, mTLS | csi-driver-spiffe v0.15.0, SPIRE v1.15.3, Cilium ztunnel (beta) | research | "Plan workload identity (SPIFFE)" |
-| Dex | sign-in for developers | v2.45.1 | research | "Plan developer sign-in with Dex" |
+| Workload identity (SPIFFE) | pod identity, mTLS; WireGuard for encryption | csi-driver-spiffe v0.15.0, SPIRE v1.15.3 | research | "Plan workload identity (SPIFFE)" |
+| Dex | sign-in for developers | v2.45.1 | chosen for now; research | "Plan developer sign-in with Dex" |
 | KEDA | event-driven autoscaling | v2.21.0 | coming; needs a time-series store | "Plan KEDA autoscaling" |
 | CubeFS | distributed storage: CSI volumes, S3 | v3.6.0 | coming | "Plan CubeFS storage" |
 | Tetragon | eBPF process and syscall events | v1.7.1 | research | "Research eBPF observability and runtime security" |
@@ -531,6 +536,20 @@ This cluster already runs Flux 2.9.5.
     `transit/encrypt/sops`, and the controller gets only decrypt;
   - mise tasks to encrypt and edit secrets;
   - `cosign login` is separate from `flux push artifact --creds`.
+- Where the encrypted files live, to think through: this repository,
+  or a separate private repository that Flux reads as a second
+  `GitRepository` source. A separate repository keeps secrets out of
+  the public history, gives them their own access list and review
+  flow, and keeps a strict boundary between platform code and secrets.
+  It adds a second source to bootstrap and a second place for
+  developers to edit. Weigh security and developer experience together.
+- Key rotation, to plan with the repository choice:
+  - rotating the Transit key (`transit/keys/<name>/rotate`), then
+    raising `min_decryption_version` once every file is re-encrypted;
+  - `sops rotate` for new data keys, and `sops updatekeys` when
+    recipients change;
+  - who can run the rotation, and a mise task that re-encrypts every
+    file and opens a pull request.
 - Decide whether External Secrets (v2.11.0 chart) is also needed for
   app secrets at runtime, or whether SOPS through Flux is enough.
 
@@ -707,13 +726,14 @@ Cilium 1.20 and will likely be removed in 1.21
   federation between trust domains, and JWT identities for cloud access.
   It runs a server with a CA key and a datastore, so it needs a full
   lifecycle plan.
-- Cilium ztunnel (`encryption.type: ztunnel`, beta since 1.20): L4 mTLS
-  between pods, and the direction Cilium chose over mutual auth. TCP
-  only, both ends must be enrolled, it needs iptables support, and it
-  does not support Cluster Mesh. Check its identity model and whether it
-  works with netkit and kube-proxy replacement.
-- Cilium WireGuard or IPsec encryption, if only encryption is needed and
-  not identity.
+- For encryption without identity, use Cilium's WireGuard encryption
+  (`encryption.type: wireguard`) where it is needed, not IPsec: it is
+  the simpler of the two, with no keys to manage by hand. Check that it
+  works with netkit and kube-proxy replacement before enabling it.
+- Deferred: Cilium ztunnel (`encryption.type: ztunnel`), the direction
+  Cilium chose over mutual auth. It is beta in 1.20 (TCP only, both ends
+  enrolled, needs iptables, no Cluster Mesh). Revisit it when it leaves
+  beta.
 
 **Integrates with:**
 - "Plan OpenBao secrets and signatures for Flux": OpenBao can accept
@@ -749,8 +769,10 @@ setup feel like a real platform for developers.
   kubelogin. Check what k0s exposes for this.
 - Flux Operator's Web UI supports single sign-on; check that it accepts
   Dex.
-- Compare with Pinniped before deciding. Dex's last release was
-  2026-03-03, so check how active it is.
+- Dex is the choice for now. Keep it behind the OIDC boundary: the API
+  server, the UIs and kubectl only know an OIDC issuer URL and a client
+  ID. Replacing Dex later then touches only its own component. Dex's
+  last release was 2026-03-03; watch its activity.
 - More research is needed before a plan.
 
 **Integrates with:** "Plan OpenBao secrets and signatures for Flux"
