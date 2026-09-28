@@ -243,8 +243,25 @@ local_state() {
   [ "${#lines[@]}" -eq 3 ]
   [[ "${lines[0]%% |*}" =~ ^"cilium --kubeconfig /state/admin.kubeconfig hubble port-forward --port-forward "([0-9]+)$ ]]
   local port="${BASH_REMATCH[1]}"
-  [ "${lines[1]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --log-check-only-test-time --hubble-server localhost:$port --flow-validation disabled" ]
-  [ "${lines[2]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --cleanup" ]
+  [ "${lines[1]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --log-check-only-test-time --hubble-server localhost:$port --flow-validation disabled --test-concurrency 3" ]
+  [ "${lines[2]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --cleanup --test-concurrency 3" ]
+}
+
+@test "cilium:conformance runs and cleans up the suite across the namespaces --test-concurrency names" {
+  usage_test_concurrency=5 run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
+  [ "$status" -eq 0 ]
+  [ "$(grep -c -- ' connectivity test .*--test-concurrency 5 |' "$CALLS")" -eq 2 ]
+}
+
+@test "cilium:conformance refuses a --test-concurrency that is not a whole number of 1 or more, before calling any tool" {
+  local count
+  for count in 0 -1 two 1.5 03; do
+    rm -f "$CALLS"
+    usage_test_concurrency=$count run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
+    [ "$status" -ne 0 ] || fail "accepted $count"
+    [[ "$output" == *"--test-concurrency must be a whole number of 1 or more, not '$count'"* ]] || fail "$count: $output"
+    [ ! -e "$CALLS" ] || fail "$count: called $(cat "$CALLS")"
+  done
 }
 
 @test "cilium:observe follows flows through a Relay port-forward on a free random port" {
