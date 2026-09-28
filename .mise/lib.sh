@@ -176,19 +176,70 @@ environment_kubeconfig() {
   environment_output "$1" kubeconfig_path
 }
 
+# Prints the directory of each component an environment's Flux build lists,
+# one per line, or nothing for an environment without a Flux build. Only
+# directories are components; a resource file the build lists is not.
+deployed_components() {
+  local directory resources resource
+  directory=$(environment_directory "$1") || return
+  [[ -f "$directory/flux/kustomization.yaml" ]] || return 0
+  resources=$(yq -r '.resources[]' "$directory/flux/kustomization.yaml") || return
+  while IFS= read -r resource; do
+    if [[ -n "$resource" && -d "$directory/flux/$resource" ]]; then
+      (cd "$directory/flux/$resource" && pwd)
+    fi
+  done <<<"$resources"
+}
+
+# Prints the module name of a component directory: its name without the
+# role prefix, so components/cni-cilium is the module cilium. The module
+# name is also the noun of the component's tasks (cilium:verify).
+module_name() {
+  local component="${1##*/}"
+  printf '%s\n' "${component#*-}"
+}
+
+# Fails unless every name in a comma-separated module list is a module the
+# environment deploys, naming the modules it does deploy. An empty list
+# selects every module.
+check_modules() {
+  local environment="$1" only="$2" components deployed="" component name
+  local -a names
+  components=$(deployed_components "$environment") || return
+  while IFS= read -r component; do
+    [[ -n "$component" ]] && deployed+="$(module_name "$component") "
+  done <<<"$components"
+  IFS=, read -ra names <<<"$only"
+  for name in "${names[@]}"; do
+    if [[ " $deployed" != *" $name "* ]]; then
+      fail "unknown module '$name' for environment '$environment'; choose from: ${deployed% }"
+      return
+    fi
+  done
+}
+
+# Succeeds when a module is selected by a comma-separated list; an empty
+# list selects every module.
+module_selected() {
+  local name="$1" only="$2"
+  [[ -z "$only" || ",$only," == *",$name,"* ]]
+}
+
 # Prints the chainsaw suite directories an environment's cluster must pass,
 # one per line: the environment's own tests/cluster first, then tests/cluster
-# of each component its Flux build lists, for components that have one. An
-# environment without a Flux build has only its own suite.
+# of each component its Flux build lists, for components that have one. A
+# comma-separated module list keeps only those components' suites; the
+# environment's own suite always runs.
 cluster_suites() {
-  local directory components component
-  directory=$(environment_directory "$1") || return
+  local environment="$1" only="${2:-}" directory components component
+  directory=$(environment_directory "$environment") || return
+  check_modules "$environment" "$only" || return
+  components=$(deployed_components "$environment") || return
   printf '%s\n' "$directory/tests/cluster"
-  [[ -f "$directory/flux/kustomization.yaml" ]] || return 0
-  components=$(yq -r '.resources[]' "$directory/flux/kustomization.yaml") || return
   while IFS= read -r component; do
-    if [[ -n "$component" && -d "$directory/flux/$component/tests/cluster" ]]; then
-      (cd "$directory/flux/$component/tests/cluster" && pwd)
+    if [[ -n "$component" && -d "$component/tests/cluster" ]] &&
+      module_selected "$(module_name "$component")" "$only"; then
+      printf '%s\n' "$component/tests/cluster"
     fi
   done <<<"$components"
 }

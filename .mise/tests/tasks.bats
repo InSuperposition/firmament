@@ -199,6 +199,33 @@ local_state() {
   [ "${lines[2]%% |*}" = "mise run k0s:verify local" ]
 }
 
+@test "verify --only runs the environment's own tasks and the chosen modules' tasks" {
+  TASKS="cilium:verify env:verify flux:verify k0s:verify" usage_only=cilium run_task "$root_directory/.mise/tasks/verify.sh" local
+  [ "$status" -eq 0 ]
+  run grep '^mise run' "$CALLS"
+  [ "${#lines[@]}" -eq 3 ]
+  [ "${lines[0]%% |*}" = "mise run env:verify local --only cilium" ]
+  [ "${lines[1]%% |*}" = "mise run cilium:verify local" ]
+  [ "${lines[2]%% |*}" = "mise run k0s:verify local" ]
+}
+
+@test "verify refuses a module the environment does not deploy, before running any task" {
+  usage_only=cilium,nope run_task "$root_directory/.mise/tasks/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown module 'nope' for environment 'local'; choose from: cilium flux"* ]]
+  [ ! -e "$CALLS" ]
+}
+
+@test "every component is named <role>-<module>, and no two share a module name" {
+  local component names=""
+  for component in "$root_directory"/components/*/; do
+    component="${component%/}"
+    [[ "${component##*/}" =~ ^[a-z0-9]+-[a-z0-9-]+$ ]] || fail "${component##*/} is not named <role>-<module>"
+    names+="${component##*/*-}"$'\n'
+  done
+  [ -z "$(sort <<<"$names" | uniq -d)" ] || fail "module names repeat: $(sort <<<"$names" | uniq -d)"
+}
+
 @test "cilium:verify waits for the release to run Flux's values, then for the rollout, then for Cilium" {
   run_task "$root_directory/.mise/tasks/cilium/verify.sh" local
   [ "$status" -eq 0 ]
@@ -1065,6 +1092,26 @@ verify_repository() {
   [ "${#lines[@]}" -eq 2 ]
   [ "${lines[0]%% |*}" = "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system wait kustomization/flux-system --for=jsonpath={.status.lastAppliedRevision}=$revision --timeout=10m" ]
   [ "${lines[1]}" = "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/components/cni-cilium/tests/cluster --set-string flux_revision=$revision | KUBECONFIG=/state/admin.kubeconfig" ]
+}
+
+@test "env:verify --only runs the environment's suite and the chosen modules' suites" {
+  record_chainsaw_kubeconfig
+  verify_repository
+  mkdir -p "$MISE_PROJECT_ROOT/components/gitops-flux/tests/cluster"
+  : >"$MISE_PROJECT_ROOT/components/gitops-flux/tests/cluster/chainsaw-test.yaml"
+  commit_and_push "$MISE_PROJECT_ROOT" feature/test flux-suite
+  usage_only=flux run_task "$root_directory/.mise/tasks/env/verify.sh" local
+  [ "$status" -eq 0 ]
+  run grep '^chainsaw ' "$CALLS"
+  [[ "${lines[0]}" == "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/components/gitops-flux/tests/cluster --set-string"* ]]
+}
+
+@test "env:verify refuses an unknown module before fetching or waiting" {
+  verify_repository
+  usage_only=nope run_task "$root_directory/.mise/tasks/env/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown module 'nope' for environment 'local'; choose from: cilium flux"* ]]
+  [ ! -e "$CALLS" ]
 }
 
 @test "env:verify runs no suite when it cannot read the environment's Flux build" {
