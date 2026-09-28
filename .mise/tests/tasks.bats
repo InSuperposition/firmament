@@ -886,6 +886,30 @@ mise_calls() {
   grep '^mise ' "$CALLS" | sed 's/ | branch=.*//'
 }
 
+@test "env:e2e reports each step's time before its verdict, and compares the next run with it" {
+  e2e_mise_stub
+  e2e_repository
+  run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Step times (change since the last passing run):"* ]]
+  [[ "$output" == *"env:destroy "*"(new)"*"env:destroy (2) "*"(new)"* ]]
+  [[ "${lines[-1]}" == "env:e2e passed for local at "* ]]
+  kept="$FIRMAMENT_STATE_HOME/environment/local/e2e-step-times"
+  [ "$(cut -f1 "$kept" | paste -sd, -)" = "env:destroy,env:apply,platform_versions,verify,cilium:conformance,remote_tip_unchanged,env:destroy (2)" ]
+  run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"env:apply "*" s  (+"*" s)"* ]]
+}
+
+@test "env:e2e keeps no step times from a failing run" {
+  e2e_mise_stub
+  e2e_repository
+  export FAIL_CALL="run verify local"
+  run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [ ! -e "$FIRMAMENT_STATE_HOME/environment/local/e2e-step-times" ]
+}
+
 @test "env:e2e rebuilds the cluster from scratch, runs every live check, and destroys it" {
   e2e_mise_stub
   e2e_repository

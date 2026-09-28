@@ -296,6 +296,30 @@ setup() {
   [[ "$output" == *"unknown module 'nope'"* ]]
 }
 
+@test "names an env:e2e step after the task it runs, or its first word" {
+  [ "$(step_label mise run --yes env:destroy local)" = env:destroy ]
+  [ "$(step_label env -u MISE_PROJECT_ROOT FIRMAMENT_GIT_BRANCH=main mise --cd /w run env:apply local)" = env:apply ]
+  [ "$(step_label platform_versions local)" = platform_versions ]
+}
+
+@test "reports each step's time and its change since the earlier run" {
+  printf 'env:destroy\t30\nenv:apply\t379\n' >"$BATS_TEST_TMPDIR/before"
+  printf 'env:destroy\t28\nenv:apply\t420\nconformance\t416\n' >"$BATS_TEST_TMPDIR/now"
+  run step_time_report "$BATS_TEST_TMPDIR/before" "$BATS_TEST_TMPDIR/now"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" =~ ^\ +env:destroy\ +28\ s\ +\(-2\ s\)$ ]]
+  [[ "${lines[1]}" =~ ^\ +env:apply\ +420\ s\ +\(\+41\ s\)$ ]]
+  [[ "${lines[2]}" =~ ^\ +conformance\ +416\ s\ +\(new\)$ ]]
+  [[ "${lines[3]}" =~ ^\ +total\ +864\ s$ ]]
+}
+
+@test "marks every step new when there is no earlier run" {
+  printf 'env:apply\t379\n' >"$BATS_TEST_TMPDIR/now"
+  run step_time_report "$BATS_TEST_TMPDIR/missing" "$BATS_TEST_TMPDIR/now"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == *"379 s  (new)" ]]
+}
+
 @test "names a component's module after its folder without the role prefix" {
   [ "$(module_name /x/components/cni-cilium)" = cilium ]
   [ "$(module_name components/gitops-flux)" = flux ]
