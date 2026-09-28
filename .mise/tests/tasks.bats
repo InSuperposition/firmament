@@ -209,6 +209,23 @@ local_state() {
   [ "${lines[2]%% |*}" = "mise run k0s:verify local" ]
 }
 
+@test "verify --changed checks the modules the branch changed, plus the environment" {
+  TASKS="cilium:verify env:verify flux:verify k0s:verify" usage_changed=true run_changed "$root_directory/.mise/tasks/verify.sh" components/gitops-flux/fluxinstance.yaml
+  [ "$status" -eq 0 ]
+  run grep '^mise run' "$CALLS"
+  [ "${#lines[@]}" -eq 3 ]
+  [ "${lines[0]%% |*}" = "mise run env:verify local --only flux" ]
+  [ "${lines[1]%% |*}" = "mise run flux:verify local" ]
+  [ "${lines[2]%% |*}" = "mise run k0s:verify local" ]
+}
+
+@test "conformance --changed runs nothing when no module changed" {
+  TASKS="cilium:conformance" usage_changed=true run_changed "$root_directory/.mise/tasks/conformance.sh" README.md
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"No modules changed, so no conformance tests run"* ]]
+  [ ! -e "$CALLS" ]
+}
+
 @test "verify refuses a module the environment does not deploy, before running any task" {
   usage_only=cilium,nope run_task "$root_directory/.mise/tasks/verify.sh" local
   [ "$status" -ne 0 ]
@@ -224,6 +241,7 @@ local_state() {
     names+="${component##*/*-}"$'\n'
   done
   [ -z "$(sort <<<"$names" | uniq -d)" ] || fail "module names repeat: $(sort <<<"$names" | uniq -d)"
+  ! grep -qx none <<<"$names" || fail "no module may be named none; it means no module"
 }
 
 @test "cilium:verify waits for the release to run Flux's values, then for the rollout, then for Cilium" {
@@ -1130,6 +1148,20 @@ mise run --yes env:destroy local" ]
   [[ "$output" == *"origin/main moved from"*"during the run"* ]]
   [ "$(mise_calls | tail -1)" = "mise run cilium:conformance local" ]
   ! git -C "$MISE_PROJECT_ROOT" worktree list | grep -q /baseline
+}
+
+# Runs a task in a pushed copy of this repository's local environment layout,
+# on a branch whose only change appends to the given file.
+run_changed() {
+  local script="$1" changed="$2"
+  MISE_PROJECT_ROOT=$(make_pushed_repository main environment/local/flux/kustomization.yaml README.md \
+    components/cni-cilium/values.yaml components/gitops-flux/fluxinstance.yaml)
+  cp "$root_directory/environment/local/flux/kustomization.yaml" "$MISE_PROJECT_ROOT/environment/local/flux/"
+  commit_and_push "$MISE_PROJECT_ROOT" main layout
+  git -C "$MISE_PROJECT_ROOT" switch -q -c feature
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/$changed"
+  export MISE_PROJECT_ROOT
+  run_task "$script" local
 }
 
 # A pushed checkout whose local environment deploys cni-cilium, which has a

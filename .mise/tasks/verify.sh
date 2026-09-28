@@ -2,18 +2,18 @@
 #MISE description="Run every *:verify task against an environment, one at a time; --only keeps the environment's own checks and the chosen modules'"
 #USAGE arg "[environment]" default="local" help="Directory name under environment/"
 #USAGE flag "--only <modules>" help="Comma-separated modules to check, such as cilium,flux; tasks that check the environment itself always run (default: every module)"
+#USAGE flag "--changed" help="Choose the modules this branch changed since it left origin/main, instead of --only"
 set -euo pipefail
 # shellcheck source=../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
 environment="$usage_environment"
-only="${usage_only:-}"
 
 # One at a time: each task runs tofu init in the same environment directory.
 # env:verify goes first: it waits for Flux to apply origin's tip, so the
 # other tasks check what that commit deploys, not what ran before it.
 environment_directory "$environment" >/dev/null
-check_modules "$environment" "$only"
+only=$(module_selection "$environment" "${usage_only:-}" "${usage_changed:-false}")
 components=$(deployed_components "$environment")
 modules=" "
 while IFS= read -r component; do

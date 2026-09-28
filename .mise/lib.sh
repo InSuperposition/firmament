@@ -201,7 +201,7 @@ module_name() {
 
 # Fails unless every name in a comma-separated module list is a module the
 # environment deploys, naming the modules it does deploy. An empty list
-# selects every module.
+# selects every module, and "none" selects no module.
 check_modules() {
   local environment="$1" only="$2" components deployed="" component name
   local -a names
@@ -209,6 +209,7 @@ check_modules() {
   while IFS= read -r component; do
     [[ -n "$component" ]] && deployed+="$(module_name "$component") "
   done <<<"$components"
+  [[ "$only" == none ]] && return 0
   IFS=, read -ra names <<<"$only"
   for name in "${names[@]}"; do
     if [[ " $deployed" != *" $name "* ]]; then
@@ -219,10 +220,65 @@ check_modules() {
 }
 
 # Succeeds when a module is selected by a comma-separated list; an empty
-# list selects every module.
+# list selects every module, and "none" selects no module.
 module_selected() {
   local name="$1" only="$2"
   [[ -z "$only" || ",$only," == *",$name,"* ]]
+}
+
+# Prints the modules a branch changed, as a module list for --only: a path
+# under components/<name>/ selects that module when the environment deploys
+# it, and a component it does not deploy changes nothing here. A change to
+# any other file, except Markdown, can affect every module, so it prints an
+# empty list (every module). With no such change it prints "none". Changes
+# are counted from where the branch left origin/main, uncommitted and
+# untracked files included, since the suites run from the checkout.
+changed_modules() {
+  local environment="$1" root="${MISE_PROJECT_ROOT:?}" base paths components component path
+  local deployed="" selected=""
+  base=$(git -C "$root" merge-base origin/main HEAD) ||
+    fail "cannot find where this branch left origin/main; fetch origin first" || return
+  paths=$(
+    git -C "$root" diff --name-only "$base" &&
+      git -C "$root" ls-files --others --exclude-standard
+  ) || return
+  components=$(deployed_components "$environment") || return
+  while IFS= read -r component; do
+    [[ -n "$component" ]] && deployed+=" ${component##*/}"
+  done <<<"$components"
+  while IFS= read -r path; do
+    case "$path" in
+    "" | *.md) ;;
+    components/*/*)
+      component="${path#components/}"
+      component="${component%%/*}"
+      if [[ " $deployed " == *" $component "* && ",$selected," != *",$(module_name "$component"),"* ]]; then
+        selected+="${selected:+,}$(module_name "$component")"
+      fi
+      ;;
+    *)
+      return 0
+      ;;
+    esac
+  done <<<"$paths"
+  printf '%s\n' "${selected:-none}"
+}
+
+# Prints the module list a task runs from its --only and --changed flags:
+# the --only list as given, the modules --changed finds, or an empty list
+# (every module) when neither is set. The two flags cannot be combined.
+module_selection() {
+  local environment="$1" only="$2" changed="$3"
+  if [[ -n "$only" && "$changed" == true ]]; then
+    fail "--only and --changed cannot be combined"
+    return
+  fi
+  if [[ "$changed" == true ]]; then
+    changed_modules "$environment"
+    return
+  fi
+  check_modules "$environment" "$only" || return
+  printf '%s\n' "$only"
 }
 
 # Prints the chainsaw suite directories an environment's cluster must pass,
