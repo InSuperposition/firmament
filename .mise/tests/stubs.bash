@@ -16,8 +16,8 @@
 # failed requests);
 # $FORTIO_RUN, $FORTIO_STATUS, $FORTIO_STOP and $FORTIO_RESULT name other
 # files to print instead.
-# `cilium hubble port-forward` listens on the port it is given, as the real
-# one does, until the first connection closes.
+# `cilium hubble port-forward` and `kubectl port-forward` listen on the local
+# port they are given, as the real ones do, until the first connection closes.
 setup_stubs() {
   seal_git
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
@@ -30,7 +30,7 @@ setup_stubs() {
   real_mise=$(command -v mise)
   stubs="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$stubs"
-  for tool in tofu cilium kubectl helm chainsaw orb bats mise; do
+  for tool in tofu cilium hubble kubectl helm chainsaw orb bats mise open; do
     stub "$tool"
   done
   PATH="$stubs:$PATH"
@@ -64,6 +64,7 @@ case "\$*" in
     if [[ -n "\${K0S_CHARTS_ERROR:-}" ]]; then printf '%s\\n' "\$K0S_CHARTS_ERROR" >&2; exit 1; fi
     printf '%s' "\${K0S_CHARTS:-}" ;;
   *"hubble port-forward"*) exec nc -l 127.0.0.1 "\${@: -1}" >/dev/null ;;
+  *" port-forward "*) local_port="\${*: -1}"; exec nc -l 127.0.0.1 "\${local_port%%:*}" >/dev/null ;;
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
   *"get configmap cilium-values "*) printf '%s\\n' "\${CILIUM_VALUES-a: 1}" ;;
   *"get values cilium "*) printf '%s\\n' "\${RELEASE_VALUES-a: 1}" ;;

@@ -15,11 +15,12 @@ environment_scripts() {
 }
 
 # Runs a task script the way mise does, with the environment argument set.
-# cilium:conformance forwards Hubble Relay to a random high port, so a real
-# forward on its default port does not collide with the tests.
+# cilium:conformance and the UI tasks forward to a random high port, so a
+# real forward on a default port does not collide with the tests.
 run_task() {
   local script="$1" environment="$2"
-  usage_environment="$environment" usage_hubble_port=$((20000 + RANDOM % 20000)) run "$script"
+  usage_environment="$environment" usage_hubble_port=$((20000 + RANDOM % 20000)) \
+    usage_port=$((20000 + RANDOM % 20000)) run "$script"
 }
 
 @test "every task script is executable, described and strict" {
@@ -244,6 +245,51 @@ local_state() {
   local port="${BASH_REMATCH[1]}"
   [ "${lines[1]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --log-check-only-test-time --hubble-server localhost:$port --flow-validation disabled" ]
   [ "${lines[2]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --cleanup" ]
+}
+
+@test "cilium:observe follows flows through a Relay port-forward on a free random port" {
+  run_task "$root_directory/.mise/tasks/cilium/observe.sh" local
+  [ "$status" -eq 0 ]
+  [ "$(grep '^hubble ' "$CALLS" | cut -d'|' -f1)" = "hubble observe --kubeconfig /state/admin.kubeconfig --port-forward --port-forward-port 0 --follow " ]
+}
+
+@test "cilium:ui opens the Hubble UI through a port-forward on the given port" {
+  usage_environment=local usage_port=23456 run "$root_directory/.mise/tasks/cilium/ui.sh"
+  [ "$status" -eq 0 ]
+  [ "$(grep '^cilium ' "$CALLS" | cut -d'|' -f1)" = "cilium --kubeconfig /state/admin.kubeconfig hubble ui --port-forward 23456 " ]
+}
+
+@test "flux:ui forwards the Flux Operator web port, then opens the browser on it" {
+  usage_environment=local usage_port=23457 run "$root_directory/.mise/tasks/flux/ui.sh"
+  [ "$status" -eq 0 ]
+  run grep -E '^(kubectl|open) ' "$CALLS"
+  [ "${lines[0]%% |*}" = "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system port-forward svc/flux-operator 23457:9080" ]
+  [ "${lines[1]%% |*}" = "open http://localhost:23457" ]
+}
+
+@test "flux:ui opens no browser when the port-forward exits" {
+  printf '#!/usr/bin/env bash\nprintf "kubectl %%s\\n" "$*" >>"$CALLS"\nexit 1\n' >"$stubs/kubectl"
+  usage_environment=local usage_port=23458 run "$root_directory/.mise/tasks/flux/ui.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the process that should listen on local port 23458 exited"* ]]
+  ! grep -q '^open ' "$CALLS"
+}
+
+@test "the UI tasks refuse a busy local port before forwarding anything" {
+  local script port=23459
+  # -k keeps listening after each connection the busy-port check opens.
+  nc -lk 127.0.0.1 "$port" >/dev/null &
+  local listener=$!
+  source "$root_directory/.mise/lib.sh"
+  wait_for_local_port "$listener" "$port" 5
+  for script in cilium/ui.sh flux/ui.sh; do
+    rm -f "$CALLS"
+    usage_environment=local usage_port=$port run "$root_directory/.mise/tasks/$script"
+    [ "$status" -ne 0 ] || fail "$script accepted a busy port"
+    [[ "$output" == *"local port $port is already in use; pick another with --port"* ]] || fail "$script: $output"
+    ! grep -Eq '^(cilium|kubectl|open) ' "$CALLS" || fail "$script called $(cat "$CALLS")"
+  done
+  kill "$listener"
 }
 
 @test "cilium:conformance keeps the test workloads of a failing suite" {
