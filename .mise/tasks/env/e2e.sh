@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Rebuild the environment's cluster from scratch from the pushed branch and run every live check against it; with --from-branch, also checks that traffic survives the switch; destroys the cluster and leaves it destroyed (about 17 minutes)"
+#MISE description="Rebuild the environment's cluster from scratch from the pushed branch and run every live check against it; with --from-branch, also checks that traffic survives the switch; destroys the cluster and leaves it destroyed"
 #MISE confirm="Destroy environment {{usage.environment}}, rebuild it for the end-to-end run, and leave it destroyed?"
 #USAGE arg "[environment]" default="local" help="Directory name under environment/"
 #USAGE flag "--from-branch <branch>" help="Also test an upgrade: build the cluster from this branch, already merged into origin/main, then apply the checked-out branch over it"

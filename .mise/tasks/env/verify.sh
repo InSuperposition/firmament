@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run the environment's read-only chainsaw suite (tests/cluster) against its cluster"
+#MISE description="Run the read-only chainsaw suites against the environment's cluster: its own tests/cluster, then tests/cluster of each component its Flux build deploys"
 #USAGE arg "[environment]" default="local" help="Directory name under environment/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
@@ -23,4 +23,9 @@ init_environment "$environment"
 kubeconfig=$(environment_kubeconfig "$environment")
 kubectl --kubeconfig "$kubeconfig" -n flux-system wait kustomization/flux-system \
   --for=jsonpath='{.status.lastAppliedRevision}'="$revision" --timeout=10m
-chainsaw_in_environment "$environment" test --test-dir "$suite" --set-string flux_revision="$revision"
+suites=$(cluster_suites "$environment")
+test_directories=()
+while IFS= read -r directory; do
+  test_directories+=(--test-dir "$directory")
+done <<<"$suites"
+chainsaw_in_environment "$environment" test "${test_directories[@]}" --set-string flux_revision="$revision"

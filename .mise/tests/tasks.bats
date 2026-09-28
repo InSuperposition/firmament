@@ -1045,16 +1045,36 @@ mise run --yes env:destroy local" ]
   ! git -C "$MISE_PROJECT_ROOT" worktree list | grep -q /baseline
 }
 
+# A pushed checkout whose local environment deploys cni-cilium, which has a
+# cluster suite, and gitops-flux, which has none.
+verify_repository() {
+  make_repository environment/local/flux/kustomization.yaml >/dev/null
+  printf 'resources:\n  - ../../../components/cni-cilium\n  - ../../../components/gitops-flux\n' \
+    >"$BATS_TEST_TMPDIR/repository/environment/local/flux/kustomization.yaml"
+  e2e_repository environment/local/tests/cluster/chainsaw-test.yaml \
+    components/cni-cilium/tests/cluster/chainsaw-test.yaml components/gitops-flux/kustomization.yaml
+}
+
 @test "env:verify waits for Flux to apply origin's tip, then checks it" {
   record_chainsaw_kubeconfig
-  e2e_repository environment/local/tests/cluster/chainsaw-test.yaml
+  verify_repository
   run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -eq 0 ]
   revision="refs/heads/feature/test@sha1:$(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD)"
   run grep -E '^(kubectl .* wait kustomization|chainsaw )' "$CALLS"
   [ "${#lines[@]}" -eq 2 ]
   [ "${lines[0]%% |*}" = "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system wait kustomization/flux-system --for=jsonpath={.status.lastAppliedRevision}=$revision --timeout=10m" ]
-  [ "${lines[1]}" = "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --set-string flux_revision=$revision | KUBECONFIG=/state/admin.kubeconfig" ]
+  [ "${lines[1]}" = "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/components/cni-cilium/tests/cluster --set-string flux_revision=$revision | KUBECONFIG=/state/admin.kubeconfig" ]
+}
+
+@test "env:verify runs no suite when it cannot read the environment's Flux build" {
+  record_chainsaw_kubeconfig
+  verify_repository
+  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/environment/local/flux/kustomization.yaml"
+  commit_and_push "$MISE_PROJECT_ROOT" feature/test broken
+  run_task "$root_directory/.mise/tasks/env/verify.sh" local
+  [ "$status" -ne 0 ]
+  ! grep -q '^chainsaw ' "$CALLS"
 }
 
 @test "env:verify fails for an environment without a cluster suite" {
@@ -1075,7 +1095,18 @@ edited_suite_repository() {
   printf '%s\n' "$repository"
 }
 
-@test "chainsaw:lint accepts every environment's cluster suite" {
+@test "chainsaw:lint rejects a component suite that changes the cluster" {
+  local repository suite=components/x/tests/cluster/chainsaw-test.yaml
+  repository=$(make_repository "$suite")
+  yq '.spec.steps[0].try[0] = {"apply": .spec.steps[0].try[0].assert}' \
+    "$root_directory/components/cni-cilium/tests/cluster/chainsaw-test.yaml" >"$repository/$suite"
+  rm "$stubs/chainsaw"
+  MISE_PROJECT_ROOT=$repository run "$root_directory/.mise/tasks/chainsaw/lint.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$suite: try may not run apply"* ]]
+}
+
+@test "chainsaw:lint accepts every environment's and component's cluster suite" {
   rm "$stubs/chainsaw"
   run "$root_directory/.mise/tasks/chainsaw/lint.sh"
   [ "$status" -eq 0 ]
