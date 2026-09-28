@@ -227,6 +227,23 @@ setup() {
   [[ "$output" == *"nothing listens on local port 1 after 1s"* ]]
 }
 
+@test "accepts a local port nothing listens on" {
+  run require_free_local_port 1
+  [ "$status" -eq 0 ]
+}
+
+@test "refuses a local port something already listens on" {
+  local port=$((20000 + RANDOM % 20000))
+  # -k keeps listening after the connection the check opens.
+  nc -lk 127.0.0.1 "$port" >/dev/null &
+  local listener=$!
+  wait_for_local_port "$listener" "$port" 5
+  run require_free_local_port "$port"
+  kill "$listener"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"local port $port is already in use; pick another with --port"* ]]
+}
+
 # Runs a script with the variables git exports to a hook in the caller
 # repository, as a linked worktree's hook sees them. The script sources the
 # given file, runs the given command, then commits in a fresh repository of

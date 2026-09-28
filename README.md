@@ -88,6 +88,7 @@ that verb for every noun. The verb also says how far a task reaches:
 | `lint`, `format` | files in the repository | `lint`, `format` run every `*:lint` or `*:format` |
 | `test` | offline; never touches infrastructure | `test` runs every `*:test` |
 | `verify` | reads a live cluster | `verify [environment]` runs every `*:verify`, one at a time, `env:verify` first |
+| `ui`, `observe` | read a live cluster through a foreground port-forward that Ctrl-C stops; `ui` opens the browser and takes `--port` | none |
 | `conformance` | deploys test workloads into a live cluster | none |
 | `e2e` | destroys and rebuilds a live cluster; asks first (`--yes` skips) | none |
 | `plan`, `apply`, `destroy` | drive OpenTofu; `destroy` asks first (`-y` skips) | none |
