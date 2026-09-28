@@ -336,6 +336,42 @@ local_state() {
   kill "$listener"
 }
 
+@test "cilium:conformance --only runs the tests the chosen modules list" {
+  usage_only=cilium run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
+  [ "$status" -eq 0 ]
+  run grep ' connectivity test --log-check-only-test-time ' "$CALLS"
+  [[ "${lines[0]%% |*}" == *" --test-concurrency 3 --test .*" ]]
+}
+
+@test "cilium:conformance --only runs nothing when no chosen module lists a test" {
+  usage_only=flux run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"No conformance tests apply to: flux"* ]]
+  [ ! -e "$CALLS" ]
+}
+
+@test "cilium:conformance refuses an unknown module before calling any tool" {
+  usage_only=nope run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown module 'nope' for environment 'local'; choose from: cilium flux"* ]]
+  [ ! -e "$CALLS" ]
+}
+
+@test "conformance runs every *:conformance task, passing --only on" {
+  TASKS="a:verify cilium:conformance other:conformance" usage_only=flux run_task "$root_directory/.mise/tasks/conformance.sh" local
+  [ "$status" -eq 0 ]
+  run grep '^mise run' "$CALLS"
+  [ "${#lines[@]}" -eq 2 ]
+  [ "${lines[0]%% |*}" = "mise run cilium:conformance local --only flux" ]
+  [ "${lines[1]%% |*}" = "mise run other:conformance local --only flux" ]
+}
+
+@test "conformance refuses an unknown module before running any task" {
+  usage_only=nope run_task "$root_directory/.mise/tasks/conformance.sh" local
+  [ "$status" -ne 0 ]
+  [ ! -e "$CALLS" ]
+}
+
 @test "cilium:conformance keeps the test workloads of a failing suite" {
   printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" == *"hubble port-forward"* ]] && exec nc -l 127.0.0.1 "${@: -1}" >/dev/null\n[[ "$*" != *--log-check-only-test-time* ]]\n' >"$stubs/cilium"
   run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local

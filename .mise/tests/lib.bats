@@ -269,6 +269,33 @@ setup() {
   [[ "$output" == *"unknown module 'cni-cilium' for environment 'local'; choose from: cilium flux"* ]]
 }
 
+@test "lists the conformance tests the chosen modules need" {
+  run conformance_patterns local cilium
+  [ "$status" -eq 0 ]
+  [ "$output" = ".*" ]
+  run conformance_patterns local flux
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "reads conformance tests without comments or blank lines, from every module when none is chosen" {
+  MISE_PROJECT_ROOT=$(make_repository environment/x/flux/kustomization.yaml \
+    components/net-a/tests/conformance components/net-b/tests/conformance)
+  printf 'resources:\n  - ../../../components/net-a\n  - ../../../components/net-b\n' \
+    >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
+  printf '# policy tests\n\nclient-egress\n  # indented comment\n' >"$MISE_PROJECT_ROOT/components/net-a/tests/conformance"
+  printf 'to-fqdns\n' >"$MISE_PROJECT_ROOT/components/net-b/tests/conformance"
+  run conformance_patterns x
+  [ "$status" -eq 0 ]
+  [ "$output" = $'client-egress\nto-fqdns' ]
+}
+
+@test "refuses conformance tests for a module the environment does not deploy" {
+  run conformance_patterns local nope
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown module 'nope'"* ]]
+}
+
 @test "names a component's module after its folder without the role prefix" {
   [ "$(module_name /x/components/cni-cilium)" = cilium ]
   [ "$(module_name components/gitops-flux)" = flux ]

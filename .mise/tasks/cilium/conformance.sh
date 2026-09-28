@@ -3,6 +3,7 @@
 #USAGE arg "[environment]" default="local" help="Directory name under environment/"
 #USAGE flag "--hubble-port <port>" help="Local port the Hubble Relay port-forward listens on (default 4245)"
 #USAGE flag "--test-concurrency <count>" help="Namespaces the suite splits its tests across, run in parallel (default 3)"
+#USAGE flag "--only <modules>" help="Comma-separated modules, such as cilium; runs only the tests their tests/conformance files list (default: the whole suite)"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
@@ -10,8 +11,23 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 environment="$usage_environment"
 hubble_port="${usage_hubble_port:-4245}"
 concurrency="${usage_test_concurrency:-3}"
+only="${usage_only:-}"
 if [[ ! "$concurrency" =~ ^[1-9][0-9]*$ ]]; then
   fail "--test-concurrency must be a whole number of 1 or more, not '$concurrency'"
+fi
+
+# With --only, each chosen module's tests/conformance file lists the tests it
+# needs. When none of them lists any, there is nothing to run.
+tests=()
+if [[ -n "$only" ]]; then
+  patterns=$(conformance_patterns "$environment" "$only")
+  if [[ -z "$patterns" ]]; then
+    printf 'No conformance tests apply to: %s\n' "$only"
+    exit 0
+  fi
+  while IFS= read -r pattern; do
+    tests+=(--test "$pattern")
+  done <<<"$patterns"
 fi
 
 init_environment "$environment"
@@ -31,7 +47,8 @@ relay_forward=$!
 trap 'kill "$relay_forward" 2>/dev/null || true' EXIT
 wait_for_local_port "$relay_forward" "$hubble_port" 60
 cilium --kubeconfig "$kubeconfig" connectivity test --log-check-only-test-time \
-  --hubble-server "localhost:$hubble_port" --flow-validation disabled --test-concurrency "$concurrency"
+  --hubble-server "localhost:$hubble_port" --flow-validation disabled --test-concurrency "$concurrency" \
+  ${tests[@]+"${tests[@]}"}
 # Reached only when the suite passed: a failed run keeps its test
 # namespaces and pods for debugging.
 cilium --kubeconfig "$kubeconfig" connectivity test --cleanup --test-concurrency "$concurrency"

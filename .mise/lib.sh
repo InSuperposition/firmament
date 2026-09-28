@@ -244,6 +244,21 @@ cluster_suites() {
   done <<<"$components"
 }
 
+# Prints the Cilium connectivity test patterns that the chosen modules list
+# in tests/conformance, one --test regular expression per line, without
+# blank lines and # comments. An empty module list chooses every module.
+conformance_patterns() {
+  local environment="$1" only="${2:-}" components component
+  check_modules "$environment" "$only" || return
+  components=$(deployed_components "$environment") || return
+  while IFS= read -r component; do
+    if [[ -n "$component" && -f "$component/tests/conformance" ]] &&
+      module_selected "$(module_name "$component")" "$only"; then
+      grep -Ev '^[[:space:]]*(#|$)' "$component/tests/conformance" || true
+    fi
+  done <<<"$components"
+}
+
 # Runs chainsaw against an environment's cluster. chainsaw has no kubeconfig
 # flag; it reads KUBECONFIG, set here from the path recorded in state.
 chainsaw_in_environment() {
