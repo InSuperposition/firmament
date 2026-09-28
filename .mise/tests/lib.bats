@@ -255,6 +255,36 @@ setup() {
   [ "${lines[1]}" = "$MISE_PROJECT_ROOT/components/tested/tests/cluster" ]
 }
 
+@test "keeps only the chosen modules' suites, and always the environment's own" {
+  run cluster_suites local flux
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 2 ]
+  [ "${lines[0]}" = "$root_directory/environment/local/tests/cluster" ]
+  [ "${lines[1]}" = "$root_directory/components/gitops-flux/tests/cluster" ]
+}
+
+@test "refuses a module the environment does not deploy, naming the ones it does" {
+  run cluster_suites local cilium,cni-cilium
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown module 'cni-cilium' for environment 'local'; choose from: cilium flux"* ]]
+}
+
+@test "names a component's module after its folder without the role prefix" {
+  [ "$(module_name /x/components/cni-cilium)" = cilium ]
+  [ "$(module_name components/gitops-flux)" = flux ]
+  [ "$(module_name components/policy-kyverno-audit)" = kyverno-audit ]
+}
+
+@test "counts only directories the Flux build lists as components" {
+  MISE_PROJECT_ROOT=$(make_repository environment/x/flux/kustomization.yaml environment/x/flux/namespace.yaml \
+    components/cni-cilium/kustomization.yaml)
+  printf 'resources:\n  - namespace.yaml\n  - ../../../components/cni-cilium\n' \
+    >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
+  run deployed_components x
+  [ "$status" -eq 0 ]
+  [ "$output" = "$MISE_PROJECT_ROOT/components/cni-cilium" ]
+}
+
 @test "fails when the environment's Flux build cannot be read" {
   MISE_PROJECT_ROOT=$(make_repository environment/x/flux/kustomization.yaml)
   printf 'resources: [\n' >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"

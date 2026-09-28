@@ -94,7 +94,7 @@ k0sctl reaches the machine with the SSH key OrbStack creates,
 | `mise run orb:plan` / `orb:apply` / `orb:destroy` | `-target=module.vm_orb` only |
 | `mise run ubuntu:verify` | `-target=module.os_ubuntu` only |
 | `mise run k0s:plan` / `k0s:apply` | `-target=module.orch_k0s -target=local_sensitive_file.kubeconfig`; `k0s:apply` waits for the node to register, not for Cilium |
-| `mise run verify` | Run every `*:verify` task below, one at a time, `env:verify` first so the others check what the pushed commit deploys |
+| `mise run verify [--only <modules>]` | Run every `*:verify` task below, one at a time, `env:verify` first so the others check what the pushed commit deploys. `--only cilium` or `--only flux` skips the other modules' suites and tasks; the environment's own checks (`env:verify`'s own suite, `k0s:verify`, `ubuntu:verify`) always run |
 | `mise run k0s:verify` | Wait for every node to be Ready, using the kubeconfig path recorded in state |
 | `mise run cilium:verify` | Wait until the `cilium` release runs the values in the `cilium-values` ConfigMap (`helm get values`) and the agent DaemonSet has rolled out, then for the Cilium agent, operator, Hubble Relay and Hubble UI, using the kubeconfig path recorded in state |
 | `mise run env:verify` | Run the read-only chainsaw suites against the cluster: this environment's `tests/cluster` (nodes Ready, no kube-proxy, no k0s Charts), then `tests/cluster` of each component `flux/kustomization.yaml` lists: `cni-cilium` (Cilium replacing kube-proxy on the netkit datapath) and `gitops-flux` (the `FluxInstance` and both HelmReleases Ready and owning their workloads, and the root Kustomization applied at `refs/heads/<branch>@sha1:<origin tip>`) |

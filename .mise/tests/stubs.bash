@@ -16,6 +16,7 @@
 # failed requests);
 # $FORTIO_RUN, $FORTIO_STATUS, $FORTIO_STOP and $FORTIO_RESULT name other
 # files to print instead.
+# `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # `cilium hubble port-forward` and `kubectl port-forward` listen on the local
 # port they are given, as the real ones do, until the first connection closes.
 setup_stubs() {
@@ -72,7 +73,7 @@ case "\$*" in
   *"/fortio/rest/status"*) cat "\${FORTIO_STATUS:-\$FORTIO_REPLIES/status.json}" ;;
   *"/fortio/rest/stop"*) cat "\${FORTIO_STOP:-\$FORTIO_REPLIES/stop.json}" ;;
   *"/fortio/data/"*) cat "\${FORTIO_RESULT:-\$FORTIO_REPLIES/result.json}" ;;
-  "tasks ls --name-only") printf '%s\\n' a:verify b:test env:verify k0s:verify ;;
+  "tasks ls --name-only") printf '%s\\n' \${TASKS:-a:verify b:test env:verify k0s:verify} ;;
 esac
 exit 0
 STUB

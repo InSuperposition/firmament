@@ -87,7 +87,7 @@ that verb for every noun. The verb also says how far a task reaches:
 | --- | --- | --- |
 | `lint`, `format` | files in the repository | `lint`, `format` run every `*:lint` or `*:format` |
 | `test` | offline; never touches infrastructure | `test` runs every `*:test` |
-| `verify` | reads a live cluster | `verify [environment]` runs every `*:verify`, one at a time, `env:verify` first |
+| `verify` | reads a live cluster | `verify [environment]` runs every `*:verify`, one at a time, `env:verify` first; `--only <modules>` keeps the environment's own checks and the chosen modules' |
 | `ui`, `observe` | read a live cluster through a foreground port-forward that Ctrl-C stops; `ui` opens the browser and takes `--port` | none |
 | `conformance` | deploys test workloads into a live cluster | none |
 | `e2e` | destroys and rebuilds a live cluster; asks first (`--yes` skips) | none |
@@ -108,7 +108,11 @@ output stay on bats (`tests/*.bats`). Read-only checks of a live cluster
 are chainsaw suites in `tests/cluster/`: each environment has one for the
 cluster itself, and each component has one for its own workloads.
 `env:verify` runs the environment's suite, then the suite of every
-component the environment's Flux build lists. `mise run format` fixes what the
+component the environment's Flux build lists. A component's module name is
+its folder name without the role prefix (`components/cni-cilium` is
+`cilium`), which is also the noun of its tasks (`cilium:verify`).
+`verify --only cilium,flux` checks only those modules, plus the
+environment itself. `mise run format` fixes what the
 formatters can. hk defines the lint and format rules; the `*:lint` and
 `*:format` tasks each run one group of its steps.
 
