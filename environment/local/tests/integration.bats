@@ -117,6 +117,14 @@ load setup.bash
   [ "$planned" = "$linted" ]
 }
 
+@test "exposes the runtime values it gives Flux, for the cluster suites" {
+  run planned_output runtime_info
+  [ "$status" -eq 0 ]
+  exposed=$(jq -r 'keys | .[]' <<<"$output" | sort)
+  linted=$(grep -Ev '^[[:space:]]*(#|$)' "$root_directory/.mise/flux-test-values.env" | cut -d= -f1 | sort)
+  [ "$exposed" = "$linted" ]
+}
+
 @test "tells Flux which branch and environment to follow" {
   run bootstrap_values
   [ "$status" -eq 0 ]

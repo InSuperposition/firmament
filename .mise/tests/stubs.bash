@@ -57,7 +57,7 @@ case "\$*" in
   *"output -json"*)
     if [[ -n "\${OUTPUT_ERROR:-}" ]]; then printf '%s\\n' "\$OUTPUT_ERROR" >&2; exit 1; fi
     if [[ -n "\${NO_OUTPUTS:-}" ]]; then printf '{}'; else
-      printf '{"kubeconfig_path":{"value":"/state/admin.kubeconfig"},"machine_name":{"value":"firmament"}}'
+      printf '{"kubeconfig_path":{"value":"/state/admin.kubeconfig"},"machine_name":{"value":"firmament"},"runtime_info":{"value":{"kube_proxy_replacement":"true","cilium_datapath_mode":"netkit"}}}'
     fi ;;
   *"state list"*) printf '%s' "\${STATE_LIST:-}" ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;

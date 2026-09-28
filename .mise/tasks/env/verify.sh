@@ -27,8 +27,13 @@ kubeconfig=$(environment_kubeconfig "$environment")
 kubectl --kubeconfig "$kubeconfig" -n flux-system wait kustomization/flux-system \
   --for=jsonpath='{.status.lastAppliedRevision}'="$revision" --timeout=10m
 suites=$(cluster_suites "$environment" "$only")
+# The suites check the cluster against the values OpenTofu gave Flux.
+values_file=$(mktemp)
+trap 'rm -f "$values_file"' EXIT
+environment_output "$environment" runtime_info >"$values_file"
 test_directories=()
 while IFS= read -r directory; do
   test_directories+=(--test-dir "$directory")
 done <<<"$suites"
-chainsaw_in_environment "$environment" test "${test_directories[@]}" --set-string flux_revision="$revision"
+chainsaw_in_environment "$environment" test "${test_directories[@]}" --values "$values_file" \
+  --set-string flux_revision="$revision"

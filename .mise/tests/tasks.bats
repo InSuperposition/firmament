@@ -1151,7 +1151,7 @@ verify_repository() {
   run grep -E '^(kubectl .* wait kustomization|chainsaw )' "$CALLS"
   [ "${#lines[@]}" -eq 2 ]
   [ "${lines[0]%% |*}" = "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system wait kustomization/flux-system --for=jsonpath={.status.lastAppliedRevision}=$revision --timeout=10m" ]
-  [ "${lines[1]}" = "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/components/cni-cilium/tests/cluster --set-string flux_revision=$revision | KUBECONFIG=/state/admin.kubeconfig" ]
+  [[ "${lines[1]}" =~ ^"chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/components/cni-cilium/tests/cluster --values "([^ ]+)" --set-string flux_revision=$revision | KUBECONFIG=/state/admin.kubeconfig"$ ]]
 }
 
 @test "env:verify --only runs the environment's suite and the chosen modules' suites" {
@@ -1163,7 +1163,7 @@ verify_repository() {
   usage_only=flux run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -eq 0 ]
   run grep '^chainsaw ' "$CALLS"
-  [[ "${lines[0]}" == "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/components/gitops-flux/tests/cluster --set-string"* ]]
+  [[ "${lines[0]}" == "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/components/gitops-flux/tests/cluster --values "* ]]
 }
 
 @test "env:verify refuses an unknown module before fetching or waiting" {
@@ -1172,6 +1172,46 @@ verify_repository() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"unknown module 'nope' for environment 'local'; choose from: cilium flux"* ]]
   [ ! -e "$CALLS" ]
+}
+
+@test "env:verify gives the suites the runtime values OpenTofu recorded" {
+  cat >"$stubs/chainsaw" <<'STUB'
+#!/usr/bin/env bash
+while (($#)); do
+  if [[ "$1" == --values ]]; then cp "$2" "$BATS_TEST_TMPDIR/values"; fi
+  shift
+done
+STUB
+  verify_repository
+  run_task "$root_directory/.mise/tasks/env/verify.sh" local
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .cilium_datapath_mode "$BATS_TEST_TMPDIR/values")" = netkit ]
+}
+
+@test "env:verify runs no suite when the state records no runtime values" {
+  record_chainsaw_kubeconfig
+  verify_repository
+  cat >"$stubs/tofu" <<'STUB'
+#!/usr/bin/env bash
+printf 'tofu %s\n' "$*" >>"$CALLS"
+if [[ "$*" == *"output -json"* ]]; then
+  printf '%s' '{"kubeconfig_path":{"value":"/state/admin.kubeconfig"}}'
+fi
+STUB
+  run_task "$root_directory/.mise/tasks/env/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"environment 'local' has no runtime_info in its state; apply it first"* ]]
+  ! grep -q '^chainsaw ' "$CALLS"
+}
+
+@test "every value a component suite reads is a runtime value or the Flux revision" {
+  local known used
+  known=$(grep -Ev '^[[:space:]]*(#|$)' "$root_directory/.mise/flux-test-values.env" | cut -d= -f1)$'\nflux_revision'
+  used=$(grep -rhoE '\$values\.[a-z_]+' "$root_directory"/components/*/tests/cluster | cut -d. -f2 | sort -u)
+  [ -n "$used" ]
+  while IFS= read -r key; do
+    grep -qx -- "$key" <<<"$known" || fail "a component suite reads \$values.$key, which no environment sets"
+  done <<<"$used"
 }
 
 @test "env:verify runs no suite when it cannot read the environment's Flux build" {
