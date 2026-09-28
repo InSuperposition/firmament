@@ -3,3 +3,6 @@
 *.tfstate.backup
 *.tfstate.*.backup
 crash.log
+
+# Local roadmap and item plans; never tracked.
+.plan/
