@@ -399,3 +399,14 @@ wait_for_local_port() {
     sleep 0.2
   done
 }
+
+# Fails when something already listens on a local TCP port. A port-forward
+# to that port would fail, and wait_for_local_port would find the other
+# listener and hand its address to the browser.
+require_free_local_port() {
+  local port="$1"
+  if (: >"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+    fail "local port $port is already in use; pick another with --port"
+    return 1
+  fi
+}
