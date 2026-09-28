@@ -176,6 +176,23 @@ environment_kubeconfig() {
   environment_output "$1" kubeconfig_path
 }
 
+# Prints the chainsaw suite directories an environment's cluster must pass,
+# one per line: the environment's own tests/cluster first, then tests/cluster
+# of each component its Flux build lists, for components that have one. An
+# environment without a Flux build has only its own suite.
+cluster_suites() {
+  local directory components component
+  directory=$(environment_directory "$1") || return
+  printf '%s\n' "$directory/tests/cluster"
+  [[ -f "$directory/flux/kustomization.yaml" ]] || return 0
+  components=$(yq -r '.resources[]' "$directory/flux/kustomization.yaml") || return
+  while IFS= read -r component; do
+    if [[ -n "$component" && -d "$directory/flux/$component/tests/cluster" ]]; then
+      (cd "$directory/flux/$component/tests/cluster" && pwd)
+    fi
+  done <<<"$components"
+}
+
 # Runs chainsaw against an environment's cluster. chainsaw has no kubeconfig
 # flag; it reads KUBECONFIG, set here from the path recorded in state.
 chainsaw_in_environment() {

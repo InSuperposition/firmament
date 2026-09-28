@@ -104,7 +104,11 @@ flux-schema commit), `tofu:validate` and
 their shared library). Suites that only check OpenTofu logic (rendered
 values, variable validation, preconditions) are `tests/*.tftest.hcl`,
 run by `tofu:test`. Suites that run shell or check OpenTofu's own error
-output stay on bats (`tests/*.bats`). `mise run format` fixes what the
+output stay on bats (`tests/*.bats`). Read-only checks of a live cluster
+are chainsaw suites in `tests/cluster/`: each environment has one for the
+cluster itself, and each component has one for its own workloads.
+`env:verify` runs the environment's suite, then the suite of every
+component the environment's Flux build lists. `mise run format` fixes what the
 formatters can. hk defines the lint and format rules; the `*:lint` and
 `*:format` tasks each run one group of its steps.
 

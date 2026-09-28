@@ -227,6 +227,41 @@ setup() {
   [[ "$output" == *"nothing listens on local port 1 after 1s"* ]]
 }
 
+@test "lists the environment's own suite, then each deployed component's suite" {
+  run cluster_suites local
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 3 ]
+  [ "${lines[0]}" = "$root_directory/environment/local/tests/cluster" ]
+  [ "${lines[1]}" = "$root_directory/components/cni-cilium/tests/cluster" ]
+  [ "${lines[2]}" = "$root_directory/components/gitops-flux/tests/cluster" ]
+}
+
+@test "lists only the environment's own suite when it has no Flux build" {
+  MISE_PROJECT_ROOT=$(make_repository environment/bare/tests/cluster/chainsaw-test.yaml)
+  run cluster_suites bare
+  [ "$status" -eq 0 ]
+  [ "$output" = "$MISE_PROJECT_ROOT/environment/bare/tests/cluster" ]
+}
+
+@test "skips a deployed component without a suite and a component the environment does not deploy" {
+  MISE_PROJECT_ROOT=$(make_repository environment/x/flux/kustomization.yaml \
+    components/tested/tests/cluster/chainsaw-test.yaml components/untested/kustomization.yaml \
+    components/undeployed/tests/cluster/chainsaw-test.yaml)
+  printf 'resources:\n  - ../../../components/untested\n  - ../../../components/tested\n' \
+    >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
+  run cluster_suites x
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 2 ]
+  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/components/tested/tests/cluster" ]
+}
+
+@test "fails when the environment's Flux build cannot be read" {
+  MISE_PROJECT_ROOT=$(make_repository environment/x/flux/kustomization.yaml)
+  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
+  run cluster_suites x
+  [ "$status" -ne 0 ]
+}
+
 @test "accepts a local port nothing listens on" {
   run require_free_local_port 1
   [ "$status" -eq 0 ]
