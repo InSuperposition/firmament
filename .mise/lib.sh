@@ -259,6 +259,43 @@ conformance_patterns() {
   done <<<"$components"
 }
 
+# Prints a short name for an env:e2e step from its command: the task a
+# `mise ... run` call runs, otherwise the command's first word.
+step_label() {
+  local seen_run=false argument
+  for argument in "$@"; do
+    if [[ "$seen_run" == true && "$argument" != -* ]]; then
+      printf '%s\n' "$argument"
+      return
+    fi
+    [[ "$argument" == run ]] && seen_run=true
+  done
+  printf '%s\n' "$1"
+}
+
+# Prints the time each step took, from a file of "<label><TAB><seconds>"
+# lines, next to the change since an earlier file of the same form. A step
+# the earlier file lacks is marked new; a missing earlier file marks every
+# step new.
+step_time_report() {
+  local previous="$1" current="$2"
+  [[ -f "$previous" ]] || previous=/dev/null
+  awk -F '\t' '
+    FILENAME == ARGV[1] { before[$1] = $2; next }
+    {
+      if ($1 in before) {
+        change = $2 - before[$1]
+        note = sprintf("%+d s", change)
+      } else {
+        note = "new"
+      }
+      printf "  %-24s %5d s  (%s)\n", $1, $2, note
+      total += $2
+    }
+    END { printf "  %-24s %5d s\n", "total", total }
+  ' "$previous" "$current"
+}
+
 # Runs chainsaw against an environment's cluster. chainsaw has no kubeconfig
 # flag; it reads KUBECONFIG, set here from the path recorded in state.
 chainsaw_in_environment() {

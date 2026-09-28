@@ -27,12 +27,39 @@ from_branch="${usage_from_branch:-}"
 # rate under 90% of the one requested, and its last line, repeated in the
 # final one here, says whether the traffic crossed a Cilium agent restart.
 
-# Runs one step, or stops the run and says how to clean up.
+# Runs one step, or stops the run and says how to clean up. Records how long
+# each passing step took, under its label; a label seen before in the run
+# gets its ordinal, such as "env:destroy (2)".
+step_times=""
+step_labels=""
 step() {
+  local started=$SECONDS label count
   if ! "$@"; then
     fail "env:e2e stopped at: $*"$'\n'"The cluster is left as it is. Remove it with: mise run --yes env:destroy $environment"
     exit 1
   fi
+  label=$(step_label "$@")
+  count=$(grep -cxF -- "$label" <<<"$step_labels" || true)
+  step_labels+="$label"$'\n'
+  if ((count > 0)); then
+    label="$label ($((count + 1)))"
+  fi
+  step_times+="$label"$'\t'"$((SECONDS - started))"$'\n'
+}
+
+# Prints the time of each step and the change since the last passing run of
+# the same kind, then keeps these times for the next run to compare with.
+# Timings are only reported, never judged: image pulls and the host make
+# them vary from run to run.
+report_step_times() {
+  local kept current
+  kept="$(state_directory "$environment")/e2e-step-times${from_branch:+-upgrade}"
+  current=$(mktemp)
+  printf '%s' "$step_times" >"$current"
+  printf 'Step times (change since the last passing run):\n'
+  step_time_report "$kept" "$current"
+  mkdir -p "$(dirname "$kept")"
+  mv "$current" "$kept"
 }
 
 # Fails unless the checkout is clean, untracked files included, and HEAD is
@@ -152,6 +179,7 @@ if [[ -n "$from_branch" ]]; then
   step remote_tip_unchanged "$from_branch" "$baseline"
 fi
 step mise run --yes env:destroy "$environment"
+report_step_times
 if [[ -n "$from_branch" ]]; then
   printf 'env:e2e passed for %s at %s: %s; the cluster is destroyed.\n' "$environment" "$tested" "$(tail -n 1 "$scratch/traffic")"
 else
