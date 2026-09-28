@@ -320,6 +320,82 @@ setup() {
   [[ "${lines[0]}" == *"379 s  (new)" ]]
 }
 
+# A repository on main, pushed to origin, whose environment x deploys
+# cni-cilium and gitops-flux but not policy-kyverno, then a branch off it.
+branch_repository() {
+  MISE_PROJECT_ROOT=$(make_pushed_repository main environment/x/flux/kustomization.yaml environment/x/main.tf \
+    components/cni-cilium/values.yaml components/gitops-flux/fluxinstance.yaml components/policy-kyverno/policy.yaml README.md)
+  printf 'resources:\n  - ../../../components/cni-cilium\n  - ../../../components/gitops-flux\n' \
+    >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
+  commit_and_push "$MISE_PROJECT_ROOT" main components
+  git -C "$MISE_PROJECT_ROOT" switch -q -c feature
+}
+
+@test "changed modules: a component change selects its module" {
+  branch_repository
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/components/cni-cilium/values.yaml"
+  run changed_modules x
+  [ "$status" -eq 0 ]
+  [ "$output" = cilium ]
+}
+
+@test "changed modules: committed and untracked changes to two components select both, once each" {
+  branch_repository
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/components/gitops-flux/fluxinstance.yaml"
+  git -C "$MISE_PROJECT_ROOT" -c user.name=t -c user.email=t@example.test commit -qam flux
+  mkdir -p "$MISE_PROJECT_ROOT/components/cni-cilium/tests"
+  : >"$MISE_PROJECT_ROOT/components/cni-cilium/tests/conformance"
+  printf 'y\n' >>"$MISE_PROJECT_ROOT/components/gitops-flux/fluxinstance.yaml"
+  run changed_modules x
+  [ "$status" -eq 0 ]
+  [ "$output" = flux,cilium ]
+}
+
+@test "changed modules: Markdown and components the environment does not deploy select none" {
+  branch_repository
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/README.md"
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/components/policy-kyverno/policy.yaml"
+  run changed_modules x
+  [ "$status" -eq 0 ]
+  [ "$output" = none ]
+}
+
+@test "changed modules: a change outside components selects every module" {
+  branch_repository
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/components/cni-cilium/values.yaml"
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/environment/x/main.tf"
+  run changed_modules x
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "changed modules: fails without origin/main" {
+  MISE_PROJECT_ROOT=$(make_repository environment/x/main.tf)
+  git -C "$MISE_PROJECT_ROOT" init -q
+  run changed_modules x
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot find where this branch left origin/main; fetch origin first"* ]]
+}
+
+@test "module selection refuses --only together with --changed" {
+  run module_selection local cilium true
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--only and --changed cannot be combined"* ]]
+}
+
+@test "module selection passes --only on, and selects every module without flags" {
+  [ "$(module_selection local flux false)" = flux ]
+  [ -z "$(module_selection local "" false)" ]
+}
+
+@test "none selects no module and passes the module check" {
+  run check_modules local none
+  [ "$status" -eq 0 ]
+  ! module_selected cilium none
+  run cluster_suites local none
+  [ "$output" = "$root_directory/environment/local/tests/cluster" ]
+}
+
 @test "names a component's module after its folder without the role prefix" {
   [ "$(module_name /x/components/cni-cilium)" = cilium ]
   [ "$(module_name components/gitops-flux)" = flux ]

@@ -28,6 +28,16 @@ planned() {
     jq --arg address "$address" '.resource_changes[] | select(.address == $address) | .change.after'
 }
 
+# Prints one planned output, with the names of values the plan cannot know
+# yet mapped to true.
+planned_output() {
+  local name="$1" plan="$BATS_TEST_ROOT/plan.tfplan"
+  tofu -chdir="$environment_directory" plan -input=false -out="$plan" \
+    -var="state_directory=$BATS_TEST_ROOT/state" >/dev/null
+  tofu -chdir="$environment_directory" show -json "$plan" |
+    jq --arg name "$name" '.output_changes[$name] | (.after_unknown // {}) + (.after // {})'
+}
+
 k0sctl_config() {
   planned module.orch_k0s.k0sctl_config.this "$@"
 }

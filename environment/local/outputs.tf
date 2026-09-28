@@ -18,3 +18,8 @@ output "k0s_yaml" {
 output "kubeconfig_path" {
   value = local_sensitive_file.kubeconfig.filename
 }
+
+output "runtime_info" {
+  value       = local.runtime_info
+  description = "Values the components substitute; the cluster suites check the cluster against them."
+}

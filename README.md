@@ -87,9 +87,9 @@ that verb for every noun. The verb also says how far a task reaches:
 | --- | --- | --- |
 | `lint`, `format` | files in the repository | `lint`, `format` run every `*:lint` or `*:format` |
 | `test` | offline; never touches infrastructure | `test` runs every `*:test` |
-| `verify` | reads a live cluster | `verify [environment]` runs every `*:verify`, one at a time, `env:verify` first; `--only <modules>` keeps the environment's own checks and the chosen modules' |
+| `verify` | reads a live cluster | `verify [environment]` runs every `*:verify`, one at a time, `env:verify` first; `--only <modules>` keeps the environment's own checks and the chosen modules', and `--changed` chooses the modules the branch changed |
 | `ui`, `observe` | read a live cluster through a foreground port-forward that Ctrl-C stops; `ui` opens the browser and takes `--port` | none |
-| `conformance` | deploys test workloads into a live cluster | `conformance [environment]` runs every `*:conformance`, one at a time; `--only <modules>` runs the tests each module lists in `tests/conformance` |
+| `conformance` | deploys test workloads into a live cluster | `conformance [environment]` runs every `*:conformance`, one at a time; `--only <modules>` or `--changed` runs the tests each module lists in `tests/conformance` |
 | `e2e` | destroys and rebuilds a live cluster; asks first (`--yes` skips) | none |
 | `plan`, `apply`, `destroy` | drive OpenTofu; `destroy` asks first (`-y` skips) | none |
 
@@ -112,7 +112,10 @@ component the environment's Flux build lists. A component's module name is
 its folder name without the role prefix (`components/cni-cilium` is
 `cilium`), which is also the noun of its tasks (`cilium:verify`).
 `verify --only cilium,flux` checks only those modules, plus the
-environment itself. `mise run format` fixes what the
+environment itself. `verify --changed` chooses the modules from what the
+branch changed since it left `origin/main`: a change under
+`components/<name>/` selects that module, Markdown selects nothing, and any
+other change selects every module. `mise run format` fixes what the
 formatters can. hk defines the lint and format rules; the `*:lint` and
 `*:format` tasks each run one group of its steps.
 
