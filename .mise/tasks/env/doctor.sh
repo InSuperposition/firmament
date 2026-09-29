@@ -61,20 +61,29 @@ else
   failed orbstack "OrbStack is ${orbstack:-not answering}" "orbctl start"
 fi
 
-machine="" kubeconfig=""
+# What the state records comes from its resources: a targeted destroy such
+# as orb:destroy removes the machine and the cluster but leaves the outputs
+# as they were.
+machine="" kubeconfig="" cluster=""
 if [[ -z "$state_problem" && -s "$state/terraform.tfstate" ]]; then
-  if outputs=$(tofu output -json -state="$state/terraform.tfstate" 2>&1); then
-    machine=$(jq -r '.machine_name.value // empty' <<<"$outputs")
-    kubeconfig=$(jq -r '.kubeconfig_path.value // empty' <<<"$outputs")
+  if outputs=$(tofu output -json -state="$state/terraform.tfstate" 2>&1) &&
+    resources=$(tofu state list -state="$state/terraform.tfstate" 2>&1); then
+    if grep -qx 'module\.vm_orb\.orbstack_machine\.this' <<<"$resources"; then
+      machine=$(jq -r '.machine_name.value // empty' <<<"$outputs")
+    fi
+    if grep -qx 'module\.orch_k0s\.k0sctl_config\.this' <<<"$resources"; then
+      cluster=1
+      kubeconfig=$(jq -r '.kubeconfig_path.value // empty' <<<"$outputs")
+    fi
   else
-    failed state "cannot read the outputs in $state/terraform.tfstate: $(head -n 1 <<<"$outputs")" \
+    failed state "cannot read $state/terraform.tfstate: $(head -n 1 <<<"${resources:-$outputs}")" \
       "restore $state/terraform.tfstate from $state/terraform.tfstate.backup"
   fi
 fi
 
 if [[ -z "$machine" ]]; then
-  skipped machine "no cluster recorded yet; env:apply creates it"
-  skipped api "no cluster recorded yet"
+  skipped machine "no machine recorded yet; env:apply creates it"
+  skipped api "no cluster recorded yet; env:apply creates it"
 elif [[ "$orbstack" != Running ]]; then
   skipped machine "OrbStack is not running"
   skipped api "OrbStack is not running"
@@ -108,8 +117,12 @@ else
       fi
     done
 
-    if [[ -z "$kubeconfig" ]]; then
-      skipped api "no kubeconfig recorded yet; env:apply writes it"
+    if [[ -z "$cluster" ]]; then
+      skipped api "no cluster recorded yet; env:apply creates it"
+    elif [[ -z "$kubeconfig" || ! -f "$kubeconfig" ]]; then
+      # k0s:apply writes it again. env:apply cannot: it first asks the
+      # cluster whether k0s installs charts, through this kubeconfig.
+      failed api "the kubeconfig file ${kubeconfig:-(none recorded)} is missing" "mise run k0s:apply $environment"
     elif error=$(probe kubectl --kubeconfig "$kubeconfig" get --raw /readyz 2>&1 >/dev/null); then
       passed api "the API server is ready"
     elif [[ "$error" == *"no route to host"* ]]; then

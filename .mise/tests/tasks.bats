@@ -172,7 +172,7 @@ local_state() {
 }
 
 @test "env:apply refuses a recorded cluster that cannot say whether k0s installs charts" {
-  K0S_CHARTS_ERROR="Unable to connect to the server: dial tcp: i/o timeout" run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  STATE_LIST=module.orch_k0s.k0sctl_config.this K0S_CHARTS_ERROR="Unable to connect to the server: dial tcp: i/o timeout" run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot tell whether k0s installs Helm charts"*"i/o timeout"* ]]
   ! grep -q ' apply -input=false' "$CALLS"
@@ -196,13 +196,23 @@ local_state() {
 }
 
 @test "env:apply applies a cluster where k0s installs no charts" {
-  run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  STATE_LIST=module.orch_k0s.k0sctl_config.this run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ]
+  grep -q 'get charts.helm.k0sproject.io' "$CALLS"
+  grep -q ' apply -input=false -auto-approve ' "$CALLS"
+}
+
+@test "env:apply rebuilds after orb:destroy, whose stale kubeconfig output names no cluster" {
+  # A targeted destroy removes the cluster and its kubeconfig file but
+  # leaves the root outputs as they were.
+  STATE_LIST=module.os_ubuntu.data.external.readiness run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  ! grep -q 'get charts.helm.k0sproject.io' "$CALLS" || fail "asked a destroyed cluster for charts"
   grep -q ' apply -input=false -auto-approve ' "$CALLS"
 }
 
 @test "env:apply refuses a cluster whose Helm charts k0s still installs" {
-  K0S_CHARTS=chart.helm.k0sproject.io/k0s-addon-chart-cilium run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  STATE_LIST=module.orch_k0s.k0sctl_config.this K0S_CHARTS=chart.helm.k0sproject.io/k0s-addon-chart-cilium run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"k0s still installs Helm charts on this cluster"*"k0s-addon-chart-cilium"* ]]
   ! grep -q ' apply -input=false' "$CALLS"
@@ -1582,8 +1592,15 @@ STUB
 
 # Runs env:doctor for the local environment, which has an applied state
 # unless a test removes it.
+# Runs env:doctor for the local environment. Unless a test says otherwise,
+# the state records the machine and the cluster, and the kubeconfig file
+# exists.
 run_doctor() {
-  run_task "$root_directory/.mise/tasks/env/doctor.sh" local
+  local kubeconfig="$BATS_TEST_TMPDIR/admin.kubeconfig"
+  : >"$kubeconfig"
+  KUBECONFIG_OUTPUT="${KUBECONFIG_OUTPUT-$kubeconfig}" \
+    STATE_LIST="${STATE_LIST-$'module.vm_orb.orbstack_machine.this\nmodule.orch_k0s.k0sctl_config.this\nlocal_sensitive_file.kubeconfig'}" \
+    run_task "$root_directory/.mise/tasks/env/doctor.sh" local
 }
 
 @test "env:doctor passes on a healthy host and changes nothing" {
@@ -1601,7 +1618,7 @@ run_doctor() {
 @test "env:doctor treats an environment with no state as ready for env:apply" {
   run_doctor
   [ "$status" -eq 0 ] || fail "$output"
-  [[ "$output" == *"skip  machine: no cluster recorded yet; env:apply creates it"* ]]
+  [[ "$output" == *"skip  machine: no machine recorded yet; env:apply creates it"* ]]
   ! grep -q '^orb ' "$CALLS"
 }
 
@@ -1628,7 +1645,7 @@ run_doctor() {
   local_state
   OUTPUT_ERROR='Error: Failed to load state' run_doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *"FAIL  state: cannot read the outputs in "*"Error: Failed to load state"* ]]
+  [[ "$output" == *"FAIL  state: cannot read "*"Error: Failed to load state"* ]]
 }
 
 @test "env:doctor stops at a stopped OrbStack and skips what depends on it" {
@@ -1693,8 +1710,37 @@ case "$*" in
 esac
 STUB
   chmod +x "$stubs/orb"
-  run script -q /dev/null env usage_environment=local "$root_directory/.mise/tasks/env/doctor.sh" </dev/null
+  : >"$BATS_TEST_TMPDIR/admin.kubeconfig"
+  run script -q /dev/null env usage_environment=local \
+    STATE_LIST=$'module.vm_orb.orbstack_machine.this\nmodule.orch_k0s.k0sctl_config.this' \
+    KUBECONFIG_OUTPUT="$BATS_TEST_TMPDIR/admin.kubeconfig" \
+    "$root_directory/.mise/tasks/env/doctor.sh" </dev/null
   output=${output//$'\r'/}
   [[ "$output" == *"ok    machine dns: firmament resolves host.orb.internal"* ]] || fail "$output"
   [[ "$output" == *"ok    machine dns: firmament resolves ghcr.io"* ]] || fail "$output"
+}
+
+@test "env:doctor treats the stale outputs orb:destroy leaves as no machine" {
+  local_state
+  STATE_LIST=module.os_ubuntu.data.external.readiness run_doctor
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"skip  machine: no machine recorded yet; env:apply creates it"* ]]
+  ! grep -q '^orb ' "$CALLS"
+}
+
+@test "env:doctor skips the API server while no cluster is recorded" {
+  local_state
+  STATE_LIST=module.vm_orb.orbstack_machine.this run_doctor
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"skip  api: no cluster recorded yet; env:apply creates it"* ]]
+  ! grep -q 'readyz' "$CALLS"
+}
+
+@test "env:doctor sends a missing kubeconfig file to k0s:apply, which writes it again" {
+  local_state
+  KUBECONFIG_OUTPUT="$BATS_TEST_TMPDIR/missing.kubeconfig" run_doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  api: the kubeconfig file $BATS_TEST_TMPDIR/missing.kubeconfig is missing"* ]]
+  [[ "$output" == *"next: mise run k0s:apply local"* ]]
+  ! grep -q 'readyz' "$CALLS"
 }
