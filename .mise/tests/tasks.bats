@@ -1658,3 +1658,21 @@ run_doctor() {
   [[ "$output" == *"FAIL  api: the server is currently unable to handle the request"* ]]
   [[ "$output" == *"next: mise run k0s:verify local"* ]]
 }
+
+@test "env:doctor probes the machine from a terminal without stopping orb" {
+  local_state
+  # orb sets terminal modes; a process in a background process group that
+  # does so is stopped until the probe times out.
+  cat >"$stubs/orb" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  "info "*) printf '{"record":{"name":"firmament","state":"running"}}' ;;
+  *" getent hosts "*) stty sane </dev/tty && printf 'fd07::fe  %s\n' "${*: -1}" ;;
+esac
+STUB
+  chmod +x "$stubs/orb"
+  run script -q /dev/null env usage_environment=local "$root_directory/.mise/tasks/env/doctor.sh" </dev/null
+  output=${output//$'\r'/}
+  [[ "$output" == *"ok    machine dns: firmament resolves host.orb.internal"* ]] || fail "$output"
+  [[ "$output" == *"ok    machine dns: firmament resolves ghcr.io"* ]] || fail "$output"
+}

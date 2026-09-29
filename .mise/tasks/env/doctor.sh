@@ -27,9 +27,11 @@ skipped() {
 }
 
 # Runs one probe. A stalled OrbStack ignores TERM, so a probe still running
-# 5 seconds after its 15 is killed.
+# 5 seconds after its 15 is killed. The probe stays in the terminal's
+# foreground process group: `orb -m` sets terminal modes, which stops a
+# process that timeout has moved to a background group until it times out.
 probe() {
-  timeout -k 5 15 "$@"
+  timeout --foreground -k 5 15 "$@"
 }
 
 environment_directory "$environment" >/dev/null
