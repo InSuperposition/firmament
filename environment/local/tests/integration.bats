@@ -40,6 +40,12 @@ load setup.bash
   [[ "$output" != *hashicorp/kubernetes* ]]
 }
 
+@test "destroys k0s with the machine instead of resetting it over SSH" {
+  run k0sctl_config
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.skip_destroy' <<<"$output")" = true ]
+}
+
 @test "never drains the single node before an upgrade" {
   run k0sctl_config
   [ "$status" -eq 0 ]

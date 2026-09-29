@@ -61,6 +61,9 @@ module "orch_k0s" {
   kube_proxy_replacement = local.kube_proxy_replacement
   # One node: a drain would evict every pod with nowhere to go.
   drain_before_upgrade = false
+  # Every destroy deletes the machine, which removes k0s with it. A reset
+  # over SSH first would be redundant, and fails when the machine is stopped.
+  reset_on_destroy = false
 
   # os_ubuntu's postconditions must pass before k0s touches the host.
   depends_on = [module.os_ubuntu]

@@ -76,3 +76,9 @@ variable "drain_before_upgrade" {
   default     = true
   description = "Whether k0sctl drains each node before upgrading it. On a single node a drain evicts every pod with nowhere to go, so single-node clusters set false."
 }
+
+variable "reset_on_destroy" {
+  type        = bool
+  default     = true
+  description = "Whether destroying the cluster runs k0sctl reset over SSH, removing k0s from a host that stays. Callers that delete the host along with the cluster set false: the reset is redundant there and fails when the host is stopped."
+}

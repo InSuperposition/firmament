@@ -33,7 +33,8 @@ resource "terraform_data" "kube_proxy_replacement_at_creation" {
 }
 
 resource "k0sctl_config" "this" {
-  no_drain = !var.drain_before_upgrade
+  no_drain     = !var.drain_before_upgrade
+  skip_destroy = !var.reset_on_destroy
 
   metadata {
     name = var.cluster_name
