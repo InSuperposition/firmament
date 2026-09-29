@@ -16,13 +16,16 @@ mkdir -p "$capture_directory"
 # machine can hang any command, so each one gets FIRMAMENT_CAPTURE_SECONDS
 # (default 30); exit 124 means it timed out, which is itself evidence. orb
 # ignores TERM while stalled, so a command still running that many seconds
-# later is killed, exit 137. A failure never stops the capture.
+# later is killed, exit 137. A failure never stops the capture. Each command
+# stays in the terminal's foreground process group: `orb -m` sets terminal
+# modes, which stops a process that timeout has moved to a background group
+# until it times out, and that would look like a stall.
 capture_seconds="${FIRMAMENT_CAPTURE_SECONDS:-30}"
 capture() {
   local file="$capture_directory/$1.txt" status=0
   shift
   printf '$ %s\n' "$*" >"$file"
-  timeout -k "$capture_seconds" "$capture_seconds" "$@" >>"$file" 2>&1 || status=$?
+  timeout --foreground -k "$capture_seconds" "$capture_seconds" "$@" >>"$file" 2>&1 || status=$?
   printf 'exit %s\n' "$status" >>"$file"
 }
 

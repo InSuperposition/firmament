@@ -1551,6 +1551,28 @@ run_capture_stall() {
   grep -q '^orb -m demo -u root journalctl ' "$CALLS"
 }
 
+@test "orb:capture-stall captures in-machine state when run from a terminal" {
+  local tool
+  for tool in arp dscacheutil route lsof; do
+    [ -e "$stubs/$tool" ] || stub "$tool"
+  done
+  # orb sets terminal modes; a process in a background process group that
+  # does so is stopped until its capture times out.
+  cat >"$stubs/orb" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  "-m "*) stty sane </dev/tty && printf 'captured\n' ;;
+esac
+STUB
+  chmod +x "$stubs/orb"
+  run script -q /dev/null env usage_machine=demo FIRMAMENT_CAPTURE_SECONDS=2 \
+    "$root_directory/.mise/tasks/orb/capture-stall.sh" </dev/null
+  local directory
+  directory=$(printf '%s\n' "$FIRMAMENT_STATE_HOME"/stalls/*)
+  [ "$(tail -1 "$directory/machine-sockets.txt")" = 'exit 0' ] || fail "$(cat "$directory/machine-sockets.txt")"
+  grep -qx captured "$directory/machine-ssh-journal.txt"
+}
+
 @test "orb:capture-stall never uploads an orb report no one can review" {
   run_capture_stall
   [ "$status" -eq 0 ] || fail "$output"
