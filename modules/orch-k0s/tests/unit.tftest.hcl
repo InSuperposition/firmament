@@ -120,6 +120,28 @@ run "skips_the_drain_when_asked" {
   }
 }
 
+run "resets_k0s_on_destroy_by_default" {
+  command = plan
+
+  assert {
+    condition     = k0sctl_config.this.skip_destroy == false
+    error_message = "k0sctl must reset k0s on destroy unless told otherwise."
+  }
+}
+
+run "skips_the_reset_when_the_host_goes_with_the_cluster" {
+  command = plan
+
+  variables {
+    reset_on_destroy = false
+  }
+
+  assert {
+    condition     = k0sctl_config.this.skip_destroy == true
+    error_message = "reset_on_destroy = false must reach k0sctl as skip_destroy = true."
+  }
+}
+
 run "runs_kube_proxy_when_the_cni_does_not_replace_it" {
   command = plan
 

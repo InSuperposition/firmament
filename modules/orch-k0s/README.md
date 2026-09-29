@@ -15,7 +15,11 @@ fixed at cluster creation: the module records it in
 different value fails), `drain_before_upgrade` (optional, default
 `true`; rendered as the provider's `no_drain = !drain_before_upgrade`.
 On one node a drain evicts every pod with nowhere to go, so single-node
-clusters set `false`).
+clusters set `false`), `reset_on_destroy` (optional, default `true`;
+rendered as the provider's `skip_destroy = !reset_on_destroy`. A destroy
+then runs `k0sctl reset` over SSH to remove k0s from a host that stays.
+Callers that delete the host along with the cluster set `false`: the reset
+is redundant there, and fails when the host is stopped).
 In this repo, [`environment/local`](../../environment/local/README.md)
 supplies all of these by deriving them from `module.vm_orb`'s outputs;
 against a non-OrbStack Ubuntu host, supply its real SSH endpoint and a
