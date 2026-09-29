@@ -58,3 +58,6 @@ hubble:
   tls:
     auto:
       method: cronJob
+# Marks the agent pods with the change that rolled them out.
+podAnnotations:
+  firmament.dev/rollout: flux-upgrade-proof
