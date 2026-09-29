@@ -88,12 +88,19 @@ tofu_in_environment() {
 }
 
 # Points an environment's OpenTofu backend at its state file. Providers
-# install only as the committed lock file records them.
+# install only as the committed lock file records them. Fails on an empty
+# state file: tofu never writes one, but an interrupted run can leave one,
+# and tofu reads it as "nothing exists", so destroy would report success
+# while the machine keeps running and apply would create it a second time.
 init_environment() {
   local environment="$1"
   local state
   environment_directory "$environment" >/dev/null || return
   state=$(state_directory "$environment") || return
+  if [[ -f "$state/terraform.tfstate" && ! -s "$state/terraform.tfstate" ]]; then
+    fail "$state/terraform.tfstate is empty, probably cut short by an interrupted run; restore it from $state/terraform.tfstate.backup, or move it aside to start from no state"
+    return
+  fi
   mkdir -p "$state"
   tofu_in_environment "$environment" init -input=false -reconfigure -lockfile=readonly \
     -backend-config="path=$state/terraform.tfstate" >/dev/null
