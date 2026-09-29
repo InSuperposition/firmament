@@ -74,36 +74,88 @@ flux_revision() {
   printf 'refs/heads/%s@sha1:%s\n' "$1" "$sha"
 }
 
-# Runs tofu in an environment's root, telling it where its state directory
-# is and which branch Flux follows. Every other input belongs to the
-# environment's own configuration.
-tofu_in_environment() {
-  local environment="$1"
-  shift
-  local directory state branch
-  directory=$(environment_directory "$environment") || return
+# Runs tofu in an OpenTofu directory of an environment, telling it where the
+# environment's state directory is and which branch Flux follows. Every other
+# input belongs to the directory's own configuration.
+tofu_in_directory() {
+  local environment="$1" directory="$2"
+  shift 2
+  local state branch
   state=$(state_directory "$environment") || return
   branch=$(git_branch) || return
   TF_VAR_state_directory="$state" TF_VAR_git_branch="$branch" tofu -chdir="$directory" "$@"
 }
 
+# Runs tofu in an environment's root, which owns the machine, its OS and
+# k0s, and writes the kubeconfig and the runtime values.
+tofu_in_environment() {
+  local environment="$1" directory
+  shift
+  directory=$(environment_directory "$environment") || return
+  tofu_in_directory "$environment" "$directory" "$@"
+}
+
+# Runs tofu in an environment's bootstrap root, which installs Cilium and
+# Flux into the cluster the environment root created. Its state lives next
+# to the environment's and outlives a destroy: the objects it records die
+# with the machine, and the next apply's refresh drops them.
+tofu_in_bootstrap() {
+  local environment="$1" directory
+  shift
+  directory=$(environment_directory "$environment") || return
+  tofu_in_directory "$environment" "$directory/bootstrap" "$@"
+}
+
+# Fails on an empty state file: tofu never writes one, but an interrupted
+# run can leave one, and tofu reads it as "nothing exists", so destroy would
+# report success while the machine keeps running and apply would create it a
+# second time.
+refuse_empty_state() {
+  local file="$1"
+  if [[ -f "$file" && ! -s "$file" ]]; then
+    fail "$file is empty, probably cut short by an interrupted run; restore it from $file.backup, or move it aside to start from no state"
+  fi
+}
+
+# Moves the Flux bootstrap out of an environment's state into the bootstrap
+# root's state, for environments applied while the environment root still
+# held it. It runs before the environment root is initialized: that root no
+# longer requires the helm and kubernetes providers, so it cannot read a
+# state that still holds their resources. Does nothing without a state file
+# or without a bootstrap in it. The pre-move state is kept next to it.
+move_bootstrap_state() {
+  local state="$1" resources
+  [[ -s "$state/terraform.tfstate" ]] || return 0
+  resources=$(tofu state list -state="$state/terraform.tfstate") || return
+  grep -q '^module\.bootstrap_flux\.' <<<"$resources" || return 0
+  tofu state mv -state="$state/terraform.tfstate" -state-out="$state/bootstrap.tfstate" \
+    -backup="$state/terraform.tfstate.before-bootstrap-root" -backup-out=- \
+    module.bootstrap_flux module.bootstrap_flux >/dev/null
+}
+
 # Points an environment's OpenTofu backend at its state file. Providers
-# install only as the committed lock file records them. Fails on an empty
-# state file: tofu never writes one, but an interrupted run can leave one,
-# and tofu reads it as "nothing exists", so destroy would report success
-# while the machine keeps running and apply would create it a second time.
+# install only as the committed lock file records them.
 init_environment() {
   local environment="$1"
   local state
   environment_directory "$environment" >/dev/null || return
   state=$(state_directory "$environment") || return
-  if [[ -f "$state/terraform.tfstate" && ! -s "$state/terraform.tfstate" ]]; then
-    fail "$state/terraform.tfstate is empty, probably cut short by an interrupted run; restore it from $state/terraform.tfstate.backup, or move it aside to start from no state"
-    return
-  fi
+  refuse_empty_state "$state/terraform.tfstate" || return
   mkdir -p "$state"
+  move_bootstrap_state "$state" || return
   tofu_in_environment "$environment" init -input=false -reconfigure -lockfile=readonly \
     -backend-config="path=$state/terraform.tfstate" >/dev/null
+}
+
+# Points an environment's bootstrap root at its own state file, next to the
+# environment's.
+init_bootstrap() {
+  local environment="$1"
+  local state
+  state=$(state_directory "$environment") || return
+  refuse_empty_state "$state/bootstrap.tfstate" || return
+  tofu_in_bootstrap "$environment" init -input=false -reconfigure -lockfile=readonly \
+    -backend-config="path=$state/bootstrap.tfstate" >/dev/null
 }
 
 # Prints the checkout this run belongs to. Every worktree of the repository
@@ -416,21 +468,6 @@ render_flux_build() {
   local -a values
   mapfile -t values < <(flux_test_values)
   kubectl kustomize "$1" | env "${values[@]}" flux envsubst --strict
-}
-
-# Removes the Flux bootstrap from an environment's state, so destroy works
-# when the API server is already gone: its objects live in the cluster and
-# go with the machine. Does nothing without a state file or a bootstrap in
-# it. state rm writes its backup into the working directory unless told
-# otherwise; the state directory keeps it next to the state, out of Git.
-forget_bootstrap() {
-  local environment="$1" state resources
-  state=$(state_directory "$environment") || return
-  [[ -f "$state/terraform.tfstate" ]] || return 0
-  resources=$(tofu_in_environment "$environment" state list) || return
-  grep -q '^module\.bootstrap_flux\.' <<<"$resources" || return 0
-  tofu_in_environment "$environment" state rm \
-    -backup="$state/terraform.tfstate.bootstrap.backup" module.bootstrap_flux
 }
 
 # Fails when the environment's cluster has Helm charts that k0s installs.

@@ -3,8 +3,8 @@
 Abstract: Declarative bootstrap for a dedicated Kubernetes host — one
 OrbStack VM, verified Ubuntu-ready, running k0s with Cilium and Hubble.
 `environment/local` composes three real OpenTofu modules under `modules/`
-into one applied environment with a single shared state, then bootstraps
-Flux, which runs Cilium and itself from `components/`.
+into one applied environment, then a second root with its own state
+bootstraps Flux, which runs Cilium and itself from `components/`.
 
 ## Goals
 
@@ -53,8 +53,11 @@ eval "$(mise env)"
 
 ```text
 environment/local/    root config: composes the three modules below,
-                      bootstraps Cilium and Flux, owns the one shared
-                      state and the kubeconfig file
+                      owns the environment's state and the kubeconfig
+                      file and the runtime values
+environment/local/bootstrap/
+                      root config applied after it, with its own state:
+                      bootstraps Cilium and Flux into the cluster
 modules/vm-orb/       the OrbStack VM
 modules/os-ubuntu/    Ubuntu readiness check (SSH probe + postconditions)
 modules/orch-k0s/     the k0s controller+worker node; installs no charts
@@ -70,8 +73,9 @@ components/           packages Flux reconciles in the cluster (plain
 
 Each module and component has its own README with its contract.
 `mise run env:apply` applies the whole environment in dependency order
-(VM, then the readiness check, then k0s, then the bootstrap that installs
-Cilium and Flux), and `mise run env:destroy` reverses it. Both take an
+(VM, then the readiness check, then k0s, then the bootstrap root that
+installs Cilium and Flux), and `mise run env:destroy` destroys the
+environment root; the bootstrap's objects go with the machine. Both take an
 environment name, defaulting to `local`. Narrower tasks
 (`orb:apply`, `ubuntu:verify`, `k0s:apply`, and their counterparts) target
 one module via `tofu -target` against the same shared state (`k0s:*` also

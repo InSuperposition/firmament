@@ -1,10 +1,11 @@
 # local environment
 
 Abstract: Composes `modules/vm-orb`, `modules/os-ubuntu` and
-`modules/orch-k0s` into one applied environment with a single shared
-OpenTofu state — the OrbStack machine, the readiness check that gates
-provisioning it, and the k0s cluster on top of it — then bootstraps
-Cilium and Flux. From then on Flux runs both from `components/`.
+`modules/orch-k0s` into one applied environment — the OrbStack machine,
+the readiness check that gates provisioning it, and the k0s cluster on top
+of it. A second OpenTofu root, `bootstrap/`, with its own state, then
+bootstraps Cilium and Flux into that cluster. From then on Flux runs both
+from `components/`.
 
 ## Composition
 
@@ -12,7 +13,12 @@ Cilium and Flux. From then on Flux runs both from `components/`.
 module "vm_orb"   { source = "../../modules/vm-orb" }
 module "os_ubuntu" { source = "../../modules/os-ubuntu"; ssh_target = module.vm_orb.ssh_target }
 module "orch_k0s"  { source = "../../modules/orch-k0s"; ...derived from module.vm_orb...; depends_on = [module.os_ubuntu] }
-module "bootstrap_flux" { source = "git::...flux-operator-bootstrap.git?ref=<v0.8.0 commit>"; ... }  # bootstrap.tf
+```
+
+```hcl
+# bootstrap/, applied after the root above, with its own state
+data "terraform_remote_state" "environment" { ... }  # kubeconfig_path and runtime_info
+module "bootstrap_flux" { source = "git::...flux-operator-bootstrap.git?ref=<v0.8.0 commit>"; ... }
 ```
 
 `orch_k0s`'s SSH connection details (`address`, `user`, `port`,
@@ -31,7 +37,7 @@ API where Cilium's agent connects.
 
 ## Flux
 
-`bootstrap.tf` calls the upstream
+`bootstrap/bootstrap.tf` calls the upstream
 [flux-operator-bootstrap](https://github.com/controlplaneio-fluxcd/terraform-kubernetes-flux-operator-bootstrap)
 module, pinned by commit. Its Job installs Cilium, then Flux Operator and
 the `FluxInstance`, once; from then on Flux reconciles all three from
@@ -53,16 +59,25 @@ are the `runtime_info` output: `env:verify` passes them to the chainsaw
 suites as `$values`, so a component suite checks the cluster against what
 this environment asked for rather than fixed values.
 
-`providers.tf` configures the Helm and Kubernetes providers from the
-kubeconfig `orch_k0s` returns. On a fresh environment that kubeconfig is
-unknown at plan time, and one apply still builds the machine, the cluster
-and the bootstrap.
+The bootstrap is its own root, applied after this one: the Kubernetes
+provider docs warn against configuring the provider from resources created
+in the same apply. `bootstrap/main.tf` reads the `kubeconfig_path` and
+`runtime_info` outputs from this root's state, and its state,
+`bootstrap.tfstate`, sits next to this root's. `env:apply` applies both
+roots; `env:plan` plans the bootstrap once a cluster is recorded.
 
 Flux follows a branch of the public repository, so commits reach the
 cluster only after they are pushed. The tasks pass the checked-out branch
 as `git_branch`; set `FIRMAMENT_GIT_BRANCH` to follow another, and on a
-detached HEAD. `env:destroy` forgets the bootstrap's state before
-destroying, since its objects go with the machine.
+detached HEAD.
+
+`env:destroy` and `orb:destroy` destroy only this root. The bootstrap's
+objects live in the cluster and go with the machine; its state keeps them
+until the next apply, whose refresh finds them gone and plans them again.
+So an interrupted destroy needs no state restore. An environment applied
+before the bootstrap had its own root is moved over by the next task that
+initializes it (`tofu state mv`), keeping the old state as
+`terraform.tfstate.before-bootstrap-root`.
 
 ## Cilium replaces kube-proxy
 

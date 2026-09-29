@@ -21,5 +21,5 @@ output "kubeconfig_path" {
 
 output "runtime_info" {
   value       = local.runtime_info
-  description = "Values the components substitute; the cluster suites check the cluster against them."
+  description = "Values the components substitute; the bootstrap root hands them to Flux, and the cluster suites check the cluster against them."
 }

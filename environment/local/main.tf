@@ -2,14 +2,6 @@ terraform {
   required_version = ">= 1.12.0"
 
   required_providers {
-    helm = {
-      source  = "hashicorp/helm"
-      version = "~> 3.3"
-    }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 3.2"
-    }
     local = {
       source  = "hashicorp/local"
       version = "~> 2.5"
@@ -30,6 +22,20 @@ locals {
   kube_proxy_replacement = true
 
   orbstack_ssh_key_path = coalesce(var.orbstack_ssh_key_path, pathexpand("~/.orbstack/ssh/id_ed25519"))
+
+  # The environment facts every component reads: the bootstrap root puts
+  # them in the flux-runtime-info ConfigMap, and the root Kustomization
+  # substitutes them. Flux substitution is plain text replacement, so every
+  # derived value is computed here.
+  runtime_info = {
+    api_address              = local.api_address
+    api_port                 = tostring(local.api_port)
+    kube_proxy_replacement   = tostring(local.kube_proxy_replacement)
+    cilium_datapath_mode     = local.kube_proxy_replacement ? "netkit" : "veth"
+    cilium_operator_replicas = "1"
+    environment              = basename(abspath(path.module))
+    git_branch               = var.git_branch
+  }
 }
 
 module "vm_orb" {
