@@ -9,7 +9,9 @@
 # that message instead. $CILIUM_VALUES is the values.yaml the cilium-values
 # ConfigMap holds and $RELEASE_VALUES what `helm get values cilium` prints;
 # both default to the same values, so the release runs what Flux applied.
-# $NO_OUTPUTS makes `tofu output` print nothing, as after a destroy, and
+# `tofu output` records the kubeconfig at $KUBECONFIG_OUTPUT (default
+# /state/admin.kubeconfig). $NO_OUTPUTS makes it print nothing, as after a
+# destroy, and
 # $OUTPUT_ERROR makes it fail with that message. Calls to the fortio REST
 # API print the replies fortio gave in a live run, kept in $FORTIO_REPLIES
 # (its result is from a run whose server was down for 3 s, so it counts 28
@@ -62,7 +64,7 @@ case "\$*" in
   *"output -json"*)
     if [[ -n "\${OUTPUT_ERROR:-}" ]]; then printf '%s\\n' "\$OUTPUT_ERROR" >&2; exit 1; fi
     if [[ -n "\${NO_OUTPUTS:-}" ]]; then printf '{}'; else
-      printf '{"kubeconfig_path":{"value":"/state/admin.kubeconfig"},"machine_name":{"value":"firmament"},"runtime_info":{"value":{"kube_proxy_replacement":"true","cilium_datapath_mode":"netkit"}}}'
+      printf '{"kubeconfig_path":{"value":"%s"},"machine_name":{"value":"firmament"},"runtime_info":{"value":{"kube_proxy_replacement":"true","cilium_datapath_mode":"netkit"}}}' "\${KUBECONFIG_OUTPUT:-/state/admin.kubeconfig}"
     fi ;;
   *"state list"*) printf '%s' "\${STATE_LIST:-}" ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;

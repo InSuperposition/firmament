@@ -473,13 +473,19 @@ render_flux_build() {
 # Fails when the environment's cluster has Helm charts that k0s installs.
 # k0s uninstalls a chart once it leaves its configuration, and this
 # configuration installs none, so applying over such a cluster would remove
-# its Cilium. Passes when the state records no cluster yet; fails when the
+# its Cilium. Passes when the state records no cluster; fails when the
 # state cannot be read or a recorded cluster cannot answer, since either
-# says nothing about its charts.
+# says nothing about its charts. Whether a cluster is recorded comes from
+# the state's resources, not its outputs: a targeted destroy such as
+# orb:destroy removes the cluster but leaves the outputs as they were.
 refuse_k0s_charts() {
-  local kubeconfig charts errors error_text
+  local kubeconfig resources charts errors error_text
   kubeconfig=$(environment_output_or_empty "$1" kubeconfig_path) || return
   if [[ -z "$kubeconfig" ]]; then
+    return 0
+  fi
+  resources=$(tofu_in_environment "$1" state list) || return
+  if ! grep -qx 'module\.orch_k0s\.k0sctl_config\.this' <<<"$resources"; then
     return 0
   fi
   errors=$(mktemp)
