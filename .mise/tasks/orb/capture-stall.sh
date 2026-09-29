@@ -13,13 +13,16 @@ capture_directory="${FIRMAMENT_STATE_HOME:?FIRMAMENT_STATE_HOME is unset; run th
 mkdir -p "$capture_directory"
 
 # Writes one command, its output and its exit status to <name>.txt. A stalled
-# machine can hang any command, so each one gets 30 seconds; exit 124 means
-# it timed out, which is itself evidence. A failure never stops the capture.
+# machine can hang any command, so each one gets FIRMAMENT_CAPTURE_SECONDS
+# (default 30); exit 124 means it timed out, which is itself evidence. orb
+# ignores TERM while stalled, so a command still running that many seconds
+# later is killed, exit 137. A failure never stops the capture.
+capture_seconds="${FIRMAMENT_CAPTURE_SECONDS:-30}"
 capture() {
   local file="$capture_directory/$1.txt" status=0
   shift
   printf '$ %s\n' "$*" >"$file"
-  timeout 30 "$@" >>"$file" 2>&1 || status=$?
+  timeout -k "$capture_seconds" "$capture_seconds" "$@" >>"$file" 2>&1 || status=$?
   printf 'exit %s\n' "$status" >>"$file"
 }
 
