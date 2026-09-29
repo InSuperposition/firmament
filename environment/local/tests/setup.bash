@@ -10,6 +10,8 @@ setup_file() {
 
   tofu -chdir="$environment_directory" init -input=false -reconfigure \
     -backend-config="path=$BATS_FILE_TMPDIR/terraform.tfstate" >/dev/null
+  TF_DATA_DIR="$BATS_FILE_TMPDIR/tofu-bootstrap" tofu -chdir="$environment_directory/bootstrap" init \
+    -input=false -reconfigure -backend-config="path=$BATS_FILE_TMPDIR/bootstrap.tfstate" >/dev/null
 }
 
 setup() {
@@ -42,9 +44,39 @@ k0sctl_config() {
   planned module.orch_k0s.k0sctl_config.this "$@"
 }
 
-# Prints the values the bootstrap Job chart receives.
+# Writes a state for the environment root holding what the bootstrap root
+# reads from it: the runtime values the environment root plans, and the
+# path of a kubeconfig for a cluster no test reaches.
+environment_state() {
+  local state="$BATS_TEST_ROOT/state" runtime_info
+  mkdir -p "$state"
+  cat >"$state/admin.kubeconfig" <<'KUBECONFIG'
+apiVersion: v1
+kind: Config
+clusters: [{name: test, cluster: {server: "https://127.0.0.1:1"}}]
+users: [{name: test, user: {token: test}}]
+contexts: [{name: test, context: {cluster: test, user: test}}]
+current-context: test
+KUBECONFIG
+  runtime_info=$(planned_output runtime_info)
+  jq -n --argjson runtime_info "$runtime_info" --arg kubeconfig "$state/admin.kubeconfig" '{
+    version: 4, serial: 1, lineage: "test", terraform_version: "1.12.0", resources: [],
+    outputs: {
+      runtime_info: {value: $runtime_info, type: ["object", ($runtime_info | map_values("string"))]},
+      kubeconfig_path: {value: $kubeconfig, type: "string"}
+    }
+  }' >"$state/terraform.tfstate"
+}
+
+# Prints the values the bootstrap Job chart receives, as the bootstrap root
+# plans them against the environment root's values.
 bootstrap_values() {
-  planned module.bootstrap_flux.helm_release.this "$@" | jq -r '.values[0]'
+  local plan="$BATS_TEST_ROOT/bootstrap.tfplan"
+  environment_state
+  TF_DATA_DIR="$BATS_FILE_TMPDIR/tofu-bootstrap" tofu -chdir="$environment_directory/bootstrap" plan \
+    -input=false -refresh=false -out="$plan" -var="state_directory=$BATS_TEST_ROOT/state" >/dev/null
+  TF_DATA_DIR="$BATS_FILE_TMPDIR/tofu-bootstrap" tofu -chdir="$environment_directory/bootstrap" show -json "$plan" |
+    jq -r '.resource_changes[] | select(.address == "module.bootstrap_flux.helm_release.this") | .change.after.values[0]'
 }
 
 cluster_config() {

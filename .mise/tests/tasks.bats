@@ -99,23 +99,25 @@ local_state() {
   ! grep -q ' destroy ' "$CALLS" 2>/dev/null || fail "ran destroy against an empty state: $(cat "$CALLS")"
 }
 
-@test "env:destroy forgets the Flux bootstrap before destroying the rest" {
-  local_state
-  STATE_LIST=$'module.bootstrap_flux.helm_release.this\nmodule.vm_orb.orbstack_machine.this' run_task "$root_directory/.mise/tasks/env/destroy.sh" local
-  [ "$status" -eq 0 ]
-  run grep -E '^tofu .* (state rm|destroy) ' "$CALLS"
-  [ "${#lines[@]}" -eq 2 ]
-  [[ "${lines[0]}" == *" state rm -backup=$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate.bootstrap.backup module.bootstrap_flux "* ]]
-  [[ "${lines[1]}" == *" destroy -input=false -auto-approve "* ]]
-}
-
-@test "env:destroy destroys without touching state when there is no bootstrap" {
+@test "env:destroy destroys the environment root and leaves the bootstrap root alone" {
   local_state
   STATE_LIST=module.vm_orb.orbstack_machine.this run_task "$root_directory/.mise/tasks/env/destroy.sh" local
   [ "$status" -eq 0 ]
-  run grep -c ' state rm ' "$CALLS"
-  [ "$output" = 0 ]
-  grep -q ' destroy -input=false -auto-approve ' "$CALLS"
+  grep -q "^tofu -chdir=$root_directory/environment/local destroy -input=false -auto-approve " "$CALLS"
+  ! grep -q -- '/bootstrap ' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
+  ! grep -q ' state rm ' "$CALLS" || fail "removed state by hand: $(cat "$CALLS")"
+}
+
+@test "env:destroy first moves an older environment's bootstrap into the bootstrap root's state" {
+  local_state
+  local state="$FIRMAMENT_STATE_HOME/environment/local"
+  STATE_LIST=$'module.bootstrap_flux.helm_release.this\nmodule.vm_orb.orbstack_machine.this' run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  [ "$status" -eq 0 ]
+  run grep -E '^tofu (state mv|-chdir=.* (init|destroy)) ' "$CALLS"
+  [ "${#lines[@]}" -eq 3 ]
+  [[ "${lines[0]}" == "tofu state mv -state=$state/terraform.tfstate -state-out=$state/bootstrap.tfstate -backup=$state/terraform.tfstate.before-bootstrap-root -backup-out=- module.bootstrap_flux module.bootstrap_flux "* ]]
+  [[ "${lines[1]}" == *" init "* ]]
+  [[ "${lines[2]}" == *" destroy -input=false -auto-approve "* ]]
 }
 
 @test "env:destroy runs on a fresh machine with no state yet" {
@@ -134,14 +136,39 @@ local_state() {
   grep -q ' destroy -input=false -auto-approve .*branch=main$' "$CALLS"
 }
 
-@test "orb:destroy forgets the Flux bootstrap before destroying the machine" {
+@test "orb:destroy destroys the machine and leaves the bootstrap root alone" {
   local_state
-  STATE_LIST=module.bootstrap_flux.helm_release.this run_task "$root_directory/.mise/tasks/orb/destroy.sh" local
+  STATE_LIST=module.vm_orb.orbstack_machine.this run_task "$root_directory/.mise/tasks/orb/destroy.sh" local
   [ "$status" -eq 0 ]
-  run grep -E '^tofu .* (state rm|destroy) ' "$CALLS"
-  [ "${#lines[@]}" -eq 2 ]
-  [[ "${lines[0]}" == *" state rm "*" module.bootstrap_flux "* ]]
-  [[ "${lines[1]}" == *" destroy -input=false -auto-approve -target=module.vm_orb "* ]]
+  grep -q "^tofu -chdir=$root_directory/environment/local destroy -input=false -auto-approve -target=module.vm_orb " "$CALLS"
+  ! grep -q -- '/bootstrap ' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
+}
+
+@test "env:apply applies the environment root, then the bootstrap root, then waits" {
+  run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  local state="$FIRMAMENT_STATE_HOME/environment/local"
+  run grep -E '^(tofu -chdir=.* (init|apply) |cilium )' "$CALLS"
+  [[ "${lines[0]}" == "tofu -chdir=$root_directory/environment/local init "*"-backend-config=path=$state/terraform.tfstate "* ]]
+  [[ "${lines[1]}" == "tofu -chdir=$root_directory/environment/local apply -input=false -auto-approve "* ]]
+  [[ "${lines[2]}" == "tofu -chdir=$root_directory/environment/local/bootstrap init "*"-backend-config=path=$state/bootstrap.tfstate "* ]]
+  [[ "${lines[3]}" == "tofu -chdir=$root_directory/environment/local/bootstrap apply -input=false -auto-approve "* ]]
+  [[ "${lines[4]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
+}
+
+@test "env:plan plans the bootstrap root once the environment records a cluster" {
+  run_task "$root_directory/.mise/tasks/env/plan.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  grep -q "^tofu -chdir=$root_directory/environment/local plan -input=false " "$CALLS"
+  grep -q "^tofu -chdir=$root_directory/environment/local/bootstrap plan -input=false " "$CALLS"
+}
+
+@test "env:plan skips the bootstrap root while the environment records no cluster" {
+  NO_OUTPUTS=1 run_task "$root_directory/.mise/tasks/env/plan.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"No cluster recorded yet, so the bootstrap is not planned"* ]]
+  grep -q "^tofu -chdir=$root_directory/environment/local plan -input=false " "$CALLS"
+  ! grep -q -- '/bootstrap ' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
 }
 
 @test "env:apply refuses a recorded cluster that cannot say whether k0s installs charts" {
@@ -179,14 +206,6 @@ local_state() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"k0s still installs Helm charts on this cluster"*"k0s-addon-chart-cilium"* ]]
   ! grep -q ' apply -input=false' "$CALLS"
-}
-
-@test "env:apply waits for the cluster only after applying" {
-  run_task "$root_directory/.mise/tasks/env/apply.sh" local
-  [ "$status" -eq 0 ]
-  run grep -nE '^(tofu .* apply |cilium )' "$CALLS"
-  [[ "${lines[0]}" == *"apply -input=false -auto-approve"* ]]
-  [[ "${lines[1]}" == *"cilium --kubeconfig /state/admin.kubeconfig status"* ]]
 }
 
 @test "k0s:apply applies only the cluster and its kubeconfig, then waits for the node" {

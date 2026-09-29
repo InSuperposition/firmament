@@ -111,6 +111,28 @@ setup() {
   [ ! -e "$CALLS" ]
 }
 
+@test "points the bootstrap root at its own state file, next to the environment's" {
+  init_bootstrap local
+  run cat "$CALLS"
+  [[ "$output" == *"tofu -chdir=$root_directory/environment/local/bootstrap init -input=false -reconfigure -lockfile=readonly -backend-config=path=$FIRMAMENT_STATE_HOME/environment/local/bootstrap.tfstate"* ]]
+}
+
+@test "refuses an empty bootstrap state file before running tofu" {
+  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
+  : >"$FIRMAMENT_STATE_HOME/environment/local/bootstrap.tfstate"
+  run init_bootstrap local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"$FIRMAMENT_STATE_HOME/environment/local/bootstrap.tfstate is empty"* ]]
+  [ ! -e "$CALLS" ]
+}
+
+@test "moves nothing when the environment's state holds no bootstrap" {
+  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
+  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
+  STATE_LIST=module.vm_orb.orbstack_machine.this init_environment local
+  ! grep -q ' state mv ' "$CALLS"
+}
+
 @test "points the backend at the environment's state file" {
   init_environment local
   [ -d "$FIRMAMENT_STATE_HOME/environment/local" ]

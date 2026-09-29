@@ -7,25 +7,11 @@ locals {
   # failed bootstrap, without rebuilding the machine.
   bootstrap_revision = 1
 
-  components            = "${path.module}/../../components"
+  components            = "${path.module}/../../../components"
   cilium_source         = yamldecode(file("${local.components}/cni-cilium/ocirepository.yaml"))
   cilium_release        = yamldecode(file("${local.components}/cni-cilium/helmrelease.yaml"))
   flux_operator_source  = yamldecode(file("${local.components}/gitops-flux/ocirepository.yaml"))
   flux_operator_release = yamldecode(file("${local.components}/gitops-flux/helmrelease.yaml"))
-
-  # Substituted into the manifests and chart values by the bootstrap, and by
-  # the root Kustomization from the flux-runtime-info ConfigMap afterwards.
-  # Flux substitution is plain text replacement, so every derived value is
-  # computed here.
-  runtime_info = {
-    api_address              = local.api_address
-    api_port                 = tostring(local.api_port)
-    kube_proxy_replacement   = tostring(local.kube_proxy_replacement)
-    cilium_datapath_mode     = local.kube_proxy_replacement ? "netkit" : "veth"
-    cilium_operator_replicas = "1"
-    environment              = basename(abspath(path.module))
-    git_branch               = var.git_branch
-  }
 }
 
 module "bootstrap_flux" {
@@ -61,7 +47,7 @@ module "bootstrap_flux" {
 
   managed_resources = {
     runtime_info = {
-      data = local.runtime_info
+      data = local.environment.runtime_info
       # A change, such as a new branch to follow, reaches the root
       # Kustomization at once instead of at its next interval.
       labels = {
@@ -77,8 +63,8 @@ module "bootstrap_flux" {
   job = {
     host_network = true
     env = {
-      KUBERNETES_SERVICE_HOST = local.api_address
-      KUBERNETES_SERVICE_PORT = tostring(local.api_port)
+      KUBERNETES_SERVICE_HOST = local.environment.runtime_info.api_address
+      KUBERNETES_SERVICE_PORT = local.environment.runtime_info.api_port
     }
     tolerations = [
       { key = "node.kubernetes.io/not-ready", operator = "Exists", effect = "NoSchedule" },

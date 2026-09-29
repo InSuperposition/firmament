@@ -15,7 +15,7 @@ export FIRMAMENT_GIT_BRANCH
 
 init_environment "$environment"
 claim_environment "$environment"
-# Destroying the machine takes the bootstrap, which depends on it, along.
-forget_bootstrap "$environment"
+# The bootstrap root is left alone: its objects live in the cluster and go
+# with the machine, and the next apply's refresh drops them from its state.
 tofu_in_environment "$environment" destroy -input=false -auto-approve -target=module.vm_orb
 release_environment "$environment"

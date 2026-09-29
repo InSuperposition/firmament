@@ -30,6 +30,16 @@ load setup.bash
   [ "$(yq -r '.managedResources.runtimeInfo.data.cilium_operator_replicas' <<<"$output")" = 1 ]
 }
 
+@test "keeps every in-cluster object out of the environment root" {
+  local plan="$BATS_TEST_ROOT/plan.tfplan"
+  tofu -chdir="$environment_directory" plan -input=false -out="$plan" \
+    -var="state_directory=$BATS_TEST_ROOT/state" >/dev/null
+  run bash -c "tofu -chdir='$environment_directory' show -json '$plan' | jq -r '.resource_changes[].provider_name' | sort -u"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *hashicorp/helm* ]]
+  [[ "$output" != *hashicorp/kubernetes* ]]
+}
+
 @test "never drains the single node before an upgrade" {
   run k0sctl_config
   [ "$status" -eq 0 ]
