@@ -17,6 +17,11 @@
 # $FORTIO_RUN, $FORTIO_STATUS, $FORTIO_STOP and $FORTIO_RESULT name other
 # files to print instead.
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
+# The env:doctor probes answer as a healthy host unless told otherwise:
+# `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
+# reports $ORB_STATE (default running), and $HOST_DNS_ERROR, $ORB_DNS_ERROR
+# and $READYZ_ERROR make the Mac's lookup, the machine's lookup and the API
+# server's /readyz fail, the last with that message.
 # `cilium hubble port-forward` and `kubectl port-forward` listen on the local
 # port they are given, as the real ones do, until the first connection closes.
 setup_stubs() {
@@ -31,7 +36,7 @@ setup_stubs() {
   real_mise=$(command -v mise)
   stubs="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$stubs"
-  for tool in tofu cilium hubble kubectl helm chainsaw orb bats mise open; do
+  for tool in tofu cilium hubble kubectl helm chainsaw orb orbctl dscacheutil bats mise open; do
     stub "$tool"
   done
   PATH="$stubs:$PATH"
@@ -74,6 +79,17 @@ case "\$*" in
   *"/fortio/rest/stop"*) cat "\${FORTIO_STOP:-\$FORTIO_REPLIES/stop.json}" ;;
   *"/fortio/data/"*) cat "\${FORTIO_RESULT:-\$FORTIO_REPLIES/result.json}" ;;
   "tasks ls --name-only") printf '%s\\n' \${TASKS:-a:verify b:test env:verify k0s:verify} ;;
+  "status") printf '%s\\n' "\${ORBCTL_STATUS:-Running}" ;;
+  "info "*"--format json") printf '{"record":{"name":"firmament","state":"%s"}}' "\${ORB_STATE:-running}" ;;
+  "-q host -a name "*)
+    if [[ -n "\${HOST_DNS_ERROR:-}" ]]; then exit 0; fi
+    printf 'name: %s\\nip_address: 192.168.138.4\\n' "\${*: -1}" ;;
+  *" getent hosts "*)
+    if [[ -n "\${ORB_DNS_ERROR:-}" ]]; then exit 2; fi
+    printf 'fd07:b51a:cc66:f0::fe  %s\\n' "\${*: -1}" ;;
+  *"get --raw /readyz"*)
+    if [[ -n "\${READYZ_ERROR:-}" ]]; then printf '%s\\n' "\$READYZ_ERROR" >&2; exit 1; fi
+    printf 'ok' ;;
 esac
 exit 0
 STUB
