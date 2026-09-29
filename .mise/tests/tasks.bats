@@ -1557,3 +1557,122 @@ run_capture_stall() {
   ! grep -q '^orb report' "$CALLS"
   [[ "$output" == *"Skipped orb report: no terminal to review it."* ]]
 }
+
+# Runs env:doctor for the local environment, which has an applied state
+# unless a test removes it.
+run_doctor() {
+  run_task "$root_directory/.mise/tasks/env/doctor.sh" local
+}
+
+@test "env:doctor passes on a healthy host and changes nothing" {
+  local_state
+  run_doctor
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok    orbstack: running"* ]]
+  [[ "$output" == *"ok    machine: firmament is running"* ]]
+  [[ "$output" == *"ok    api: the API server is ready"* ]]
+  [[ "$output" != *FAIL* ]]
+  ! grep -Eq '^tofu .* (init|apply|destroy|state (mv|rm))( |$)' "$CALLS" || fail "changed state: $(cat "$CALLS")"
+  [ ! -e "$FIRMAMENT_STATE_HOME/environment/local/owner" ] || fail "claimed the environment"
+}
+
+@test "env:doctor treats an environment with no state as ready for env:apply" {
+  run_doctor
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"skip  machine: no cluster recorded yet; env:apply creates it"* ]]
+  ! grep -q '^orb ' "$CALLS"
+}
+
+@test "env:doctor names the worktree that owns the environment" {
+  local_state
+  local other="$BATS_TEST_TMPDIR/other-worktree"
+  mkdir -p "$other"
+  printf '%s\n' "$other" >"$FIRMAMENT_STATE_HOME/environment/local/owner"
+  run_doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  owner: the worktree $other owns this environment"* ]]
+  [[ "$output" == *"next: run the task there, or set FIRMAMENT_TAKE_OVER=1"* ]]
+}
+
+@test "env:doctor reports an empty state file with the backup to restore" {
+  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
+  : >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
+  run_doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  state: "*"terraform.tfstate is empty"* ]]
+}
+
+@test "env:doctor reports a state whose outputs it cannot read" {
+  local_state
+  OUTPUT_ERROR='Error: Failed to load state' run_doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  state: cannot read the outputs in "*"Error: Failed to load state"* ]]
+}
+
+@test "env:doctor stops at a stopped OrbStack and skips what depends on it" {
+  local_state
+  ORBCTL_STATUS=Stopped run_doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  orbstack: OrbStack is Stopped"* ]]
+  [[ "$output" == *"next: orbctl start"* ]]
+  [[ "$output" == *"skip  machine: OrbStack is not running"* ]]
+  ! grep -q '^orb ' "$CALLS"
+}
+
+@test "env:doctor tells how to start a stopped machine" {
+  local_state
+  ORB_STATE=stopped run_doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  machine: firmament is stopped"* ]]
+  [[ "$output" == *"next: orb start firmament"* ]]
+  [[ "$output" == *"skip  api: the machine is not running"* ]]
+}
+
+@test "env:doctor reports a name the Mac cannot resolve" {
+  local_state
+  HOST_DNS_ERROR=1 run_doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  host dns: the Mac cannot resolve firmament.orb.local"* ]]
+}
+
+@test "env:doctor reports names the machine cannot resolve" {
+  local_state
+  ORB_DNS_ERROR=1 run_doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  machine dns: firmament cannot resolve host.orb.internal"* ]]
+  [[ "$output" == *"FAIL  machine dns: firmament cannot resolve ghcr.io"* ]]
+}
+
+@test "env:doctor explains no route to the API server as missing Local Network access" {
+  local_state
+  READYZ_ERROR='dial tcp 192.168.139.53:6443: connect: no route to host' run_doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  api: no route to the API server"* ]]
+  [[ "$output" == *"Local Network"* ]]
+}
+
+@test "env:doctor reports an API server that is not ready" {
+  local_state
+  READYZ_ERROR='the server is currently unable to handle the request' run_doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  api: the server is currently unable to handle the request"* ]]
+  [[ "$output" == *"next: mise run k0s:verify local"* ]]
+}
+
+@test "env:doctor probes the machine from a terminal without stopping orb" {
+  local_state
+  # orb sets terminal modes; a process in a background process group that
+  # does so is stopped until the probe times out.
+  cat >"$stubs/orb" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  "info "*) printf '{"record":{"name":"firmament","state":"running"}}' ;;
+  *" getent hosts "*) stty sane </dev/tty && printf 'fd07::fe  %s\n' "${*: -1}" ;;
+esac
+STUB
+  chmod +x "$stubs/orb"
+  run script -q /dev/null env usage_environment=local "$root_directory/.mise/tasks/env/doctor.sh" </dev/null
+  output=${output//$'\r'/}
+  [[ "$output" == *"ok    machine dns: firmament resolves host.orb.internal"* ]] || fail "$output"
+  [[ "$output" == *"ok    machine dns: firmament resolves ghcr.io"* ]] || fail "$output"
+}

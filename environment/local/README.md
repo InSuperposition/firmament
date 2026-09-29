@@ -106,8 +106,9 @@ k0sctl reaches the machine with the SSH key OrbStack creates,
 
 | Command | Behavior |
 | --- | --- |
-| `mise run env:plan` | Plan the whole environment |
-| `mise run env:apply` | Apply the whole environment, then wait for Cilium, the `FluxInstance` and the Cilium HelmRelease to be ready, and the node to be Ready. It refuses a cluster whose Helm charts k0s still installs (rebuild it instead). On an existing cluster it does not wait for Flux to apply the pushed commit; `env:verify` does |
+| `mise run env:doctor` | Explain why an environment task would fail, without changing anything: the environment and its worktree owner, readable state files, OrbStack, the machine, DNS from the Mac and from the machine (`host.orb.internal`, `ghcr.io`), and the API server's `/readyz`. One line per check (`ok`, `skip` with the reason, or `FAIL` with the next command); exits 1 on any failure. "No route to host" from the API server is reported as missing macOS Local Network access, which background agent sessions can lack. A missing cluster is `skip`, since `env:apply` creates it |
+| `mise run env:plan` | Plan the whole environment, then its bootstrap root once a cluster is recorded |
+| `mise run env:apply` | Apply the whole environment, then its bootstrap root, then wait for Cilium, the `FluxInstance` and the Cilium HelmRelease to be ready, and the node to be Ready. It refuses a cluster whose Helm charts k0s still installs (rebuild it instead). On an existing cluster it does not wait for Flux to apply the pushed commit; `env:verify` does |
 | `mise run env:destroy` | Destroy the whole environment, after a confirmation prompt (`-y` skips it) |
 | `mise run orb:plan` / `orb:apply` / `orb:destroy` | `-target=module.vm_orb` only |
 | `mise run ubuntu:verify` | `-target=module.os_ubuntu` only |
