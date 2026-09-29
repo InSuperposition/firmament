@@ -101,6 +101,16 @@ setup() {
   [ ! -e "$CALLS" ]
 }
 
+@test "refuses an empty state file before running tofu" {
+  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
+  : >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
+  run init_environment local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate is empty"* ]]
+  [[ "$output" == *"terraform.tfstate.backup"* ]]
+  [ ! -e "$CALLS" ]
+}
+
 @test "points the backend at the environment's state file" {
   init_environment local
   [ -d "$FIRMAMENT_STATE_HOME/environment/local" ]

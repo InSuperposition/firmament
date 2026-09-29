@@ -87,7 +87,16 @@ run_task() {
 # Gives the local environment a state file, as any applied environment has.
 local_state() {
   mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
+  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
+}
+
+@test "orb:destroy refuses an empty state file instead of destroying nothing" {
+  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
   : >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
+  run_task "$root_directory/.mise/tasks/orb/destroy.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"terraform.tfstate is empty"* ]]
+  ! grep -q ' destroy ' "$CALLS" 2>/dev/null || fail "ran destroy against an empty state: $(cat "$CALLS")"
 }
 
 @test "env:destroy forgets the Flux bootstrap before destroying the rest" {
