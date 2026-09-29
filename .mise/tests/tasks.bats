@@ -1514,6 +1514,15 @@ run_capture_stall() {
   grep -q '^orb -m demo -u root journalctl ' "$CALLS"
 }
 
+@test "orb:capture-stall kills a command that ignores the timeout's TERM" {
+  printf '#!/usr/bin/env bash\ntrap "" TERM\nexec sleep 300\n' >"$stubs/arp"
+  chmod +x "$stubs/arp"
+  FIRMAMENT_CAPTURE_SECONDS=1 run_capture_stall
+  [ "$status" -eq 0 ] || fail "$output"
+  [ "$(tail -1 "$FIRMAMENT_STATE_HOME"/stalls/*/host-arp.txt)" = 'exit 137' ]
+  grep -q '^orb -m demo -u root journalctl ' "$CALLS"
+}
+
 @test "orb:capture-stall never uploads an orb report no one can review" {
   run_capture_stall
   [ "$status" -eq 0 ] || fail "$output"
