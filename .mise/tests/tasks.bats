@@ -1698,6 +1698,15 @@ run_doctor() {
   [[ "$output" == *"next: mise run k0s:verify local"* ]]
 }
 
+@test "env:doctor tells a dead .orb.local name from a dead machine" {
+  local_state
+  READYZ_ERROR='dial tcp 192.168.138.4:6443: connect: operation timed out' IP_READYZ_OK=1 run_doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  api: the machine answers at 192.168.139.101 but its .orb.local name does not: dial tcp 192.168.138.4:6443: connect: operation timed out"* ]]
+  [[ "$output" == *"next: orb restart firmament"* ]]
+  grep -q -- '--server https://192.168.139.101:6443 --tls-server-name firmament.orb.local' "$CALLS"
+}
+
 @test "env:doctor probes the machine from a terminal without stopping orb" {
   local_state
   # orb sets terminal modes; a process in a background process group that
