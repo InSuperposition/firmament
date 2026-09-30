@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Print the OrbStack machine's native metadata without changing it"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

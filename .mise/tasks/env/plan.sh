@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Plan a whole environment, then its Flux bootstrap once the environment records a cluster"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

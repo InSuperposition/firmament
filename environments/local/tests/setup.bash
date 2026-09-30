@@ -3,8 +3,8 @@ setup_file() {
   export TF_PLUGIN_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/firmament/tofu-plugins"
   mkdir -p "$TF_PLUGIN_CACHE_DIR"
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../.." && pwd)
-  export environment_directory="$root_directory/environment/local"
-  export components_directory="$root_directory/components"
+  export environment_directory="$root_directory/environments/local"
+  export components_directory="$root_directory/packages"
   export root_directory
   export TF_VAR_git_branch=feature/test
 

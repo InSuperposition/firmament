@@ -6,9 +6,9 @@ postinstall = "mise run repo:setup"
 
 [env]
 FIRMAMENT_STATE_HOME = "{% if env.FIRMAMENT_STATE_HOME %}{{ env.FIRMAMENT_STATE_HOME }}{% elif env.XDG_STATE_HOME %}{{ env.XDG_STATE_HOME }}/firmament{% else %}{{ env.HOME }}/.local/state/firmament{% endif %}"
-# Default cluster at the repository root; each environment/<env>/mise.toml
+# Default cluster at the repository root; each environments/<env>/mise.toml
 # points KUBECONFIG at its own cluster.
-KUBECONFIG = "{{ env.FIRMAMENT_STATE_HOME }}/environment/local/admin.kubeconfig"
+KUBECONFIG = "{{ env.FIRMAMENT_STATE_HOME }}/environments/local/admin.kubeconfig"
 
 [tools]
 "aqua:kyverno/chainsaw" = "0.2.15"

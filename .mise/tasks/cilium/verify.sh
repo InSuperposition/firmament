@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Wait for the Cilium release to run the values Flux applied, then for the agent, operator, Hubble Relay and Hubble UI to be ready"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

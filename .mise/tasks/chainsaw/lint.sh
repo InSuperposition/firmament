@@ -18,7 +18,7 @@ read_only_violations() {
 }
 
 status=0
-mapfile -t suites < <(find "${MISE_PROJECT_ROOT:?}/environment" "${MISE_PROJECT_ROOT:?}/components" -path '*/tests/cluster/*' -name chainsaw-test.yaml | sort)
+mapfile -t suites < <(find "${MISE_PROJECT_ROOT:?}/environments" "${MISE_PROJECT_ROOT:?}/packages" -path '*/tests/cluster/*' -name chainsaw-test.yaml | sort)
 for suite in "${suites[@]}"; do
   if ! schema=$(chainsaw lint test -f "$suite" 2>&1); then
     printf '%s: not a valid chainsaw test\n%s\n' "$suite" "$schema" >&2

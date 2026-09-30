@@ -24,7 +24,7 @@ fail() {
 # environment does not exist.
 environment_directory() {
   local environment="$1"
-  local directory="${MISE_PROJECT_ROOT:?run this through mise}/environment/$environment"
+  local directory="${MISE_PROJECT_ROOT:?run this through mise}/environments/$environment"
   if [[ ! -d "$directory" ]]; then
     fail "unknown environment '$environment': $directory does not exist"
     return
@@ -35,7 +35,7 @@ environment_directory() {
 # Prints where an environment keeps its state and kubeconfig. mise sets
 # FIRMAMENT_STATE_HOME from mise.toml [env].
 state_directory() {
-  printf '%s/environment/%s\n' "${FIRMAMENT_STATE_HOME:?FIRMAMENT_STATE_HOME is unset; run this through mise}" "$1"
+  printf '%s/environments/%s\n' "${FIRMAMENT_STATE_HOME:?FIRMAMENT_STATE_HOME is unset; run this through mise}" "$1"
 }
 
 # Fails unless a branch name is one Git accepts and uses only letters,
@@ -133,12 +133,36 @@ move_bootstrap_state() {
     module.bootstrap_flux module.bootstrap_flux >/dev/null
 }
 
+# Moves an environment's state from the singular layout
+# ($FIRMAMENT_STATE_HOME/environment/<env>) to state_directory. It copies,
+# compares the copy, and only then removes the original, so an interrupted
+# move leaves the original untouched. It refuses when both directories
+# exist, because that means two histories that must not be merged.
+move_legacy_state_directory() {
+  local environment="$1" state legacy
+  state=$(state_directory "$environment") || return
+  legacy="$FIRMAMENT_STATE_HOME/environment/$environment"
+  [[ -d "$legacy" ]] || return 0
+  if [[ -e "$state" ]]; then
+    fail "both $legacy and $state exist; keep the one that matches the running machine and remove the other"
+    return
+  fi
+  mkdir -p "${state%/*}"
+  rm -rf "$state.partial"
+  cp -Rp "$legacy" "$state.partial" || return
+  diff -r "$legacy" "$state.partial" >/dev/null || fail "copy of $legacy differs from the original; nothing was removed" || return
+  mv "$state.partial" "$state" || return
+  rm -rf "$legacy"
+  rmdir "$FIRMAMENT_STATE_HOME/environment" 2>/dev/null || true
+}
+
 # Points an environment's OpenTofu backend at its state file. Providers
 # install only as the committed lock file records them.
 init_environment() {
   local environment="$1"
   local state
   environment_directory "$environment" >/dev/null || return
+  move_legacy_state_directory "$environment" || return
   state=$(state_directory "$environment") || return
   refuse_empty_state "$state/terraform.tfstate" || return
   mkdir -p "$state"
@@ -200,7 +224,7 @@ init_offline() {
 # suite (tests/*.tftest.hcl), once, in sorted order.
 tofu_test_directories() {
   local suite
-  for suite in "${MISE_PROJECT_ROOT:?run this through mise}"/{modules,environment}/*/tests/*.tftest.hcl; do
+  for suite in "${MISE_PROJECT_ROOT:?run this through mise}"/{modules,environments}/*/tests/*.tftest.hcl; do
     if [[ -e "$suite" ]]; then
       dirname -- "$(dirname -- "$suite")"
     fi
@@ -251,7 +275,7 @@ deployed_components() {
 }
 
 # Prints the module name of a component directory: its name without the
-# role prefix, so components/cni-cilium is the module cilium. The module
+# role prefix, so packages/cni-cilium is the module cilium. The module
 # name is also the noun of the component's tasks (cilium:verify).
 module_name() {
   local component="${1##*/}"
@@ -286,7 +310,7 @@ module_selected() {
 }
 
 # Prints the modules a branch changed, as a module list for --only: a path
-# under components/<name>/ selects that module when the environment deploys
+# under packages/<name>/ selects that module when the environment deploys
 # it, and a component it does not deploy changes nothing here. A change to
 # any other file, except Markdown, can affect every module, so it prints an
 # empty list (every module). With no such change it prints "none". Changes
@@ -308,8 +332,8 @@ changed_modules() {
   while IFS= read -r path; do
     case "$path" in
     "" | *.md) ;;
-    components/*/*)
-      component="${path#components/}"
+    packages/*/*)
+      component="${path#packages/}"
       component="${component%%/*}"
       if [[ " $deployed " == *" $component "* && ",$selected," != *",$(module_name "$component"),"* ]]; then
         selected+="${selected:+,}$(module_name "$component")"

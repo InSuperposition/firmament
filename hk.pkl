@@ -10,12 +10,12 @@ local fast = new Mapping<String, Step> {
   ["mise"] = Builtins.mise
   // Schema and read-only rules for the live cluster suites.
   ["chainsaw"] {
-    glob = List("environment/*/tests/cluster/**/*.yaml", "components/*/tests/cluster/**/*.yaml")
+    glob = List("environments/*/tests/cluster/**/*.yaml", "packages/*/tests/cluster/**/*.yaml")
     check = "mise run chainsaw:lint"
   }
   // Renders and schema-validates each environment's Flux build.
   ["flux"] {
-    glob = List("components/**", "environment/*/flux/**", ".mise/flux-test-values.env", ".mise/flux-schemas/**")
+    glob = List("packages/**", "environments/*/flux/**", ".mise/flux-test-values.env", ".mise/flux-schemas/**")
     check = "mise run flux:lint"
   }
 }
@@ -32,7 +32,7 @@ local slow = new Mapping<String, Step> {
     exclusive = true
   }
   ["test"] {
-    glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "environment/*/tests/cluster/**/*.yaml", "components/**", "environment/*/flux/**", ".mise/flux-test-values.env", "environment/*/tests/upgrade-unaffected", ".mise/tests/fortio/**", ".mise/traffic/**")
+    glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "environments/*/tests/cluster/**/*.yaml", "packages/**", "environments/*/flux/**", ".mise/flux-test-values.env", "environments/*/tests/upgrade-unaffected", ".mise/tests/fortio/**", ".mise/traffic/**")
     check = "mise run test"
     exclusive = true
   }
