@@ -13,6 +13,7 @@ KUBECONFIG = "{{ env.FIRMAMENT_STATE_HOME }}/environments/local/admin.kubeconfig
 [tools]
 "aqua:kyverno/chainsaw" = "0.2.15"
 bats = "1.14.0"
+betterleaks = "1.8.1"
 cilium-cli = "0.20.1"
 cilium-hubble = "1.19.4"
 cue = "0.17.1"
@@ -54,6 +55,10 @@ run = ["hk check --all --step mise", "mise tasks validate"]
 [tasks."orb:test"]
 description = "Test the vm-orb module without a live VM"
 run = "bats modules/vm-orb/tests/unit.bats"
+
+[tasks."secrets:lint"]
+description = "Scan every tracked text file for secrets with betterleaks"
+run = "hk check --all --step betterleaks"
 
 [tasks."shell:format"]
 description = "Format every shell script and bats file with shfmt"
