@@ -1,0 +1,20 @@
+# The local environment: OrbStack machines on this Mac. One machine per
+# cluster, named local-<cluster>. Mesh allocations are append-only.
+target: orbstack
+engine: flux
+budget:
+  memory_mib: 10240
+  cpus: 7
+  disk_gib: 20
+clusters:
+  workload:
+    machines:
+      - memory_mib: 5632
+        cpus: 4
+        disk_gib: 10
+    service_cidr: 10.96.0.0/12
+mesh:
+  allocations:
+    workload:
+      id: 2
+      pod_cidr: 10.244.0.0/16

@@ -24,8 +24,9 @@ import (
 #Environment: {
 	target!: #Target
 	engine!: "flux"
-	// Where enrolled clusters pull the rendered artifacts from.
-	artifact_source!: url!: =~"^oci://[^[:space:]]+$"
+	// Where enrolled clusters pull the rendered artifacts from; absent
+	// until the environment has a covenant registry.
+	artifact_source?: url!: =~"^oci://[^[:space:]]+$"
 	// The hardware the environment may use in total.
 	budget!: environment_facts.#Machine
 	clusters!: [layout.#Name]: {
