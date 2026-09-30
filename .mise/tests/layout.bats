@@ -199,3 +199,24 @@ port: 6443'
   [[ "$output" == *"environments-no-code"* ]]
   [[ "$output" == *"no-facts"* ]]
 }
+
+@test "accepts hk globs that point into the layout" {
+  plant hk.pkl '    glob = List("**/*.sh", "packages/**", "environments/*/tests/cluster/**/*.yaml", ".mise/tasks/**", "hk.pkl")'
+  lint
+  [ "$status" -eq 0 ]
+}
+
+@test "rejects an hk glob under a folder that no longer exists" {
+  plant hk.pkl '    glob = List("components/*/tests/**")'
+  lint
+  assert_violation hk.pkl hk-globs-current
+  [[ "$output" == *"names components, which does not exist"* ]]
+}
+
+@test "rejects an hk glob under a folder the layout does not define" {
+  plant scripts/run.yaml 'a: 1'
+  plant hk.pkl '    glob = List("scripts/**")'
+  lint
+  assert_violation hk.pkl hk-globs-current
+  [[ "$output" == *"under scripts/, which is not a layout folder"* ]]
+}

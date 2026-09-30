@@ -28,6 +28,7 @@
 | `task-folder-pairs-package` | A `.mise/tasks/<x>/` folder whose name matches `package_pattern` has no `packages/<x>/` |
 | `modules-no-references` | A code file under `modules/` references `packages/`, `clusters/` or `environments/` |
 | `exceptions-current` | An exception path matches no file |
+| `hk-globs-current` | An `hk.pkl` glob names a path that does not exist, or a top-level folder that is neither a layout folder nor a dot-path such as `.mise` |
 
 The names are the folder names under `clusters/` and `environments/`. A name counts only as a whole token: `sample` in `samples`, `edge-proxy`, `images/sample-app` or `cluster.sample` does not count. A `role:` line never counts, so a role value such as `workload` is vocabulary, not a name.
 

@@ -142,6 +142,27 @@ rule_modules_no_references() {
   done < <(code_files modules)
 }
 
+# Every hk.pkl glob points into the layout: the part before its first
+# wildcard exists, and its first segment is a layout folder, a dot-path such
+# as .mise, or a file at the repository root. A renamed folder fails here
+# instead of silently leaving an hk step with nothing to match.
+rule_hk_globs_current() {
+  local folders glob prefix top
+  [[ -f "$root/hk.pkl" ]] || return 0
+  folders=$(layout_value '.folders | keys | .[]')
+  while IFS= read -r glob; do
+    prefix="${glob%%\**}"
+    [[ "$prefix" == "$glob" ]] || prefix="${prefix%/*}"
+    [[ -n "$prefix" ]] || continue
+    top="${prefix%%/*}"
+    if [[ ! -e "$root/$prefix" ]]; then
+      printf 'hk.pkl: hk-globs-current: glob %s names %s, which does not exist\n' "$glob" "$prefix"
+    elif [[ "$top" != .* && -d "$root/$top" ]] && ! grep -Fxq -- "$top" <<<"$folders"; then
+      printf 'hk.pkl: hk-globs-current: glob %s is under %s/, which is not a layout folder\n' "$glob" "$top"
+    fi
+  done < <(grep -E '^[[:space:]]*glob[[:space:]]*=' "$root/hk.pkl" | grep -oE '"[^"]+"' | tr -d '"')
+}
+
 # An exception whose paths match no file has outlived the code it covered.
 rule_exceptions_current() {
   local rule glob matched file
@@ -170,6 +191,7 @@ violations=$(
   rule_packages_not_executable
   rule_task_folder_pairs_package
   rule_modules_no_references
+  rule_hk_globs_current
 )
 if [[ -n "$violations" ]]; then
   mapfile -t lines <<<"$violations"
