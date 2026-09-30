@@ -72,16 +72,16 @@ else
   failed orbstack "OrbStack is ${orbstack:-not answering}" "orbctl start"
 fi
 
-# What the state records comes from its resources: a targeted destroy such
-# as orb:destroy removes the machine and the cluster but leaves the outputs
-# as they were.
+# The machine comes from the machine-hosts file orb:apply writes; whether a
+# cluster is recorded comes from the state's resources, since a destroy can
+# leave the outputs as they were.
 machine="" kubeconfig="" cluster=""
+if [[ -f "$state/machine-hosts.yaml" ]]; then
+  machine=$(yq -r '.hosts[0].name // ""' "$state/machine-hosts.yaml" 2>/dev/null) || machine=""
+fi
 if [[ -z "$state_problem" && -s "$state/terraform.tfstate" ]]; then
   if outputs=$(tofu output -json -state="$state/terraform.tfstate" 2>&1) &&
     resources=$(tofu state list -state="$state/terraform.tfstate" 2>&1); then
-    if grep -qx 'module\.vm_orb\.orbstack_machine\.this' <<<"$resources"; then
-      machine=$(jq -r '.machine_name.value // empty' <<<"$outputs")
-    fi
     if grep -qx 'module\.orch_k0s\.k0sctl_config\.this' <<<"$resources"; then
       cluster=1
       kubeconfig=$(jq -r '.kubeconfig_path.value // empty' <<<"$outputs")

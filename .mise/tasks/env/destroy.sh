@@ -13,9 +13,5 @@ environment="$usage_environment"
 FIRMAMENT_GIT_BRANCH=$(git_branch 2>/dev/null) || FIRMAMENT_GIT_BRANCH=main
 export FIRMAMENT_GIT_BRANCH
 
-init_environment "$environment"
 claim_environment "$environment"
-# The bootstrap root is left alone: its objects live in the cluster and go
-# with the machine, and the next apply's refresh drops them from its state.
-tofu_in_environment "$environment" destroy -input=false -auto-approve
-release_environment "$environment"
+destroy_environment "$environment"

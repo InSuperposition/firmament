@@ -25,6 +25,26 @@ refuse_empty_state() {
 # longer requires the helm and kubernetes providers, so it cannot read a
 # state that still holds their resources. Does nothing without a state file
 # or without a bootstrap in it. The pre-move state is kept next to it.
+# Forgets the OrbStack machine and its readiness check in an environment's
+# state, for environments applied while OpenTofu created the machine; the
+# orb:apply task owns machines now. It runs before init: the root no longer
+# requires the orbstack provider, so it cannot read a state that still holds
+# the machine. The machine itself keeps running, and a notice names it. Does
+# nothing without such resources. The earlier state is kept next to it.
+forget_machine_state() {
+  local state="$1" resources machine
+  local -a modules
+  [[ -s "$state/terraform.tfstate" ]] || return 0
+  resources=$(tofu state list -state="$state/terraform.tfstate") || return
+  mapfile -t modules < <(grep -o '^module\.\(vm_orb\|os_ubuntu\)' <<<"$resources" | sort -u)
+  ((${#modules[@]})) || return 0
+  machine=$(tofu output -json -state="$state/terraform.tfstate" 2>/dev/null | jq -r '.machine_name.value // empty') || machine=""
+  tofu state rm -state="$state/terraform.tfstate" -backup="$state/terraform.tfstate.before-orb-tasks" \
+    -- "${modules[@]}" >/dev/null || return
+  printf 'The OrbStack machine %s is no longer managed here; delete it with orb delete %s once nothing uses it.\n' \
+    "${machine:-(unknown)}" "${machine:-<name>}" >&2
+}
+
 move_bootstrap_state() {
   local state="$1" resources
   [[ -s "$state/terraform.tfstate" ]] || return 0

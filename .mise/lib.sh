@@ -23,5 +23,9 @@ source "${BASH_SOURCE[0]%/*}/lib/flux.sh"
 source "${BASH_SOURCE[0]%/*}/lib/chainsaw.sh"
 # shellcheck source=lib/waits.sh
 source "${BASH_SOURCE[0]%/*}/lib/waits.sh"
+# shellcheck source=lib/ubuntu.sh
+source "${BASH_SOURCE[0]%/*}/lib/ubuntu.sh"
+# shellcheck source=lib/orb.sh
+source "${BASH_SOURCE[0]%/*}/lib/orb.sh"
 
 forget_git_repository_env

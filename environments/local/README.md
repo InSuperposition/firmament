@@ -1,18 +1,20 @@
 # local environment
 
-Abstract: Composes `modules/vm-orb`, `modules/os-ubuntu` and
-`modules/orch-k0s` into one applied environment — the OrbStack machine,
-the readiness check that gates provisioning it, and the k0s cluster on top
-of it. A second OpenTofu root, `bootstrap/`, with its own state, then
+Abstract: `environment.yaml` describes the environment as data: one
+OrbStack machine per cluster (today one cluster, `workload`, on machine
+`local-workload`), the budget the machines must fit, and the mesh
+allocations. The `orb:apply` task creates the machines with the `orb` CLI,
+checks each new one is ready for k0s, and writes their `machine-hosts` file
+to the state directory. This OpenTofu root reads that file and installs
+k0s with `modules/orch-k0s`. A second OpenTofu root, `bootstrap/`, with its own state, then
 bootstraps Cilium and Flux into that cluster. From then on Flux runs both
 from `packages/`.
 
 ## Composition
 
-```hcl
-module "vm_orb"   { source = "../../modules/vm-orb" }
-module "os_ubuntu" { source = "../../modules/os-ubuntu"; ssh_target = module.vm_orb.ssh_target }
-module "orch_k0s"  { source = "../../modules/orch-k0s"; ...derived from module.vm_orb...; depends_on = [module.os_ubuntu] }
+```text
+environment.yaml --orb:apply--> OrbStack machines + machine-hosts.yaml (state directory)
+machine-hosts.yaml --this root--> module "orch_k0s" (k0s) + admin.kubeconfig
 ```
 
 ```hcl
@@ -22,13 +24,14 @@ module "bootstrap_flux" { source = "git::...flux-operator-bootstrap.git?ref=<v0.
 ```
 
 `orch_k0s`'s SSH connection details (`address`, `user`, `port`,
-`api_address`, `cluster_name`) are all derived from `module.vm_orb`'s
-outputs, not separately supplied — the modules themselves stay generic
-(`orch-k0s` works against any Ubuntu host with SSH access; only this root
-config knows it's talking to an OrbStack machine specifically). The
-`depends_on` on `orch_k0s` means `os_ubuntu`'s readiness postconditions
-must pass before k0s ever touches the host — that ordering is enforced by
-OpenTofu, not by which mise task you happen to run.
+`cluster_name`) come from the `machine-hosts` file (the machine-hosts
+contract in `contracts/`), so `orch-k0s` stays generic: it works against any
+Ubuntu host with SSH access. OrbStack itself is the record of which
+machines exist; there is no OpenTofu state for them. `env:apply` runs
+`orb:apply` first, and `orb:apply` runs the readiness check on every machine
+it creates, so k0s never touches a host that failed it. `machine-hosts`
+records each machine's IP; the API address is still the machine's
+`.orb.local` name.
 
 k0s installs no Helm charts, so the node stays NotReady until Cilium
 runs. `local.api_address` (the machine's OrbStack DNS name) and
@@ -107,11 +110,13 @@ k0sctl reaches the machine with the SSH key OrbStack creates,
 | Command | Behavior |
 | --- | --- |
 | `mise run env:doctor` | Explain why an environment task would fail, without changing anything: the environment and its worktree owner, readable state files, OrbStack, the machine, DNS from the Mac and from the machine (`host.orb.internal`, `ghcr.io`), and the API server's `/readyz`. One line per check (`ok`, `skip` with the reason, or `FAIL` with the next command); exits 1 on any failure. "No route to host" from the API server is reported as missing macOS Local Network access, which background agent sessions can lack. A `.orb.local` name that times out while the machine's own address answers is reported with `orb restart`. A missing cluster is `skip`, since `env:apply` creates it |
-| `mise run env:plan` | Plan the whole environment, then its bootstrap root once a cluster is recorded |
-| `mise run env:apply` | Apply the whole environment, then its bootstrap root, then wait for Cilium, the `FluxInstance` and the Cilium HelmRelease to be ready, and the node to be Ready. It refuses a cluster whose Helm charts k0s still installs (rebuild it instead). On an existing cluster it does not wait for Flux to apply the pushed commit; `env:verify` does |
-| `mise run env:destroy` | Destroy the whole environment, after a confirmation prompt (`-y` skips it) |
-| `mise run orb:plan` / `orb:apply` / `orb:destroy` | `-target=module.vm_orb` only |
-| `mise run ubuntu:verify` | `-target=module.os_ubuntu` only |
+| `mise run env:plan` | Show the machine plan, then plan k0s once the machines are recorded, then the bootstrap root once a cluster is recorded |
+| `mise run env:apply` | Create the machines (`orb:apply`), apply k0s, then the bootstrap root, then wait for Cilium, the `FluxInstance` and the Cilium HelmRelease to be ready, and the node to be Ready. It refuses a cluster whose Helm charts k0s still installs (rebuild it instead). On an existing cluster it does not wait for Flux to apply the pushed commit; `env:verify` does |
+| `mise run env:destroy` | Destroy the cluster, then delete the machines, after a confirmation prompt (`-y` skips it) |
+| `mise run orb:plan` / `orb:apply` | Show, or make, the machines `environment.yaml` lists: create a missing one (with its memory, CPU and disk limits, then the readiness check), keep one whose limits match, and refuse one whose limits differ. `orb:apply` first checks the machines fit OrbStack: their memory summed within OrbStack's memory, and each machine's CPUs within OrbStack's CPUs (CPUs may be shared). It then writes `machine-hosts.yaml` to the state directory |
+| `mise run orb:destroy` | Destroy the cluster on the machines, then delete the machines `environment.yaml` lists, after a confirmation prompt; machines it does not list are never touched |
+| `mise run orb:inspect` | Print the native metadata of each machine |
+| `mise run ubuntu:verify` | Check each machine is ready for k0s (Ubuntu 26.04, systemd, cgroup v2, kernel BTF, passwordless sudo, curl, systemctl), naming each requirement a machine misses |
 | `mise run k0s:plan` / `k0s:apply` | `-target=module.orch_k0s -target=local_sensitive_file.kubeconfig`; `k0s:apply` waits for the node to register, not for Cilium |
 | `mise run verify [--only <modules> \| --changed]` | Run every `*:verify` task below, one at a time, `env:verify` first so the others check what the pushed commit deploys. `--only cilium` or `--only flux` skips the other modules' suites and tasks; the environment's own checks (`env:verify`'s own suite, `k0s:verify`, `ubuntu:verify`) always run. `--changed` chooses the modules the branch changed since it left `origin/main`: a change under `packages/<name>/` selects that module, Markdown selects nothing, any other change selects every module |
 | `mise run k0s:verify` | Wait for every node to be Ready, using the kubeconfig path recorded in state |

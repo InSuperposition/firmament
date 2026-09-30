@@ -52,10 +52,6 @@ run = "hk fix --all --step mise"
 description = "Check mise.toml formatting and validate every task definition"
 run = ["hk check --all --step mise", "mise tasks validate"]
 
-[tasks."orb:test"]
-description = "Test the vm-orb module without a live VM"
-run = "bats modules/vm-orb/tests/unit.bats"
-
 [tasks."secrets:lint"]
 description = "Scan every tracked text file for secrets with betterleaks"
 run = "hk check --all --step betterleaks"
@@ -83,7 +79,3 @@ run = "hk fix --all --step tofu"
 [tasks."tofu:lint"]
 description = "Check the formatting of every OpenTofu file"
 run = "hk check --all --step tofu"
-
-[tasks."ubuntu:test"]
-description = "Test the os-ubuntu module without a live host"
-run = "bats modules/os-ubuntu/tests/unit.bats"

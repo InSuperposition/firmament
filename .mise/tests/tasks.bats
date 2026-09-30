@@ -90,6 +90,12 @@ local_state() {
   printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environments/local/terraform.tfstate"
 }
 
+# Records the local environment's machine the way orb:apply does.
+machine_hosts_state() {
+  mkdir -p "$FIRMAMENT_STATE_HOME/environments/local"
+  cp "$root_directory/environments/local/tests/machine-hosts.yaml" "$FIRMAMENT_STATE_HOME/environments/local/"
+}
+
 @test "orb:destroy refuses an empty state file instead of destroying nothing" {
   mkdir -p "$FIRMAMENT_STATE_HOME/environments/local"
   : >"$FIRMAMENT_STATE_HOME/environments/local/terraform.tfstate"
@@ -99,19 +105,26 @@ local_state() {
   ! grep -q ' destroy ' "$CALLS" 2>/dev/null || fail "ran destroy against an empty state: $(cat "$CALLS")"
 }
 
-@test "env:destroy destroys the environment root and leaves the bootstrap root alone" {
+@test "env:destroy destroys the environment root, then the machines, and leaves the bootstrap root alone" {
   local_state
-  STATE_LIST=module.vm_orb.orbstack_machine.this run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  machine_hosts_state
+  STATE_LIST=module.orch_k0s.k0sctl_config.this run_task "$root_directory/.mise/tasks/env/destroy.sh" local
   [ "$status" -eq 0 ]
   grep -q "^tofu -chdir=$root_directory/environments/local destroy -input=false -auto-approve " "$CALLS"
   ! grep -q -- '/bootstrap ' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
   ! grep -q ' state rm ' "$CALLS" || fail "removed state by hand: $(cat "$CALLS")"
+  run grep -nE '^(tofu .* destroy |orb delete )' "$CALLS"
+  [ "${#lines[@]}" -eq 2 ]
+  [[ "${lines[0]}" == *" destroy -input=false -auto-approve "* ]]
+  [[ "${lines[1]}" == *"orb delete -f local-workload "* ]]
+  [ ! -e "$FIRMAMENT_STATE_HOME/environments/local/machine-hosts.yaml" ]
 }
 
 @test "env:destroy first moves an older environment's bootstrap into the bootstrap root's state" {
   local_state
   local state="$FIRMAMENT_STATE_HOME/environments/local"
-  STATE_LIST=$'module.bootstrap_flux.helm_release.this\nmodule.vm_orb.orbstack_machine.this' run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  machine_hosts_state
+  STATE_LIST=$'module.bootstrap_flux.helm_release.this\nmodule.orch_k0s.k0sctl_config.this' run_task "$root_directory/.mise/tasks/env/destroy.sh" local
   [ "$status" -eq 0 ]
   run grep -E '^tofu (state mv|-chdir=.* (init|destroy)) ' "$CALLS"
   [ "${#lines[@]}" -eq 3 ]
@@ -120,27 +133,38 @@ local_state() {
   [[ "${lines[2]}" == *" destroy -input=false -auto-approve "* ]]
 }
 
-@test "env:destroy runs on a fresh machine with no state yet" {
+@test "env:destroy with no cluster recorded deletes the machines and destroys nothing in OpenTofu" {
   run_task "$root_directory/.mise/tasks/env/destroy.sh" local
-  [ "$status" -eq 0 ]
-  [ "$(grep -c ' state ' "$CALLS")" -eq 0 ]
-  grep -q ' destroy -input=false -auto-approve ' "$CALLS"
+  [ "$status" -eq 0 ] || fail "$output"
+  ! grep -q ' destroy -input=false' "$CALLS" || fail "ran tofu destroy: $(cat "$CALLS")"
+  grep -q '^orb delete -f local-workload ' "$CALLS"
+}
+
+@test "env:destroy refuses a recorded cluster whose machine-hosts file is gone" {
+  STATE_LIST=module.orch_k0s.k0sctl_config.this run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"records a cluster, but"*"machine-hosts.yaml is gone"* ]]
+  ! grep -q '^orb delete' "$CALLS" || fail "deleted machines: $(cat "$CALLS")"
 }
 
 @test "env:destroy runs from a detached HEAD" {
   unset FIRMAMENT_GIT_BRANCH
   e2e_repository
   git -C "$MISE_PROJECT_ROOT" checkout -q --detach
-  run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  machine_hosts_state
+  STATE_LIST=module.orch_k0s.k0sctl_config.this run_task "$root_directory/.mise/tasks/env/destroy.sh" local
   [ "$status" -eq 0 ]
   grep -q ' destroy -input=false -auto-approve .*branch=main$' "$CALLS"
 }
 
-@test "orb:destroy destroys the machine and leaves the bootstrap root alone" {
+@test "orb:destroy destroys the cluster on the machines, then the machines, and leaves the bootstrap root alone" {
   local_state
-  STATE_LIST=module.vm_orb.orbstack_machine.this run_task "$root_directory/.mise/tasks/orb/destroy.sh" local
-  [ "$status" -eq 0 ]
-  grep -q "^tofu -chdir=$root_directory/environments/local destroy -input=false -auto-approve -target=module.vm_orb " "$CALLS"
+  machine_hosts_state
+  STATE_LIST=module.orch_k0s.k0sctl_config.this run_task "$root_directory/.mise/tasks/orb/destroy.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  grep -q "^tofu -chdir=$root_directory/environments/local destroy -input=false -auto-approve " "$CALLS"
+  grep -q "^orb delete -f local-workload " "$CALLS"
+  [ ! -e "$FIRMAMENT_STATE_HOME/environments/local/owner" ]
   ! grep -q -- '/bootstrap ' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
 }
 
@@ -157,6 +181,7 @@ local_state() {
 }
 
 @test "env:plan plans the bootstrap root once the environment records a cluster" {
+  machine_hosts_state
   run_task "$root_directory/.mise/tasks/env/plan.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   grep -q "^tofu -chdir=$root_directory/environments/local plan -input=false " "$CALLS"
@@ -164,6 +189,7 @@ local_state() {
 }
 
 @test "env:plan skips the bootstrap root while the environment records no cluster" {
+  machine_hosts_state
   NO_OUTPUTS=1 run_task "$root_directory/.mise/tasks/env/plan.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   [[ "$output" == *"No cluster recorded yet, so the bootstrap is not planned"* ]]
@@ -202,10 +228,10 @@ local_state() {
   grep -q ' apply -input=false -auto-approve ' "$CALLS"
 }
 
-@test "env:apply rebuilds after orb:destroy, whose stale kubeconfig output names no cluster" {
-  # A targeted destroy removes the cluster and its kubeconfig file but
-  # leaves the root outputs as they were.
-  STATE_LIST=module.os_ubuntu.data.external.readiness run_task "$root_directory/.mise/tasks/env/apply.sh" local
+@test "env:apply rebuilds a destroyed cluster whose stale kubeconfig output remains" {
+  # A destroy removes the cluster and its kubeconfig file but can leave the
+  # root outputs as they were.
+  STATE_LIST=local_sensitive_file.kubeconfig run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   ! grep -q 'get charts.helm.k0sproject.io' "$CALLS" || fail "asked a destroyed cluster for charts"
   grep -q ' apply -input=false -auto-approve ' "$CALLS"
@@ -219,7 +245,7 @@ local_state() {
 }
 
 @test "k0s:apply applies only the cluster and its kubeconfig, then waits for the node" {
-  NODES=node/firmament run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
+  NODES=node/local-workload run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
   [ "$status" -eq 0 ]
   run grep -nE '^(tofu .* apply |kubectl |cilium )' "$CALLS"
   [ "${#lines[@]}" -eq 2 ]
@@ -913,6 +939,8 @@ STUB
 # A pushed checkout of feature/test with one environment, as env:e2e needs.
 e2e_repository() {
   MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environments/local/main.tf "$@")
+  cp "$root_directory/environments/local/environment.yaml" "$MISE_PROJECT_ROOT/environments/local/"
+  commit_and_push "$MISE_PROJECT_ROOT" feature/test environment
   export MISE_PROJECT_ROOT
 }
 
@@ -975,7 +1003,7 @@ mise_calls() {
   tested=$(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD)
   [[ "$output" == *"env:e2e passed for local at $tested; the cluster is destroyed."* ]]
   [[ "$output" == *"OrbStack: "* && "$output" == *"kernel: "* ]]
-  grep -q '^orb -m firmament uname -r ' "$CALLS"
+  grep -q '^orb -m local-workload uname -r ' "$CALLS"
   run mise_calls
   [ "$output" = "mise run --yes env:destroy local
 mise run env:apply local
@@ -1112,7 +1140,7 @@ mise run --yes env:destroy local" ]
   upgrade_repository
   usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -eq 0 ]
-  [ "$(grep -c '^orb -m firmament uname -r ' "$CALLS")" -eq 1 ]
+  [ "$(grep -c '^orb -m local-workload uname -r ' "$CALLS")" -eq 1 ]
   [[ "$output" == *"OrbStack: "*"kernel: "* ]]
 }
 
@@ -1591,16 +1619,17 @@ STUB
   [[ "$output" == *"Skipped orb report: no terminal to review it."* ]]
 }
 
-# Runs env:doctor for the local environment, which has an applied state
-# unless a test removes it.
-# Runs env:doctor for the local environment. Unless a test says otherwise,
-# the state records the machine and the cluster, and the kubeconfig file
-# exists.
+# Runs env:doctor for the local environment. When a test has written a
+# state (local_state), the machine is recorded too unless $NO_MACHINE_HOSTS
+# is set, and, unless the test says otherwise, the state records the cluster and the kubeconfig file exists.
 run_doctor() {
   local kubeconfig="$BATS_TEST_TMPDIR/admin.kubeconfig"
   : >"$kubeconfig"
+  if [[ -f "$FIRMAMENT_STATE_HOME/environments/local/terraform.tfstate" && -z "${NO_MACHINE_HOSTS:-}" ]]; then
+    machine_hosts_state
+  fi
   KUBECONFIG_OUTPUT="${KUBECONFIG_OUTPUT-$kubeconfig}" \
-    STATE_LIST="${STATE_LIST-$'module.vm_orb.orbstack_machine.this\nmodule.orch_k0s.k0sctl_config.this\nlocal_sensitive_file.kubeconfig'}" \
+    STATE_LIST="${STATE_LIST-$'module.orch_k0s.k0sctl_config.this\nlocal_sensitive_file.kubeconfig'}" \
     run_task "$root_directory/.mise/tasks/env/doctor.sh" local
 }
 
@@ -1609,7 +1638,7 @@ run_doctor() {
   run_doctor
   [ "$status" -eq 0 ] || fail "$output"
   [[ "$output" == *"ok    orbstack: running"* ]]
-  [[ "$output" == *"ok    machine: firmament is running"* ]]
+  [[ "$output" == *"ok    machine: local-workload is running"* ]]
   [[ "$output" == *"ok    api: the API server is ready"* ]]
   [[ "$output" != *FAIL* ]]
   ! grep -Eq '^tofu .* (init|apply|destroy|state (mv|rm))( |$)' "$CALLS" || fail "changed state: $(cat "$CALLS")"
@@ -1663,8 +1692,8 @@ run_doctor() {
   local_state
   ORB_STATE=stopped run_doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *"FAIL  machine: firmament is stopped"* ]]
-  [[ "$output" == *"next: orb start firmament"* ]]
+  [[ "$output" == *"FAIL  machine: local-workload is stopped"* ]]
+  [[ "$output" == *"next: orb start local-workload"* ]]
   [[ "$output" == *"skip  api: the machine is not running"* ]]
 }
 
@@ -1672,15 +1701,15 @@ run_doctor() {
   local_state
   HOST_DNS_ERROR=1 run_doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *"FAIL  host dns: the Mac cannot resolve firmament.orb.local"* ]]
+  [[ "$output" == *"FAIL  host dns: the Mac cannot resolve local-workload.orb.local"* ]]
 }
 
 @test "env:doctor reports names the machine cannot resolve" {
   local_state
   ORB_DNS_ERROR=1 run_doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *"FAIL  machine dns: firmament cannot resolve host.orb.internal"* ]]
-  [[ "$output" == *"FAIL  machine dns: firmament cannot resolve ghcr.io"* ]]
+  [[ "$output" == *"FAIL  machine dns: local-workload cannot resolve host.orb.internal"* ]]
+  [[ "$output" == *"FAIL  machine dns: local-workload cannot resolve ghcr.io"* ]]
 }
 
 @test "env:doctor explains no route to the API server as missing Local Network access" {
@@ -1704,35 +1733,36 @@ run_doctor() {
   READYZ_ERROR='dial tcp 192.168.138.4:6443: connect: operation timed out' IP_READYZ_OK=1 run_doctor
   [ "$status" -eq 1 ]
   [[ "$output" == *"FAIL  api: the machine answers at 192.168.139.101 but its .orb.local name does not: dial tcp 192.168.138.4:6443: connect: operation timed out"* ]]
-  [[ "$output" == *"next: orb restart firmament"* ]]
-  grep -q -- '--server https://192.168.139.101:6443 --tls-server-name firmament.orb.local' "$CALLS"
+  [[ "$output" == *"next: orb restart local-workload"* ]]
+  grep -q -- '--server https://192.168.139.101:6443 --tls-server-name local-workload.orb.local' "$CALLS"
 }
 
 @test "env:doctor probes the machine from a terminal without stopping orb" {
   local_state
+  machine_hosts_state
   # orb sets terminal modes; a process in a background process group that
   # does so is stopped until the probe times out.
   cat >"$stubs/orb" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
-  "info "*) printf '{"record":{"name":"firmament","state":"running"}}' ;;
+  "info "*) printf '{"record":{"name":"local-workload","state":"running"}}' ;;
   *" getent hosts "*) stty sane </dev/tty && printf 'fd07::fe  %s\n' "${*: -1}" ;;
 esac
 STUB
   chmod +x "$stubs/orb"
   : >"$BATS_TEST_TMPDIR/admin.kubeconfig"
   run script -q /dev/null env usage_environment=local \
-    STATE_LIST=$'module.vm_orb.orbstack_machine.this\nmodule.orch_k0s.k0sctl_config.this' \
+    STATE_LIST=$'module.orch_k0s.k0sctl_config.this' \
     KUBECONFIG_OUTPUT="$BATS_TEST_TMPDIR/admin.kubeconfig" \
     "$root_directory/.mise/tasks/env/doctor.sh" </dev/null
   output=${output//$'\r'/}
-  [[ "$output" == *"ok    machine dns: firmament resolves host.orb.internal"* ]] || fail "$output"
-  [[ "$output" == *"ok    machine dns: firmament resolves ghcr.io"* ]] || fail "$output"
+  [[ "$output" == *"ok    machine dns: local-workload resolves host.orb.internal"* ]] || fail "$output"
+  [[ "$output" == *"ok    machine dns: local-workload resolves ghcr.io"* ]] || fail "$output"
 }
 
-@test "env:doctor treats the stale outputs orb:destroy leaves as no machine" {
+@test "env:doctor treats an environment without a machine-hosts file as having no machine" {
   local_state
-  STATE_LIST=module.os_ubuntu.data.external.readiness run_doctor
+  NO_MACHINE_HOSTS=1 STATE_LIST= run_doctor
   [ "$status" -eq 0 ] || fail "$output"
   [[ "$output" == *"skip  machine: no machine recorded yet; env:apply creates it"* ]]
   ! grep -q '^orb ' "$CALLS"
@@ -1740,7 +1770,7 @@ STUB
 
 @test "env:doctor skips the API server while no cluster is recorded" {
   local_state
-  STATE_LIST=module.vm_orb.orbstack_machine.this run_doctor
+  STATE_LIST= run_doctor
   [ "$status" -eq 0 ] || fail "$output"
   [[ "$output" == *"skip  api: no cluster recorded yet; env:apply creates it"* ]]
   ! grep -q 'readyz' "$CALLS"
@@ -1753,4 +1783,23 @@ STUB
   [[ "$output" == *"FAIL  api: the kubeconfig file $BATS_TEST_TMPDIR/missing.kubeconfig is missing"* ]]
   [[ "$output" == *"next: mise run k0s:apply local"* ]]
   ! grep -q 'readyz' "$CALLS"
+}
+
+@test "env:plan shows the machines and stops before k0s while none are recorded" {
+  ORB_ABSENT=local-workload run_task "$root_directory/.mise/tasks/env/plan.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"create local-workload: 5632 MiB, 4 CPUs, 10 GiB"* ]]
+  [[ "$output" == *"No machines recorded yet, so k0s and the bootstrap are not planned"* ]]
+  ! grep -q ' plan -input=false' "$CALLS" || fail "planned OpenTofu: $(cat "$CALLS")"
+  ! grep -q '^orb create' "$CALLS" || fail "created a machine"
+}
+
+@test "env:apply creates a missing machine, checks it, then applies k0s on it" {
+  ORB_ABSENT=local-workload run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  run grep -nE '^(orb create|orb -m|tofu -chdir=[^ ]*/local apply)' "$CALLS"
+  [[ "${lines[0]}" == *"orb create --memory 5632 --cpus 4 --disk 10G ubuntu:resolute local-workload "* ]]
+  [[ "${lines[1]}" == *"orb -m local-workload -u root bash -s "* ]]
+  [[ "${lines[2]}" == *" apply -input=false -auto-approve "* ]]
+  [ "$(yq -r '.hosts[0].user // .hosts[0].ssh.user' "$FIRMAMENT_STATE_HOME/environments/local/machine-hosts.yaml")" = root@local-workload ]
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-#MISE description="Delete the OrbStack machine, and anything that depends on it"
-#MISE confirm="Delete the OrbStack machine in {{usage.environment}} and everything that depends on it?"
+#MISE description="Destroy the cluster on the environment's OrbStack machines, then delete the machines environment.yaml lists"
+#MISE confirm="Delete the OrbStack machines of {{usage.environment}} and everything on them?"
 #USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
@@ -13,9 +13,5 @@ environment="$usage_environment"
 FIRMAMENT_GIT_BRANCH=$(git_branch 2>/dev/null) || FIRMAMENT_GIT_BRANCH=main
 export FIRMAMENT_GIT_BRANCH
 
-init_environment "$environment"
 claim_environment "$environment"
-# The bootstrap root is left alone: its objects live in the cluster and go
-# with the machine, and the next apply's refresh drops them from its state.
-tofu_in_environment "$environment" destroy -input=false -auto-approve -target=module.vm_orb
-release_environment "$environment"
+destroy_environment "$environment"

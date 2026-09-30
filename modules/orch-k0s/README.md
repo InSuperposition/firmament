@@ -21,7 +21,7 @@ then runs `k0sctl reset` over SSH to remove k0s from a host that stays.
 Callers that delete the host along with the cluster set `false`: the reset
 is redundant there, and fails when the host is stopped).
 In this repo, [`environments/local`](../../environments/local/README.md)
-supplies all of these by deriving them from `module.vm_orb`'s outputs;
+supplies them from the `machine-hosts` file its `orb:apply` task writes;
 against a non-OrbStack Ubuntu host, supply its real SSH endpoint and a
 reachable API address instead.
 
@@ -62,7 +62,7 @@ installs there is `-rwxr-x---`, `root:root`: it's the `k0scontroller`
 systemd service's binary, not a general-purpose CLI for the ordinary
 user. If you SSH into the host directly, `k0s ...` bare fails with
 `Permission denied`; use `sudo k0s kubectl get nodes` (passwordless sudo
-is required by `modules/os-ubuntu`'s readiness contract, so this doesn't
+is required by the readiness check `orb:apply` runs on every new machine, so this doesn't
 prompt). Neither `kubectl` nor `k0sctl` is installed on the guest — both
 are operator tools that run from your machine against the guest's
 exposed API.

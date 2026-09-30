@@ -1,6 +1,7 @@
 variables {
-  state_directory = "/tmp/firmament-test"
-  git_branch      = "feature/test"
+  state_directory    = "/tmp/firmament-test"
+  machine_hosts_file = "tests/machine-hosts.yaml"
+  git_branch         = "feature/test"
 }
 
 run "accepts_a_branch_with_slashes_dots_and_dashes" {

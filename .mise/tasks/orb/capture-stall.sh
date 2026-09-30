@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Capture OrbStack SSH and network state right after a stall, without changing anything"
-#USAGE arg "[machine]" default="firmament" help="OrbStack machine name"
+#USAGE arg "[machine]" default="local-workload" help="OrbStack machine name"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

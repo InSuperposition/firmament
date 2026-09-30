@@ -7,6 +7,7 @@ setup_file() {
   export components_directory="$root_directory/packages"
   export root_directory
   export TF_VAR_git_branch=feature/test
+  export TF_VAR_machine_hosts_file="$environment_directory/tests/machine-hosts.yaml"
 
   tofu -chdir="$environment_directory" init -input=false -reconfigure \
     -backend-config="path=$BATS_FILE_TMPDIR/terraform.tfstate" >/dev/null

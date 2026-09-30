@@ -94,7 +94,7 @@ balancing and keep the gap.
 start-up error does not fail the suite; agent errors logged while the
 tests run still do. The Cilium bug report is in [BUGS.md](BUGS.md), and
 the OrbStack kernel request is in
-[vm-orb/BUGS.md](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy).
+[environments/local/BUGS.md](../../environments/local/BUGS.md#kernel-request-enable-config_inet_diag_destroy).
 
 ## Commands
 

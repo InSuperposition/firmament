@@ -24,7 +24,7 @@ so its title and body can be pasted into a new issue unchanged.
 | Form | Bug report (`kind/community-report`, `kind/bug`, `needs/triage`) |
 | Status | Filed 2026-09-25: [cilium/cilium#49009](https://github.com/cilium/cilium/issues/49009) |
 | Duplicate search | 2026-09-23, see below |
-| Related OrbStack request | [vm-orb/BUGS.md](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy) |
+| Related OrbStack request | [environments/local/BUGS.md](../../environments/local/BUGS.md#kernel-request-enable-config_inet_diag_destroy) |
 
 **Title:** `Socket LB termination disabled on kernels with bpf_sock_destroy but without CONFIG_INET_DIAG_DESTROY (regression in 1.20)`
 
@@ -261,7 +261,7 @@ lines.
 - `mise run cilium:conformance` passes `--log-check-only-test-time`, so
   the start-up error does not fail the suite, while agent errors logged
   during the tests still do. Remove the flag once either this fix or the
-  [OrbStack kernel request](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy)
+  [OrbStack kernel request](../../environments/local/BUGS.md#kernel-request-enable-config_inet_diag_destroy)
   lands.
 - Until either fix lands, `packages/cni-cilium` sets
   `socketLB.hostNamespaceOnly: true`, so pods use per-packet Service
@@ -473,7 +473,7 @@ Not attached. Available on request.
   mismatch is in the parser and CLI code above. OrbStack is linked only
   through `socketLB.hostNamespaceOnly: true`, which this repo sets
   because of the
-  [OrbStack kernel request](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy).
+  [OrbStack kernel request](../../environments/local/BUGS.md#kernel-request-enable-config_inet_diag_destroy).
   With socket LB on in pods the test fails the other way, as in #3255.
 - Compared on 2026-09-25: the same four tests (7 of 311 actions) fail on
   `bpf.datapathMode: veth` with every other setting unchanged, and with

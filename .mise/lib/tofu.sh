@@ -44,6 +44,7 @@ init_environment() {
   refuse_empty_state "$state/terraform.tfstate" || return
   mkdir -p "$state"
   move_bootstrap_state "$state" || return
+  forget_machine_state "$state" || return
   tofu_in_environment "$environment" init -input=false -reconfigure -lockfile=readonly \
     -backend-config="path=$state/terraform.tfstate" >/dev/null
 }

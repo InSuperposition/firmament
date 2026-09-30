@@ -1,16 +1,17 @@
 # firmament
 
-Abstract: Declarative bootstrap for a dedicated Kubernetes host — one
-OrbStack VM, verified Ubuntu-ready, running k0s with Cilium and Hubble.
-`environments/local` composes three real OpenTofu modules under `modules/`
-into one applied environment, then a second root with its own state
-bootstraps Flux, which runs Cilium and itself from `packages/`.
+Abstract: Declarative bootstrap for Kubernetes on OrbStack machines, each
+verified Ubuntu-ready, running k0s with Cilium and Hubble.
+`environments/local/environment.yaml` describes the machines as data; the
+`orb:apply` task creates them, an OpenTofu root installs k0s on them with
+`modules/orch-k0s`, then a second root with its own state bootstraps Flux,
+which runs Cilium and itself from `packages/`.
 
 ## Goals
 
-- Reproducible, idempotent bootstrap of one `firmament` target.
-- Real OpenTofu modules, composed from one root config — not standalone
-  scripts wired together by task ordering.
+- Reproducible, idempotent bootstrap of every environment from its data.
+- Machines, budget and mesh allocations are data (`environment.yaml`),
+  checked against the contracts in `contracts/`.
 - Each module stays generic (host-agnostic where the underlying tool
   allows it); OrbStack-specific wiring lives in `environments/local`, not
   inside the modules themselves.
@@ -58,8 +59,6 @@ environments/local/    root config: composes the three modules below,
 environments/local/bootstrap/
                       root config applied after it, with its own state:
                       bootstraps Cilium and Flux into the cluster
-modules/vm-orb/       the OrbStack VM
-modules/os-ubuntu/    Ubuntu readiness check (SSH probe + postconditions)
 modules/orch-k0s/     the k0s controller+worker node; installs no charts
 contracts/<name>/      one contract each: README.md, schema.cue (CUE) and
                       samples/; layout/ says what each top-level folder
@@ -74,7 +73,7 @@ packages/             packages Flux reconciles in the cluster (plain
                       <noun>/<verb>.sh and run as `mise run <noun>:<verb>`
 .mise/lib.sh          loads the helpers the task scripts share from
                       .mise/lib/ (git, state, environment, tofu, flux,
-                      chainsaw, waits), tested in .mise/tests; a package's
+                      chainsaw, waits, ubuntu, orb), tested in .mise/tests; a package's
                       own helpers live in packages/<name>/lib/
 ```
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Apply a whole environment, then its Flux bootstrap, then wait for Flux and Cilium to be ready and the node to be Ready"
+#MISE description="Apply a whole environment: its OrbStack machines, then k0s, then its Flux bootstrap, then wait for Flux and Cilium to be ready and the node to be Ready"
 #USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
@@ -10,6 +10,7 @@ environment="$usage_environment"
 init_environment "$environment"
 claim_environment "$environment"
 refuse_k0s_charts "$environment"
+apply_machines "$environment"
 tofu_in_environment "$environment" apply -input=false -auto-approve
 # The bootstrap reaches the cluster the apply above created, so it runs as
 # its own apply.

@@ -12,8 +12,13 @@ terraform {
 }
 
 locals {
+  # The machine the orb:apply task created, from its machine-hosts file. The
+  # root installs k0s on one machine.
+  machine_hosts_file = coalesce(var.machine_hosts_file, "${var.state_directory}/machine-hosts.yaml")
+  machine            = yamldecode(file(local.machine_hosts_file)).hosts[0]
+
   # OrbStack's machine DNS name resolves on both the host and the guest.
-  api_address = module.vm_orb.dns_name
+  api_address = "${local.machine.name}.orb.local"
   api_port    = 6443
 
   # Cilium replaces kube-proxy, on the netkit datapath. k0s and the Cilium
@@ -38,25 +43,16 @@ locals {
   }
 }
 
-module "vm_orb" {
-  source = "../../modules/vm-orb"
-}
-
-module "os_ubuntu" {
-  source     = "../../modules/os-ubuntu"
-  ssh_target = module.vm_orb.ssh_target
-}
-
 module "orch_k0s" {
   source = "../../modules/orch-k0s"
 
-  ssh_address  = module.vm_orb.root_ssh.address
-  ssh_user     = module.vm_orb.root_ssh.user
-  ssh_port     = module.vm_orb.root_ssh.port
+  ssh_address  = local.machine.ssh.address
+  ssh_user     = local.machine.ssh.user
+  ssh_port     = local.machine.ssh.port
   ssh_key_path = local.orbstack_ssh_key_path
   api_address  = local.api_address
   api_port     = local.api_port
-  cluster_name = module.vm_orb.name
+  cluster_name = local.machine.name
 
   kube_proxy_replacement = local.kube_proxy_replacement
   # One node: a drain would evict every pod with nowhere to go.
@@ -64,9 +60,6 @@ module "orch_k0s" {
   # Every destroy deletes the machine, which removes k0s with it. A reset
   # over SSH first would be redundant, and fails when the machine is stopped.
   reset_on_destroy = false
-
-  # os_ubuntu's postconditions must pass before k0s touches the host.
-  depends_on = [module.os_ubuntu]
 }
 
 resource "local_sensitive_file" "kubeconfig" {

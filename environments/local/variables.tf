@@ -18,3 +18,9 @@ variable "git_branch" {
     error_message = "git_branch must use letters, digits and . _ / - only, and not start with -."
   }
 }
+
+variable "machine_hosts_file" {
+  type        = string
+  default     = null
+  description = "Path to the machine-hosts file orb:apply writes. Defaults to machine-hosts.yaml in state_directory."
+}

@@ -1,13 +1,9 @@
 output "machine_name" {
-  value = module.vm_orb.name
+  value = local.machine.name
 }
 
 output "machine_ip" {
-  value = module.vm_orb.ip_address
-}
-
-output "machine_status" {
-  value = module.vm_orb.status
+  value = local.machine.address
 }
 
 output "k0s_yaml" {

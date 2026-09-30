@@ -47,7 +47,7 @@ local slow = new Mapping<String, Step> {
     exclusive = true
   }
   ["test"] {
-    glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "hk.pkl", "contracts/**", "environments/*/tests/cluster/**/*.yaml", "packages/**", "environments/*/flux/**", ".mise/flux-test-values.env", "environments/*/tests/upgrade-unaffected", ".mise/tests/fortio/**", ".mise/traffic/**")
+    glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "hk.pkl", "contracts/**", "environments/*/environment.yaml", "environments/*/tests/machine-hosts.yaml", "environments/*/tests/cluster/**/*.yaml", "packages/**", "environments/*/flux/**", ".mise/flux-test-values.env", "environments/*/tests/upgrade-unaffected", ".mise/tests/fortio/**", ".mise/traffic/**")
     check = "mise run test"
     exclusive = true
   }

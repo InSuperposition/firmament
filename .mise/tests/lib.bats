@@ -131,8 +131,26 @@ setup() {
 @test "moves nothing when the environment's state holds no bootstrap" {
   mkdir -p "$FIRMAMENT_STATE_HOME/environments/local"
   printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environments/local/terraform.tfstate"
-  STATE_LIST=module.vm_orb.orbstack_machine.this init_environment local
+  STATE_LIST=module.orch_k0s.k0sctl_config.this init_environment local
   ! grep -q ' state mv ' "$CALLS"
+}
+
+@test "forgets the OrbStack machine an older state recorded, keeping the machine and the cluster" {
+  local state="$FIRMAMENT_STATE_HOME/environments/local"
+  mkdir -p "$state"
+  printf '{"version": 4}\n' >"$state/terraform.tfstate"
+  STATE_LIST=$'module.vm_orb.orbstack_machine.this\nmodule.os_ubuntu.data.external.readiness\nmodule.orch_k0s.k0sctl_config.this' run init_environment local
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"The OrbStack machine local-workload is no longer managed here; delete it with orb delete local-workload"* ]]
+  grep -q "^tofu state rm -state=$state/terraform.tfstate -backup=$state/terraform.tfstate.before-orb-tasks -- module.os_ubuntu module.vm_orb " "$CALLS"
+  ! grep -q '^orb delete' "$CALLS"
+}
+
+@test "forgets nothing when the state records no OrbStack machine" {
+  mkdir -p "$FIRMAMENT_STATE_HOME/environments/local"
+  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environments/local/terraform.tfstate"
+  STATE_LIST=module.orch_k0s.k0sctl_config.this init_environment local
+  ! grep -q ' state rm ' "$CALLS"
 }
 
 @test "moves state from the singular environment directory before init" {

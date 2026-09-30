@@ -236,3 +236,23 @@ refuse_k0s_charts() {
     fail "k0s still installs Helm charts on this cluster, and applying would uninstall them:"$'\n'"$charts"$'\n'"Rebuild it instead: mise run --yes env:destroy $1, then mise run env:apply $1"
   fi
 }
+
+# Destroys an environment: the cluster its OpenTofu root recorded, then the
+# machines environment.yaml lists, then its claim. The root reads the
+# machine-hosts file, so a state that still records a cluster without that
+# file fails instead of leaving the state pointing at deleted machines.
+destroy_environment() {
+  local environment="$1" state
+  state=$(state_directory "$environment") || return
+  init_environment "$environment" || return
+  if [[ -f "$state/machine-hosts.yaml" ]]; then
+    # The bootstrap root is left alone: its objects live in the cluster and
+    # go with the machines, and the next apply's refresh drops them.
+    tofu_in_environment "$environment" destroy -input=false -auto-approve || return
+  elif [[ -n "$(tofu_in_environment "$environment" state list)" ]]; then
+    fail "the state of '$environment' records a cluster, but $state/machine-hosts.yaml is gone; run mise run orb:apply $environment to write it again, then destroy"
+    return
+  fi
+  destroy_machines "$environment" || return
+  release_environment "$environment"
+}

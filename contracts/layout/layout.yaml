@@ -92,6 +92,7 @@ contract_files:
   - {glob: "environments/*/environment.yaml", contract: environment-spec, definition: "#Environment"}
   - {glob: "environments/*/tenants/*.yaml", contract: environment-spec, definition: "#Tenant"}
   - {glob: "environments/*/deltas/*/*.yaml", contract: environment-spec, definition: "#Delta"}
+  - {glob: "environments/*/tests/machine-hosts.yaml", contract: machine-hosts, definition: "#MachineHosts"}
   - {glob: "contracts/package-spec/samples/package.yaml", contract: package-spec, definition: "#Package"}
   - {glob: "contracts/cluster-spec/samples/cluster.yaml", contract: cluster-spec, definition: "#Cluster"}
   - {glob: "contracts/cluster-spec/samples/packages.yaml", contract: cluster-spec, definition: "#Packages"}

@@ -26,6 +26,13 @@
 # server's /readyz fail, the last with that message; the same probe by the
 # machine's address (the name's relay skipped) still fails unless
 # $IP_READYZ_OK is set.
+# OrbStack answers as if every machine existed and ran with the limits the
+# local environment.yaml asks for (5632 MiB, 4 CPUs, 10 GiB): $ORB_ABSENT
+# lists machines `orb info` does not know until `orb create` makes them, $ORB_LIMITS ("<MiB> <cpus>
+# <GiB>") gives every machine other limits, `orbctl config get` reports
+# $ORB_MEMORY (default 12288) and $ORB_CPUS (default 7), and a readiness
+# probe (`orb -m <machine> -u root bash -s`) prints $UBUNTU_FACTS, or the
+# facts of a ready Ubuntu 26.04 machine.
 # `cilium hubble port-forward` and `kubectl port-forward` listen on the local
 # port they are given, as the real ones do, until the first connection closes.
 setup_stubs() {
@@ -66,7 +73,7 @@ case "\$*" in
   *"output -json"*)
     if [[ -n "\${OUTPUT_ERROR:-}" ]]; then printf '%s\\n' "\$OUTPUT_ERROR" >&2; exit 1; fi
     if [[ -n "\${NO_OUTPUTS:-}" ]]; then printf '{}'; else
-      printf '{"kubeconfig_path":{"value":"%s"},"machine_name":{"value":"firmament"},"runtime_info":{"value":{"kube_proxy_replacement":"true","cilium_datapath_mode":"netkit"}}}' "\${KUBECONFIG_OUTPUT:-/state/admin.kubeconfig}"
+      printf '{"kubeconfig_path":{"value":"%s"},"machine_name":{"value":"local-workload"},"runtime_info":{"value":{"kube_proxy_replacement":"true","cilium_datapath_mode":"netkit"}}}' "\${KUBECONFIG_OUTPUT:-/state/admin.kubeconfig}"
     fi ;;
   *"state list"*) printf '%s' "\${STATE_LIST:-}" ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;
@@ -84,14 +91,23 @@ case "\$*" in
   *"/fortio/data/"*) cat "\${FORTIO_RESULT:-\$FORTIO_REPLIES/result.json}" ;;
   "tasks ls --name-only") printf '%s\\n' \${TASKS:-a:verify b:test env:verify k0s:verify} ;;
   "status") printf '%s\\n' "\${ORBCTL_STATUS:-Running}" ;;
-  "info "*"--format json") printf '{"record":{"name":"firmament","state":"%s"},"ip4":"192.168.139.101"}' "\${ORB_STATE:-running}" ;;
+  "info "*"--format json")
+    if [[ " \${ORB_ABSENT:-} " == *" \$2 "* ]] && ! grep -qx "\$2" "\$CALLS.created" 2>/dev/null; then printf 'machine not found: %s\\n' "\$2" >&2; exit 1; fi
+    read -r memory cpus disk <<<"\${ORB_LIMITS:-5632 4 10}"
+    printf '{"record":{"name":"%s","state":"%s","config":{"memory_limit_mib":%s,"cpu_limit":%s,"disk_limit_bytes":%s,"isolated":false}},"ip4":"192.168.139.101"}' \\
+      "\$2" "\${ORB_STATE:-running}" "\$memory" "\$cpus" "\$((disk * 1073741824))" ;;
+  "create "*) printf '%s\\n' "\${*: -1}" >>"\$CALLS.created" ;;
+  "config get memory_mib") printf '%s\\n' "\${ORB_MEMORY:-12288}" ;;
+  "config get cpu") printf '%s\\n' "\${ORB_CPUS:-7}" ;;
+  "-m "*" -u root bash -s")
+    printf '%s\\n' \${UBUNTU_FACTS:-id=ubuntu version_id=26.04 arch=aarch64 init=systemd cgroup=cgroup2fs btf=present sudo=available command_curl=present command_systemctl=present} ;;
   "-q host -a name "*)
     if [[ -n "\${HOST_DNS_ERROR:-}" ]]; then exit 0; fi
     printf 'name: %s\\nip_address: 192.168.138.4\\n' "\${*: -1}" ;;
   *" getent hosts "*)
     if [[ -n "\${ORB_DNS_ERROR:-}" ]]; then exit 2; fi
     printf 'fd07:b51a:cc66:f0::fe  %s\\n' "\${*: -1}" ;;
-  *"config view"*) printf 'https://firmament.orb.local:6443' ;;
+  *"config view"*) printf 'https://local-workload.orb.local:6443' ;;
   *"--server https://"*"get --raw /readyz"*)
     if [[ -n "\${READYZ_ERROR:-}" && -z "\${IP_READYZ_OK:-}" ]]; then printf '%s\\n' "\$READYZ_ERROR" >&2; exit 1; fi
     printf 'ok' ;;
@@ -104,13 +120,14 @@ STUB
   chmod +x "$stubs/$1"
 }
 
-# Builds a stand-in repository holding the real .mise directory, each
-# package's real lib/ helpers (which that package's tasks source) and an
+# Builds a stand-in repository holding the real .mise and contracts
+# directories, each package's real lib/ helpers (which that package's tasks source) and an
 # empty file at each given path, and prints its root.
 make_repository() {
   local repository="$BATS_TEST_TMPDIR/repository" path library package
   mkdir -p "$repository"
   ln -sfn "$root_directory/.mise" "$repository/.mise"
+  ln -sfn "$root_directory/contracts" "$repository/contracts"
   for library in "$root_directory"/packages/*/lib; do
     package="${library%/lib}"
     mkdir -p "$repository/packages/${package##*/}"

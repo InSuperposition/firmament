@@ -1,0 +1,11 @@
+# The machine-hosts file orb:apply writes for this environment, standing in
+# for it in the offline tests of the OpenTofu root.
+hosts:
+  - name: local-workload
+    address: 192.168.139.47
+    ssh:
+      address: 127.0.0.1
+      port: 32222
+      user: root@local-workload
+      key: orbstack-ssh
+    role: controller+worker
