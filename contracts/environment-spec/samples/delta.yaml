@@ -1,0 +1,4 @@
+reason: one operator replica fits the local budget
+values:
+  operator:
+    replicas: 1

@@ -1,0 +1,8 @@
+cluster: covenant
+api:
+  host: 192.168.139.106
+  port: 6443
+kubeconfig: covenant-kubeconfig
+labels:
+  role: trust
+  environment: local

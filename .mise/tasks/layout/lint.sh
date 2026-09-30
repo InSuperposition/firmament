@@ -177,7 +177,7 @@ rule_exceptions_current() {
   done < <(layout_value '.exceptions[] | .rule as $rule | .paths[] | $rule + "\t" + .')
 }
 
-if ! cue vet "$contract/layout.cue" "$layout" >&2; then
+if ! cue vet "$contract/schema.cue" "$layout" >&2; then
   printf 'layout:lint: %s: the layout contract does not match its schema\n' "$layout" >&2
   exit 1
 fi

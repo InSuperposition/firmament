@@ -81,3 +81,24 @@ exceptions:
       - environments/local/tests/setup.bash
     owners: [machines-orbstack, orchestrator-k0sctl, engine-flux]
     reason: today's OpenTofu root for the local environment, replaced by roots/ and the orb and k0sctl tasks
+
+# Which contract each data file must satisfy; mise run contracts:lint
+# validates every file a glob matches against the definition. Each
+# contract's samples/ holds one valid file per definition.
+contract_files:
+  - {glob: "packages/*/package.yaml", contract: package-spec, definition: "#Package"}
+  - {glob: "clusters/*/cluster.yaml", contract: cluster-spec, definition: "#Cluster"}
+  - {glob: "clusters/*/packages.yaml", contract: cluster-spec, definition: "#Packages"}
+  - {glob: "environments/*/environment.yaml", contract: environment-spec, definition: "#Environment"}
+  - {glob: "environments/*/tenants/*.yaml", contract: environment-spec, definition: "#Tenant"}
+  - {glob: "environments/*/deltas/*/*.yaml", contract: environment-spec, definition: "#Delta"}
+  - {glob: "contracts/package-spec/samples/package.yaml", contract: package-spec, definition: "#Package"}
+  - {glob: "contracts/cluster-spec/samples/cluster.yaml", contract: cluster-spec, definition: "#Cluster"}
+  - {glob: "contracts/cluster-spec/samples/packages.yaml", contract: cluster-spec, definition: "#Packages"}
+  - {glob: "contracts/environment-spec/samples/environment.yaml", contract: environment-spec, definition: "#Environment"}
+  - {glob: "contracts/environment-spec/samples/tenant.yaml", contract: environment-spec, definition: "#Tenant"}
+  - {glob: "contracts/environment-spec/samples/delta.yaml", contract: environment-spec, definition: "#Delta"}
+  - {glob: "contracts/environment-facts/samples/facts.yaml", contract: environment-facts, definition: "#Facts"}
+  - {glob: "contracts/machine-hosts/samples/machine-hosts.yaml", contract: machine-hosts, definition: "#MachineHosts"}
+  - {glob: "contracts/cluster-access/samples/cluster-access.yaml", contract: cluster-access, definition: "#ClusterAccess"}
+  - {glob: "contracts/private-state/samples/private-state.yaml", contract: private-state, definition: "#PrivateState"}

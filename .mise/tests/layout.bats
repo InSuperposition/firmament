@@ -12,7 +12,7 @@ setup() {
   repository="$BATS_TEST_TMPDIR/repository"
   export MISE_PROJECT_ROOT="$repository"
   mkdir -p "$repository/contracts/layout"
-  cp "$root_directory/contracts/layout/layout.cue" "$repository/contracts/layout/"
+  cp "$root_directory/contracts/layout/schema.cue" "$repository/contracts/layout/"
   yq '.exceptions = [{
       "rule": "environments-no-code",
       "paths": ["environments/sample/legacy.tf"],

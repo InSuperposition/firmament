@@ -1,0 +1,17 @@
+name: cni-cilium
+layer: cni
+source:
+  source: oci://quay.io/cilium/charts/cilium
+  version: 1.20.2
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000001
+namespace: kube-system
+bootstrap: true
+provides:
+  - name: cni
+    ready:
+      kind: HelmRelease
+      name: cilium
+      namespace: flux-system
+delta_keys:
+  - operator.replicas
+values_schema: values.schema.cue

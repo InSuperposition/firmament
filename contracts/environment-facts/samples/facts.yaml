@@ -1,0 +1,15 @@
+cluster_name: covenant
+mesh_cluster_id: 1
+pod_cidr: 10.240.0.0/16
+service_cidr: 10.96.0.0/12
+api_address: 192.168.139.106
+api_port: 6443
+enrolled_clusters:
+  - workload
+covenant:
+  openbao_address: 192.168.139.240
+  zot_address: 192.168.139.241
+machine:
+  memory_mib: 4608
+  cpus: 4
+  disk_gib: 10

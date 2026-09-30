@@ -18,6 +18,11 @@ local fast = new Mapping<String, Step> {
   ["layout"] {
     check = "mise run layout:lint"
   }
+  // Every contract data file against its schema, and the rules that
+  // span files. No glob: the files it reads may not exist yet.
+  ["contracts"] {
+    check = "mise run contracts:lint"
+  }
   // Schema and read-only rules for the live cluster suites.
   ["chainsaw"] {
     glob = List("environments/*/tests/cluster/**/*.yaml", "packages/*/tests/cluster/**/*.yaml")
