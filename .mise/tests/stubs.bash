@@ -104,12 +104,18 @@ STUB
   chmod +x "$stubs/$1"
 }
 
-# Builds a stand-in repository holding the real .mise directory and an empty
-# file at each given path, and prints its root.
+# Builds a stand-in repository holding the real .mise directory, each
+# package's real lib/ helpers (which that package's tasks source) and an
+# empty file at each given path, and prints its root.
 make_repository() {
-  local repository="$BATS_TEST_TMPDIR/repository" path
+  local repository="$BATS_TEST_TMPDIR/repository" path library package
   mkdir -p "$repository"
   ln -sfn "$root_directory/.mise" "$repository/.mise"
+  for library in "$root_directory"/packages/*/lib; do
+    package="${library%/lib}"
+    mkdir -p "$repository/packages/${package##*/}"
+    ln -sfn "$library" "$repository/packages/${package##*/}/lib"
+  done
   for path in "$@"; do
     mkdir -p "$repository/$(dirname -- "$path")"
     : >"$repository/$path"

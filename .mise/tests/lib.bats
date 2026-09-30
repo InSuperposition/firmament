@@ -6,6 +6,8 @@ setup() {
   setup_stubs
   # shellcheck source=../lib.sh
   source "$root_directory/.mise/lib.sh"
+  # shellcheck source=../../packages/cni-cilium/lib/values.sh
+  source "$root_directory/packages/cni-cilium/lib/values.sh"
 }
 
 @test "resolves an existing environment to its OpenTofu root" {

@@ -762,6 +762,7 @@ STUB
 
 @test "fortio_run_state names every fortio run state and passes unknown numbers through" {
   source "$root_directory/.mise/lib.sh"
+  source "$root_directory/packages/cni-cilium/lib/traffic.sh"
   export FORTIO_STATUS="$BATS_TEST_TMPDIR/status.json"
   local state expected
   for state in 0:unknown 1:pending 2:running 3:stopping 4:stopped 9:9 -1:-1 2.5:2.5 '"2"':2; do
@@ -1443,7 +1444,7 @@ STUB
   chmod +x "$stubs/curl"
   repository="$BATS_TEST_TMPDIR/schemas-repository"
   mkdir -p "$repository/.mise"
-  cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/flux-test-values.env" "$repository/.mise/"
+  cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/lib" "$root_directory/.mise/flux-test-values.env" "$repository/.mise/"
   cp -R "$root_directory/environments" "$root_directory/packages" "$repository/"
   MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/flux/schemas.sh"
   [ "$status" -eq 0 ]
@@ -1459,7 +1460,7 @@ STUB
   chmod +x "$stubs/curl"
   repository="$BATS_TEST_TMPDIR/schemas-repository"
   mkdir -p "$repository/.mise"
-  cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/flux-test-values.env" "$root_directory/.mise/flux-schemas" "$repository/.mise/"
+  cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/lib" "$root_directory/.mise/flux-test-values.env" "$root_directory/.mise/flux-schemas" "$repository/.mise/"
   cp -R "$root_directory/environments" "$root_directory/packages" "$repository/"
   MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/flux/schemas.sh"
   [ "$status" -ne 0 ]

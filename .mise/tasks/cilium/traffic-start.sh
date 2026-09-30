@@ -4,6 +4,8 @@
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
+# shellcheck source=../../../packages/cni-cilium/lib/traffic.sh
+source "${MISE_PROJECT_ROOT:?}/packages/cni-cilium/lib/traffic.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
 environment="$usage_environment"
 

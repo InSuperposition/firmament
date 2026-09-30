@@ -66,9 +66,10 @@ packages/           packages Flux reconciles in the cluster (plain
                       gitops-flux (Flux itself)
 .mise/tasks/          one executable script per mise task, named
                       <noun>/<verb>.sh and run as `mise run <noun>:<verb>`
-.mise/lib.sh          helpers the task scripts share (environment lookup,
-                      state paths, the branch Flux follows, Flux build
-                      rendering, post-apply waits), tested in .mise/tests
+.mise/lib.sh          loads the helpers the task scripts share from
+                      .mise/lib/ (git, state, environment, tofu, flux,
+                      chainsaw, waits), tested in .mise/tests; a package's
+                      own helpers live in packages/<name>/lib/
 ```
 
 Each module and component has its own README with its contract.
