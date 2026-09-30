@@ -1,0 +1,9 @@
+hosts:
+  - name: local-covenant
+    address: 192.168.139.106
+    ssh:
+      address: 127.0.0.1
+      port: 32222
+      user: root@local-covenant
+      key: orbstack-ssh
+    role: controller+worker

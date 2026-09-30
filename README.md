@@ -61,8 +61,11 @@ environments/local/bootstrap/
 modules/vm-orb/       the OrbStack VM
 modules/os-ubuntu/    Ubuntu readiness check (SSH probe + postconditions)
 modules/orch-k0s/     the k0s controller+worker node; installs no charts
-contracts/layout/     what each top-level folder may hold and name,
-                      checked by `mise run layout:lint`
+contracts/<name>/      one contract each: README.md, schema.cue (CUE) and
+                      samples/; layout/ says what each top-level folder
+                      may hold and name (`mise run layout:lint`), the
+                      others define the data files every layer reads and
+                      writes (`mise run contracts:lint`)
 packages/             packages Flux reconciles in the cluster (plain
                       Kustomize): cni-cilium (Cilium and Hubble) and
                       gitops-flux (Flux itself); data, tests and
@@ -103,7 +106,8 @@ that verb for every noun. The verb also says how far a task reaches:
 
 `mise run check` runs every offline check: `lint` (shellcheck, shfmt,
 `tofu fmt`, `mise fmt`, `mise tasks validate`, `layout:lint` for the
-folder rules in `contracts/layout`, `secrets:lint` (betterleaks on every
+folder rules in `contracts/layout`, `contracts:lint` for every contract
+data file and the rules that span files, `secrets:lint` (betterleaks on every
 tracked file), `chainsaw:lint` for the
 live cluster suites, and `flux:lint`, which renders each environment's
 Flux build with test runtime values through `flux envsubst --strict` and

@@ -1,0 +1,32 @@
+target: orbstack
+engine: flux
+artifact_source:
+  url: oci://192.168.139.241:5000/tenants
+budget:
+  memory_mib: 10240
+  cpus: 7
+  disk_gib: 40
+clusters:
+  covenant:
+    machines:
+      - memory_mib: 4608
+        cpus: 4
+        disk_gib: 10
+    service_cidr: 10.96.0.0/12
+  workload:
+    machines:
+      - memory_mib: 5632
+        cpus: 4
+        disk_gib: 10
+    service_cidr: 10.96.0.0/12
+mesh:
+  allocations:
+    covenant:
+      id: 1
+      pod_cidr: 10.240.0.0/16
+    workload:
+      id: 2
+      pod_cidr: 10.241.0.0/16
+credentials:
+  covenant-root-ca:
+    private_state: pki/root.crt

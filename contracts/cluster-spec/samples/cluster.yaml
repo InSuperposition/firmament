@@ -1,0 +1,12 @@
+role: trust
+mesh:
+  member: true
+tenancy:
+  kinds:
+    - cluster
+provides:
+  - name: registry
+    ready:
+      kind: HelmRelease
+      name: zot
+      namespace: flux-system

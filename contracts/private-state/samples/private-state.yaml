@@ -1,0 +1,38 @@
+files:
+  covenant-root-ca:
+    path: pki/root.crt
+    producer: covenant bootstrap
+    consumers: [covenant bootstrap, cluster enrollment]
+    rotation: never within its 10-year life; a new root means re-enrolling every cluster
+  covenant-root-ca-key:
+    path: pki/root.key
+    producer: covenant bootstrap
+    consumers: [covenant bootstrap]
+    rotation: with the root certificate; used offline to sign intermediates only
+  covenant-intermediate:
+    path: pki/intermediate.crt
+    producer: covenant bootstrap
+    consumers: [covenant bootstrap]
+    rotation: every 3 years; load the new one, then trigger Issuing on every Certificate
+    needs: [covenant-intermediate-key]
+  covenant-intermediate-key:
+    path: pki/intermediate.key
+    producer: covenant bootstrap
+    consumers: [covenant bootstrap]
+    rotation: with the intermediate certificate
+  openbao-seal-key:
+    path: openbao/seal.key
+    producer: covenant bootstrap
+    consumers: [covenant bootstrap]
+    rotation: add the new key as current and the old as previous, run sys/rotate/root, then drop the old key
+  openbao-raft-snapshot:
+    path: openbao/raft.snap
+    producer: env:destroy
+    consumers: [cluster:apply]
+    rotation: replaced by every destroy of the covenant machine
+    needs: [openbao-seal-key]
+  covenant-kubeconfig:
+    path: covenant/admin.kubeconfig
+    producer: k0s install
+    consumers: [delivery engine, env:verify]
+    rotation: rewritten by every cluster apply

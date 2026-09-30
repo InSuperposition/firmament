@@ -1,0 +1,6 @@
+packages:
+  - name: cni-cilium
+    bootstrap: true
+  - name: gitops-flux
+    bootstrap: true
+  - name: registry-zot
