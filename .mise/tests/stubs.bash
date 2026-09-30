@@ -32,7 +32,8 @@
 # <GiB>") gives every machine other limits, `orbctl config get` reports
 # $ORB_MEMORY (default 12288) and $ORB_CPUS (default 7), and a readiness
 # probe (`orb -m <machine> -u root bash -s`) prints $UBUNTU_FACTS, or the
-# facts of a ready Ubuntu 26.04 machine.
+# facts of a ready Ubuntu 26.04 machine. Reading a machine's cgroup limits
+# gives its OrbStack limits, or $ORB_CGROUP_MEMORY MiB of memory when set.
 # `cilium hubble port-forward` and `kubectl port-forward` listen on the local
 # port they are given, as the real ones do, until the first connection closes.
 setup_stubs() {
@@ -97,6 +98,9 @@ case "\$*" in
     printf '{"record":{"name":"%s","state":"%s","config":{"memory_limit_mib":%s,"cpu_limit":%s,"disk_limit_bytes":%s,"isolated":false}},"ip4":"192.168.139.101"}' \\
       "\$2" "\${ORB_STATE:-running}" "\$memory" "\$cpus" "\$((disk * 1073741824))" ;;
   "create "*) printf '%s\\n' "\${*: -1}" >>"\$CALLS.created" ;;
+  *" -u root cat /sys/fs/cgroup/memory.max /sys/fs/cgroup/cpu.max")
+    read -r memory cpus disk <<<"\${ORB_LIMITS:-5632 4 10}"
+    printf '%s\\n%s 100000\\n' "\$((\${ORB_CGROUP_MEMORY:-\$memory} * 1048576))" "\$((cpus * 100000))" ;;
   "config get memory_mib") printf '%s\\n' "\${ORB_MEMORY:-12288}" ;;
   "config get cpu") printf '%s\\n' "\${ORB_CPUS:-7}" ;;
   "-m "*" -u root bash -s")

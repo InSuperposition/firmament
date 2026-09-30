@@ -145,3 +145,35 @@ write_machine_hosts() {
   (cd "${MISE_PROJECT_ROOT:?}/contracts" && cue vet -c -d '#MachineHosts' ./machine-hosts "$partial") || return
   mv "$partial" "$file"
 }
+
+# Fails unless every machine the environment lists runs with the limits it
+# asks for, read where they take effect: memory and CPUs from the machine's
+# own cgroup (memory.max, cpu.max), not from free or nproc, which show the
+# shared OrbStack VM; the disk limit from OrbStack's configuration.
+verify_machines() {
+  local machines machine cluster memory cpus disk limits cgroup status=0
+  machines=$(environment_machines "$1") || return
+  while read -r machine cluster memory cpus disk; do
+    [[ -n "$machine" ]] || continue
+    limits=$(machine_limits "$machine")
+    if [[ -z "$limits" ]]; then
+      printf '%s: no such machine; run mise run orb:apply %s\n' "$machine" "$1" >&2
+      status=1
+      continue
+    fi
+    cgroup=$(orb -m "$machine" -u root cat /sys/fs/cgroup/memory.max /sys/fs/cgroup/cpu.max | paste -sd ' ' -) || {
+      printf '%s: cannot read its cgroup limits\n' "$machine" >&2
+      status=1
+      continue
+    }
+    if [[ "$cgroup" != "$((memory * 1048576)) $((cpus * 100000)) 100000" ]]; then
+      printf '%s: cgroup memory.max and cpu.max are %s; want %s MiB and %s CPUs\n' "$machine" "$cgroup" "$memory" "$cpus" >&2
+      status=1
+    fi
+    if [[ "$(cut -d ' ' -f 3 <<<"$limits")" != "$disk" ]]; then
+      printf '%s: disk limit is %s GiB; want %s GiB\n' "$machine" "$(cut -d ' ' -f 3 <<<"$limits")" "$disk" >&2
+      status=1
+    fi
+  done <<<"$machines"
+  return "$status"
+}

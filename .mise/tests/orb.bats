@@ -111,6 +111,27 @@ orb_task() {
   [ "$status" -eq 0 ] || fail "$output"
 }
 
+@test "orb:verify reads each machine's limits from its cgroup" {
+  ORB_LIMITS="4608 4 10" orb_task verify
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"sample-covenant"* ]] || fail "flagged a matching machine: $output"
+  [[ "$output" == *"sample-workload: cgroup memory.max and cpu.max are 4831838208 400000 100000; want 5632 MiB and 4 CPUs"* ]]
+  grep -q '^orb -m sample-covenant -u root cat /sys/fs/cgroup/memory.max /sys/fs/cgroup/cpu.max ' "$CALLS"
+}
+
+@test "orb:verify reports a machine that does not exist" {
+  ORB_ABSENT=sample-workload ORB_LIMITS="4608 4 10" orb_task verify
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sample-workload: no such machine; run mise run orb:apply sample"* ]]
+}
+
+@test "orb:verify reports a disk limit that differs" {
+  yq -i '.clusters.workload.machines[0].memory_mib = 4608 | .clusters.workload.machines[0].disk_gib = 12 | .budget.disk_gib = 30' "$environment_file"
+  ORB_LIMITS="4608 4 10" orb_task verify
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sample-workload: disk limit is 10 GiB; want 12 GiB"* ]]
+}
+
 fail() {
   printf '%s\n' "$*" >&2
   return 1
