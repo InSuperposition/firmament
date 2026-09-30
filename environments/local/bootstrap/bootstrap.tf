@@ -1,13 +1,13 @@
 # Installs Cilium, then Flux Operator and the FluxInstance, once, and leaves
 # all three to Flux. Chart digests, release identities, values and the
-# FluxInstance are read from components/cni-cilium and components/gitops-flux,
+# FluxInstance are read from packages/cni-cilium and packages/gitops-flux,
 # so Flux and the bootstrap install the same bytes.
 locals {
   # Increment only to rerun the bootstrap on purpose, for example after a
   # failed bootstrap, without rebuilding the machine.
   bootstrap_revision = 1
 
-  components            = "${path.module}/../../../components"
+  components            = "${path.module}/../../../packages"
   cilium_source         = yamldecode(file("${local.components}/cni-cilium/ocirepository.yaml"))
   cilium_release        = yamldecode(file("${local.components}/cni-cilium/helmrelease.yaml"))
   flux_operator_source  = yamldecode(file("${local.components}/gitops-flux/ocirepository.yaml"))

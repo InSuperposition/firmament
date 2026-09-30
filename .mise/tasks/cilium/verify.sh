@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #MISE description="Wait for the Cilium release to run the values Flux applied, then for the agent, operator, Hubble Relay and Hubble UI to be ready"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
+# shellcheck source=../../../packages/cni-cilium/lib/values.sh
+source "${MISE_PROJECT_ROOT:?}/packages/cni-cilium/lib/values.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
 environment="$usage_environment"
 

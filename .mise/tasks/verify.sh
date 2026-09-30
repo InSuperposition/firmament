@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Run every *:verify task against an environment, one at a time; --only keeps the environment's own checks and the chosen modules'"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 #USAGE flag "--only <modules>" help="Comma-separated modules to check, such as cilium,flux; tasks that check the environment itself always run (default: every module)"
 #USAGE flag "--changed" help="Choose the modules this branch changed since it left origin/main, instead of --only"
 set -euo pipefail

@@ -14,7 +14,7 @@ alias), `ssh_port`, `ssh_identity_file` (both optional).
 
 `ready` — non-empty once every postcondition has passed. Reference this
 from a dependent module (or just use a module-level `depends_on`, as
-[`environment/local`](../../environment/local/README.md) does) to force
+[`environments/local`](../../environments/local/README.md) does) to force
 evaluation order.
 
 ## Contract
@@ -37,7 +37,7 @@ it never installs, configures, or owns anything on the host.
 ## Commands
 
 Run from the repo root — this module has no state or backend of its own;
-see [`environment/local`](../../environment/local/README.md) for the
+see [`environments/local`](../../environments/local/README.md) for the
 full task list:
 
 | Command | Behavior |

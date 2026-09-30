@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Apply a whole environment, then its Flux bootstrap, then wait for Flux and Cilium to be ready and the node to be Ready"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

@@ -13,7 +13,7 @@ schemas="$MISE_PROJECT_ROOT/.mise/flux-schemas"
 # once. Core Kubernetes kinds, with no API group, live under core/.
 schema_paths() {
   local build
-  for build in "$MISE_PROJECT_ROOT"/environment/*/flux; do
+  for build in "$MISE_PROJECT_ROOT"/environments/*/flux; do
     render_flux_build "$build" |
       yq -N -r 'select(.kind) | .apiVersion + " " + .kind'
   done | sort -u | while read -r api_version kind; do
@@ -27,7 +27,7 @@ schema_paths() {
 }
 
 listing=$(schema_paths)
-[[ -n "$listing" ]] || fail "no environment/*/flux build renders any kind" || exit 1
+[[ -n "$listing" ]] || fail "no environments/*/flux build renders any kind" || exit 1
 mapfile -t paths <<<"$listing"
 
 # Downloads into a staging directory and replaces the vendored schemas only

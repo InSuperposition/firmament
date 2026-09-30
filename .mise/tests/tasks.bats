@@ -45,7 +45,7 @@ run_task() {
 @test "read-only tasks never apply or destroy" {
   local script
   # env:verify reads origin's branch tip, so the tasks run in a pushed checkout.
-  e2e_repository environment/local/tests/cluster/chainsaw-test.yaml
+  e2e_repository environments/local/tests/cluster/chainsaw-test.yaml
   for script in $(environment_scripts); do
     case "$(basename "$script")" in
     # e2e.sh destroys through `mise run`; its own tests check what it runs.
@@ -76,8 +76,8 @@ run_task() {
 }
 
 @test "env:apply refuses an environment another worktree owns, before applying" {
-  mkdir -p "$BATS_TEST_TMPDIR/other-worktree" "$FIRMAMENT_STATE_HOME/environment/local"
-  printf '%s\n' "$BATS_TEST_TMPDIR/other-worktree" >"$FIRMAMENT_STATE_HOME/environment/local/owner"
+  mkdir -p "$BATS_TEST_TMPDIR/other-worktree" "$FIRMAMENT_STATE_HOME/environments/local"
+  printf '%s\n' "$BATS_TEST_TMPDIR/other-worktree" >"$FIRMAMENT_STATE_HOME/environments/local/owner"
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"belongs to the worktree $BATS_TEST_TMPDIR/other-worktree"* ]]
@@ -86,13 +86,13 @@ run_task() {
 
 # Gives the local environment a state file, as any applied environment has.
 local_state() {
-  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
+  mkdir -p "$FIRMAMENT_STATE_HOME/environments/local"
+  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environments/local/terraform.tfstate"
 }
 
 @test "orb:destroy refuses an empty state file instead of destroying nothing" {
-  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  : >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
+  mkdir -p "$FIRMAMENT_STATE_HOME/environments/local"
+  : >"$FIRMAMENT_STATE_HOME/environments/local/terraform.tfstate"
   run_task "$root_directory/.mise/tasks/orb/destroy.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"terraform.tfstate is empty"* ]]
@@ -103,14 +103,14 @@ local_state() {
   local_state
   STATE_LIST=module.vm_orb.orbstack_machine.this run_task "$root_directory/.mise/tasks/env/destroy.sh" local
   [ "$status" -eq 0 ]
-  grep -q "^tofu -chdir=$root_directory/environment/local destroy -input=false -auto-approve " "$CALLS"
+  grep -q "^tofu -chdir=$root_directory/environments/local destroy -input=false -auto-approve " "$CALLS"
   ! grep -q -- '/bootstrap ' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
   ! grep -q ' state rm ' "$CALLS" || fail "removed state by hand: $(cat "$CALLS")"
 }
 
 @test "env:destroy first moves an older environment's bootstrap into the bootstrap root's state" {
   local_state
-  local state="$FIRMAMENT_STATE_HOME/environment/local"
+  local state="$FIRMAMENT_STATE_HOME/environments/local"
   STATE_LIST=$'module.bootstrap_flux.helm_release.this\nmodule.vm_orb.orbstack_machine.this' run_task "$root_directory/.mise/tasks/env/destroy.sh" local
   [ "$status" -eq 0 ]
   run grep -E '^tofu (state mv|-chdir=.* (init|destroy)) ' "$CALLS"
@@ -140,34 +140,34 @@ local_state() {
   local_state
   STATE_LIST=module.vm_orb.orbstack_machine.this run_task "$root_directory/.mise/tasks/orb/destroy.sh" local
   [ "$status" -eq 0 ]
-  grep -q "^tofu -chdir=$root_directory/environment/local destroy -input=false -auto-approve -target=module.vm_orb " "$CALLS"
+  grep -q "^tofu -chdir=$root_directory/environments/local destroy -input=false -auto-approve -target=module.vm_orb " "$CALLS"
   ! grep -q -- '/bootstrap ' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
 }
 
 @test "env:apply applies the environment root, then the bootstrap root, then waits" {
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ] || fail "$output"
-  local state="$FIRMAMENT_STATE_HOME/environment/local"
+  local state="$FIRMAMENT_STATE_HOME/environments/local"
   run grep -E '^(tofu -chdir=.* (init|apply) |cilium )' "$CALLS"
-  [[ "${lines[0]}" == "tofu -chdir=$root_directory/environment/local init "*"-backend-config=path=$state/terraform.tfstate "* ]]
-  [[ "${lines[1]}" == "tofu -chdir=$root_directory/environment/local apply -input=false -auto-approve "* ]]
-  [[ "${lines[2]}" == "tofu -chdir=$root_directory/environment/local/bootstrap init "*"-backend-config=path=$state/bootstrap.tfstate "* ]]
-  [[ "${lines[3]}" == "tofu -chdir=$root_directory/environment/local/bootstrap apply -input=false -auto-approve "* ]]
+  [[ "${lines[0]}" == "tofu -chdir=$root_directory/environments/local init "*"-backend-config=path=$state/terraform.tfstate "* ]]
+  [[ "${lines[1]}" == "tofu -chdir=$root_directory/environments/local apply -input=false -auto-approve "* ]]
+  [[ "${lines[2]}" == "tofu -chdir=$root_directory/environments/local/bootstrap init "*"-backend-config=path=$state/bootstrap.tfstate "* ]]
+  [[ "${lines[3]}" == "tofu -chdir=$root_directory/environments/local/bootstrap apply -input=false -auto-approve "* ]]
   [[ "${lines[4]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
 }
 
 @test "env:plan plans the bootstrap root once the environment records a cluster" {
   run_task "$root_directory/.mise/tasks/env/plan.sh" local
   [ "$status" -eq 0 ] || fail "$output"
-  grep -q "^tofu -chdir=$root_directory/environment/local plan -input=false " "$CALLS"
-  grep -q "^tofu -chdir=$root_directory/environment/local/bootstrap plan -input=false " "$CALLS"
+  grep -q "^tofu -chdir=$root_directory/environments/local plan -input=false " "$CALLS"
+  grep -q "^tofu -chdir=$root_directory/environments/local/bootstrap plan -input=false " "$CALLS"
 }
 
 @test "env:plan skips the bootstrap root while the environment records no cluster" {
   NO_OUTPUTS=1 run_task "$root_directory/.mise/tasks/env/plan.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   [[ "$output" == *"No cluster recorded yet, so the bootstrap is not planned"* ]]
-  grep -q "^tofu -chdir=$root_directory/environment/local plan -input=false " "$CALLS"
+  grep -q "^tofu -chdir=$root_directory/environments/local plan -input=false " "$CALLS"
   ! grep -q -- '/bootstrap ' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
 }
 
@@ -248,7 +248,7 @@ local_state() {
 }
 
 @test "verify --changed checks the modules the branch changed, plus the environment" {
-  TASKS="cilium:verify env:verify flux:verify k0s:verify" usage_changed=true run_changed "$root_directory/.mise/tasks/verify.sh" components/gitops-flux/fluxinstance.yaml
+  TASKS="cilium:verify env:verify flux:verify k0s:verify" usage_changed=true run_changed "$root_directory/.mise/tasks/verify.sh" packages/gitops-flux/fluxinstance.yaml
   [ "$status" -eq 0 ]
   run grep '^mise run' "$CALLS"
   [ "${#lines[@]}" -eq 3 ]
@@ -273,7 +273,7 @@ local_state() {
 
 @test "every component is named <role>-<module>, and no two share a module name" {
   local component names=""
-  for component in "$root_directory"/components/*/; do
+  for component in "$root_directory"/packages/*/; do
     component="${component%/}"
     [[ "${component##*/}" =~ ^[a-z0-9]+-[a-z0-9-]+$ ]] || fail "${component##*/} is not named <role>-<module>"
     names+="${component##*/*-}"$'\n'
@@ -293,12 +293,12 @@ local_state() {
 }
 
 @test "tofu:test initializes and tests each suite directory, and never applies" {
-  MISE_PROJECT_ROOT=$(make_repository modules/a/tests/unit.tftest.hcl environment/e/tests/wiring.tftest.hcl)
+  MISE_PROJECT_ROOT=$(make_repository modules/a/tests/unit.tftest.hcl environments/e/tests/wiring.tftest.hcl)
   run "$root_directory/.mise/tasks/tofu/test.sh"
   [ "$status" -eq 0 ]
   run cut -d"|" -f1 "$CALLS"
-  [ "${lines[0]}" = "tofu -chdir=$MISE_PROJECT_ROOT/environment/e init -backend=false -input=false -reconfigure -lockfile=readonly " ]
-  [ "${lines[1]}" = "tofu -chdir=$MISE_PROJECT_ROOT/environment/e test " ]
+  [ "${lines[0]}" = "tofu -chdir=$MISE_PROJECT_ROOT/environments/e init -backend=false -input=false -reconfigure -lockfile=readonly " ]
+  [ "${lines[1]}" = "tofu -chdir=$MISE_PROJECT_ROOT/environments/e test " ]
   [ "${lines[2]}" = "tofu -chdir=$MISE_PROJECT_ROOT/modules/a init -backend=false -input=false -reconfigure -lockfile=readonly " ]
   [ "${lines[3]}" = "tofu -chdir=$MISE_PROJECT_ROOT/modules/a test " ]
   [ "${#lines[@]}" -eq 4 ]
@@ -454,7 +454,7 @@ local_state() {
 }
 
 traffic_directory_of_local() {
-  printf '%s\n' "$FIRMAMENT_STATE_HOME/environment/local/traffic"
+  printf '%s\n' "$FIRMAMENT_STATE_HOME/environments/local/traffic"
 }
 
 @test "cilium:traffic-start deploys fortio in a new namespace, sets up conn-disrupt, starts the fortio run, then snapshots the agent" {
@@ -762,6 +762,7 @@ STUB
 
 @test "fortio_run_state names every fortio run state and passes unknown numbers through" {
   source "$root_directory/.mise/lib.sh"
+  source "$root_directory/packages/cni-cilium/lib/traffic.sh"
   export FORTIO_STATUS="$BATS_TEST_TMPDIR/status.json"
   local state expected
   for state in 0:unknown 1:pending 2:running 3:stopping 4:stopped 9:9 -1:-1 2.5:2.5 '"2"':2; do
@@ -911,7 +912,7 @@ STUB
 
 # A pushed checkout of feature/test with one environment, as env:e2e needs.
 e2e_repository() {
-  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environment/local/main.tf "$@")
+  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environments/local/main.tf "$@")
   export MISE_PROJECT_ROOT
 }
 
@@ -923,8 +924,8 @@ record_chainsaw_kubeconfig() {
 # A pushed checkout of feature/test whose main branch, on origin, already
 # hands Cilium to Flux and lists the workloads an upgrade must leave running.
 upgrade_repository() {
-  e2e_repository components/cni-cilium/helmrelease.yaml environment/local/tests/upgrade-unaffected
-  printf 'kube-system k8s-app=kube-dns\n' >"$MISE_PROJECT_ROOT/environment/local/tests/upgrade-unaffected"
+  e2e_repository packages/cni-cilium/helmrelease.yaml environments/local/tests/upgrade-unaffected
+  printf 'kube-system k8s-app=kube-dns\n' >"$MISE_PROJECT_ROOT/environments/local/tests/upgrade-unaffected"
   commit_and_push "$MISE_PROJECT_ROOT" feature/test unaffected
   commit_and_push "$MISE_PROJECT_ROOT" main baseline
   git -C "$MISE_PROJECT_ROOT" reset -q --hard origin/feature/test
@@ -950,7 +951,7 @@ mise_calls() {
   [[ "$output" == *"Step times (change since the last passing run):"* ]]
   [[ "$output" == *"env:destroy "*"(new)"*"env:destroy (2) "*"(new)"* ]]
   [[ "${lines[-1]}" == "env:e2e passed for local at "* ]]
-  kept="$FIRMAMENT_STATE_HOME/environment/local/e2e-step-times"
+  kept="$FIRMAMENT_STATE_HOME/environments/local/e2e-step-times"
   [ "$(cut -f1 "$kept" | paste -sd, -)" = "env:destroy,env:apply,platform_versions,verify,cilium:conformance,remote_tip_unchanged,env:destroy (2)" ]
   run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -eq 0 ]
@@ -963,7 +964,7 @@ mise_calls() {
   export FAIL_CALL="run verify local"
   run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
-  [ ! -e "$FIRMAMENT_STATE_HOME/environment/local/e2e-step-times" ]
+  [ ! -e "$FIRMAMENT_STATE_HOME/environments/local/e2e-step-times" ]
 }
 
 @test "env:e2e rebuilds the cluster from scratch, runs every live check, and destroys it" {
@@ -1149,7 +1150,7 @@ mise run --yes env:destroy local" ]
 
 @test "env:e2e --from-branch refuses a baseline that does not hand Cilium to Flux" {
   e2e_mise_stub
-  e2e_repository environment/local/tests/upgrade-unaffected
+  e2e_repository environments/local/tests/upgrade-unaffected
   commit_and_push "$MISE_PROJECT_ROOT" main k0s-baseline
   git -C "$MISE_PROJECT_ROOT" reset -q --hard origin/feature/test
   usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
@@ -1192,9 +1193,9 @@ mise run --yes env:destroy local" ]
 # on a branch whose only change appends to the given file.
 run_changed() {
   local script="$1" changed="$2"
-  MISE_PROJECT_ROOT=$(make_pushed_repository main environment/local/flux/kustomization.yaml README.md \
-    components/cni-cilium/values.yaml components/gitops-flux/fluxinstance.yaml)
-  cp "$root_directory/environment/local/flux/kustomization.yaml" "$MISE_PROJECT_ROOT/environment/local/flux/"
+  MISE_PROJECT_ROOT=$(make_pushed_repository main environments/local/flux/kustomization.yaml README.md \
+    packages/cni-cilium/values.yaml packages/gitops-flux/fluxinstance.yaml)
+  cp "$root_directory/environments/local/flux/kustomization.yaml" "$MISE_PROJECT_ROOT/environments/local/flux/"
   commit_and_push "$MISE_PROJECT_ROOT" main layout
   git -C "$MISE_PROJECT_ROOT" switch -q -c feature
   printf 'x\n' >>"$MISE_PROJECT_ROOT/$changed"
@@ -1205,11 +1206,11 @@ run_changed() {
 # A pushed checkout whose local environment deploys cni-cilium, which has a
 # cluster suite, and gitops-flux, which has none.
 verify_repository() {
-  make_repository environment/local/flux/kustomization.yaml >/dev/null
-  printf 'resources:\n  - ../../../components/cni-cilium\n  - ../../../components/gitops-flux\n' \
-    >"$BATS_TEST_TMPDIR/repository/environment/local/flux/kustomization.yaml"
-  e2e_repository environment/local/tests/cluster/chainsaw-test.yaml \
-    components/cni-cilium/tests/cluster/chainsaw-test.yaml components/gitops-flux/kustomization.yaml
+  make_repository environments/local/flux/kustomization.yaml >/dev/null
+  printf 'resources:\n  - ../../../packages/cni-cilium\n  - ../../../packages/gitops-flux\n' \
+    >"$BATS_TEST_TMPDIR/repository/environments/local/flux/kustomization.yaml"
+  e2e_repository environments/local/tests/cluster/chainsaw-test.yaml \
+    packages/cni-cilium/tests/cluster/chainsaw-test.yaml packages/gitops-flux/kustomization.yaml
 }
 
 @test "env:verify waits for Flux to apply origin's tip, then checks it" {
@@ -1221,19 +1222,19 @@ verify_repository() {
   run grep -E '^(kubectl .* wait kustomization|chainsaw )' "$CALLS"
   [ "${#lines[@]}" -eq 2 ]
   [ "${lines[0]%% |*}" = "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system wait kustomization/flux-system --for=jsonpath={.status.lastAppliedRevision}=$revision --timeout=10m" ]
-  [[ "${lines[1]}" =~ ^"chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/components/cni-cilium/tests/cluster --values "([^ ]+)" --set-string flux_revision=$revision | KUBECONFIG=/state/admin.kubeconfig"$ ]]
+  [[ "${lines[1]}" =~ ^"chainsaw test --test-dir $MISE_PROJECT_ROOT/environments/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/packages/cni-cilium/tests/cluster --values "([^ ]+)" --set-string flux_revision=$revision | KUBECONFIG=/state/admin.kubeconfig"$ ]]
 }
 
 @test "env:verify --only runs the environment's suite and the chosen modules' suites" {
   record_chainsaw_kubeconfig
   verify_repository
-  mkdir -p "$MISE_PROJECT_ROOT/components/gitops-flux/tests/cluster"
-  : >"$MISE_PROJECT_ROOT/components/gitops-flux/tests/cluster/chainsaw-test.yaml"
+  mkdir -p "$MISE_PROJECT_ROOT/packages/gitops-flux/tests/cluster"
+  : >"$MISE_PROJECT_ROOT/packages/gitops-flux/tests/cluster/chainsaw-test.yaml"
   commit_and_push "$MISE_PROJECT_ROOT" feature/test flux-suite
   usage_only=flux run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -eq 0 ]
   run grep '^chainsaw ' "$CALLS"
-  [[ "${lines[0]}" == "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/components/gitops-flux/tests/cluster --values "* ]]
+  [[ "${lines[0]}" == "chainsaw test --test-dir $MISE_PROJECT_ROOT/environments/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/packages/gitops-flux/tests/cluster --values "* ]]
 }
 
 @test "env:verify refuses an unknown module before fetching or waiting" {
@@ -1277,7 +1278,7 @@ STUB
 @test "every value a component suite reads is a runtime value or the Flux revision" {
   local known used
   known=$(grep -Ev '^[[:space:]]*(#|$)' "$root_directory/.mise/flux-test-values.env" | cut -d= -f1)$'\nflux_revision'
-  used=$(grep -rhoE '\$values\.[a-z_]+' "$root_directory"/components/*/tests/cluster | cut -d. -f2 | sort -u)
+  used=$(grep -rhoE '\$values\.[a-z_]+' "$root_directory"/packages/*/tests/cluster | cut -d. -f2 | sort -u)
   [ -n "$used" ]
   while IFS= read -r key; do
     grep -qx -- "$key" <<<"$known" || fail "a component suite reads \$values.$key, which no environment sets"
@@ -1287,7 +1288,7 @@ STUB
 @test "env:verify runs no suite when it cannot read the environment's Flux build" {
   record_chainsaw_kubeconfig
   verify_repository
-  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/environment/local/flux/kustomization.yaml"
+  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/environments/local/flux/kustomization.yaml"
   commit_and_push "$MISE_PROJECT_ROOT" feature/test broken
   run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -ne 0 ]
@@ -1295,28 +1296,28 @@ STUB
 }
 
 @test "env:verify fails for an environment without a cluster suite" {
-  MISE_PROJECT_ROOT=$(make_repository environment/bare/main.tf)
+  MISE_PROJECT_ROOT=$(make_repository environments/bare/main.tf)
   run_task "$root_directory/.mise/tasks/env/verify.sh" bare
   [ "$status" -ne 0 ]
-  [[ "$output" == *"environment 'bare' has no cluster suite at $MISE_PROJECT_ROOT/environment/bare/tests/cluster"* ]]
+  [[ "$output" == *"environment 'bare' has no cluster suite at $MISE_PROJECT_ROOT/environments/bare/tests/cluster"* ]]
   [ ! -e "$CALLS" ]
 }
 
 # Builds a stand-in repository with one chainsaw suite for environment "x":
 # the local suite, edited by the given yq expression. Uses the real chainsaw.
 edited_suite_repository() {
-  local repository suite=environment/x/tests/cluster/chainsaw-test.yaml
+  local repository suite=environments/x/tests/cluster/chainsaw-test.yaml
   repository=$(make_repository "$suite")
-  yq "$1" "$root_directory/environment/local/tests/cluster/chainsaw-test.yaml" >"$repository/$suite"
+  yq "$1" "$root_directory/environments/local/tests/cluster/chainsaw-test.yaml" >"$repository/$suite"
   rm "$stubs/chainsaw"
   printf '%s\n' "$repository"
 }
 
 @test "chainsaw:lint rejects a component suite that changes the cluster" {
-  local repository suite=components/x/tests/cluster/chainsaw-test.yaml
+  local repository suite=packages/x/tests/cluster/chainsaw-test.yaml
   repository=$(make_repository "$suite")
   yq '.spec.steps[0].try[0] = {"apply": .spec.steps[0].try[0].assert}' \
-    "$root_directory/components/cni-cilium/tests/cluster/chainsaw-test.yaml" >"$repository/$suite"
+    "$root_directory/packages/cni-cilium/tests/cluster/chainsaw-test.yaml" >"$repository/$suite"
   rm "$stubs/chainsaw"
   MISE_PROJECT_ROOT=$repository run "$root_directory/.mise/tasks/chainsaw/lint.sh"
   [ "$status" -eq 1 ]
@@ -1396,10 +1397,10 @@ fail() {
 
 @test "flux:lint fails when there is no Flux build to check" {
   rm "$stubs/kubectl"
-  MISE_PROJECT_ROOT=$(make_repository environment/local/main.tf)
+  MISE_PROJECT_ROOT=$(make_repository environments/local/main.tf)
   run "$MISE_PROJECT_ROOT/.mise/tasks/flux/lint.sh"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"no environment/*/flux build to validate"* ]]
+  [[ "$output" == *"no environments/*/flux build to validate"* ]]
 }
 
 @test "flux:lint validates without the network, against the vendored schemas" {
@@ -1411,14 +1412,14 @@ fail() {
 @test "flux:lint names flux:schemas when a kind has no vendored schema" {
   rm "$stubs/kubectl"
   MISE_PROJECT_ROOT=$(make_repository)
-  mkdir -p "$MISE_PROJECT_ROOT/environment/new/flux"
-  cat >"$MISE_PROJECT_ROOT/environment/new/flux/kustomization.yaml" <<'YAML'
+  mkdir -p "$MISE_PROJECT_ROOT/environments/new/flux"
+  cat >"$MISE_PROJECT_ROOT/environments/new/flux/kustomization.yaml" <<'YAML'
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - secret.yaml
 YAML
-  cat >"$MISE_PROJECT_ROOT/environment/new/flux/secret.yaml" <<'YAML'
+  cat >"$MISE_PROJECT_ROOT/environments/new/flux/secret.yaml" <<'YAML'
 apiVersion: v1
 kind: Secret
 metadata:
@@ -1443,8 +1444,8 @@ STUB
   chmod +x "$stubs/curl"
   repository="$BATS_TEST_TMPDIR/schemas-repository"
   mkdir -p "$repository/.mise"
-  cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/flux-test-values.env" "$repository/.mise/"
-  cp -R "$root_directory/environment" "$root_directory/components" "$repository/"
+  cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/lib" "$root_directory/.mise/flux-test-values.env" "$repository/.mise/"
+  cp -R "$root_directory/environments" "$root_directory/packages" "$repository/"
   MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/flux/schemas.sh"
   [ "$status" -eq 0 ]
   run grep -c '^curl -fsSL https://raw.githubusercontent.com/fluxcd/flux-schema/88c74c0294aaf472a8df920f92a2f28811a47d72/catalog/latest/' "$CALLS"
@@ -1459,8 +1460,8 @@ STUB
   chmod +x "$stubs/curl"
   repository="$BATS_TEST_TMPDIR/schemas-repository"
   mkdir -p "$repository/.mise"
-  cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/flux-test-values.env" "$root_directory/.mise/flux-schemas" "$repository/.mise/"
-  cp -R "$root_directory/environment" "$root_directory/components" "$repository/"
+  cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/lib" "$root_directory/.mise/flux-test-values.env" "$root_directory/.mise/flux-schemas" "$repository/.mise/"
+  cp -R "$root_directory/environments" "$root_directory/packages" "$repository/"
   MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/flux/schemas.sh"
   [ "$status" -ne 0 ]
   diff -r "$root_directory/.mise/flux-schemas" "$repository/.mise/flux-schemas"
@@ -1469,14 +1470,14 @@ STUB
 @test "flux:lint rejects a Flux build that breaks its schema" {
   rm "$stubs/kubectl"
   MISE_PROJECT_ROOT=$(make_repository)
-  mkdir -p "$MISE_PROJECT_ROOT/environment/bad/flux"
-  cat >"$MISE_PROJECT_ROOT/environment/bad/flux/kustomization.yaml" <<'YAML'
+  mkdir -p "$MISE_PROJECT_ROOT/environments/bad/flux"
+  cat >"$MISE_PROJECT_ROOT/environments/bad/flux/kustomization.yaml" <<'YAML'
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - helmrelease.yaml
 YAML
-  cat >"$MISE_PROJECT_ROOT/environment/bad/flux/helmrelease.yaml" <<'YAML'
+  cat >"$MISE_PROJECT_ROOT/environments/bad/flux/helmrelease.yaml" <<'YAML'
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -1491,20 +1492,20 @@ spec:
 YAML
   run "$MISE_PROJECT_ROOT/.mise/tasks/flux/lint.sh"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"environment/bad/flux: the rendered Flux build is not valid"* ]]
+  [[ "$output" == *"environments/bad/flux: the rendered Flux build is not valid"* ]]
 }
 
 @test "flux:lint rejects a Flux build with a variable no runtime value sets" {
   rm "$stubs/kubectl"
   MISE_PROJECT_ROOT=$(make_repository)
-  mkdir -p "$MISE_PROJECT_ROOT/environment/bad/flux"
-  cat >"$MISE_PROJECT_ROOT/environment/bad/flux/kustomization.yaml" <<'YAML'
+  mkdir -p "$MISE_PROJECT_ROOT/environments/bad/flux"
+  cat >"$MISE_PROJECT_ROOT/environments/bad/flux/kustomization.yaml" <<'YAML'
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - configmap.yaml
 YAML
-  cat >"$MISE_PROJECT_ROOT/environment/bad/flux/configmap.yaml" <<'YAML'
+  cat >"$MISE_PROJECT_ROOT/environments/bad/flux/configmap.yaml" <<'YAML'
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -1612,7 +1613,7 @@ run_doctor() {
   [[ "$output" == *"ok    api: the API server is ready"* ]]
   [[ "$output" != *FAIL* ]]
   ! grep -Eq '^tofu .* (init|apply|destroy|state (mv|rm))( |$)' "$CALLS" || fail "changed state: $(cat "$CALLS")"
-  [ ! -e "$FIRMAMENT_STATE_HOME/environment/local/owner" ] || fail "claimed the environment"
+  [ ! -e "$FIRMAMENT_STATE_HOME/environments/local/owner" ] || fail "claimed the environment"
 }
 
 @test "env:doctor treats an environment with no state as ready for env:apply" {
@@ -1626,7 +1627,7 @@ run_doctor() {
   local_state
   local other="$BATS_TEST_TMPDIR/other-worktree"
   mkdir -p "$other"
-  printf '%s\n' "$other" >"$FIRMAMENT_STATE_HOME/environment/local/owner"
+  printf '%s\n' "$other" >"$FIRMAMENT_STATE_HOME/environments/local/owner"
   run_doctor
   [ "$status" -eq 1 ]
   [[ "$output" == *"FAIL  owner: the worktree $other owns this environment"* ]]
@@ -1634,8 +1635,8 @@ run_doctor() {
 }
 
 @test "env:doctor reports an empty state file with the backup to restore" {
-  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  : >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
+  mkdir -p "$FIRMAMENT_STATE_HOME/environments/local"
+  : >"$FIRMAMENT_STATE_HOME/environments/local/terraform.tfstate"
   run_doctor
   [ "$status" -eq 1 ]
   [[ "$output" == *"FAIL  state: "*"terraform.tfstate is empty"* ]]

@@ -6,15 +6,17 @@ postinstall = "mise run repo:setup"
 
 [env]
 FIRMAMENT_STATE_HOME = "{% if env.FIRMAMENT_STATE_HOME %}{{ env.FIRMAMENT_STATE_HOME }}{% elif env.XDG_STATE_HOME %}{{ env.XDG_STATE_HOME }}/firmament{% else %}{{ env.HOME }}/.local/state/firmament{% endif %}"
-# Default cluster at the repository root; each environment/<env>/mise.toml
+# Default cluster at the repository root; each environments/<env>/mise.toml
 # points KUBECONFIG at its own cluster.
-KUBECONFIG = "{{ env.FIRMAMENT_STATE_HOME }}/environment/local/admin.kubeconfig"
+KUBECONFIG = "{{ env.FIRMAMENT_STATE_HOME }}/environments/local/admin.kubeconfig"
 
 [tools]
 "aqua:kyverno/chainsaw" = "0.2.15"
 bats = "1.14.0"
+betterleaks = "1.8.1"
 cilium-cli = "0.20.1"
 cilium-hubble = "1.19.4"
+cue = "0.17.1"
 flux2 = "2.9.5"
 "github:fluxcd/flux-schema" = "0.13.0"
 helm = "4.3.0"
@@ -53,6 +55,10 @@ run = ["hk check --all --step mise", "mise tasks validate"]
 [tasks."orb:test"]
 description = "Test the vm-orb module without a live VM"
 run = "bats modules/vm-orb/tests/unit.bats"
+
+[tasks."secrets:lint"]
+description = "Scan every tracked text file for secrets with betterleaks"
+run = "hk check --all --step betterleaks"
 
 [tasks."shell:format"]
 description = "Format every shell script and bats file with shfmt"

@@ -23,7 +23,7 @@ spec:
     kind: GitRepository
     url: https://github.com/InSuperposition/firmament.git
     ref: refs/heads/${git_branch}
-    path: environment/${environment}/flux
+    path: environments/${environment}/flux
   kustomize:
     patches:
       - target:

@@ -3,6 +3,6 @@
 set -euo pipefail
 
 hk install --mise
-for config in "${MISE_PROJECT_ROOT:?}"/environment/*/mise.toml; do
+for config in "${MISE_PROJECT_ROOT:?}"/environments/*/mise.toml; do
   mise trust --quiet "$config"
 done

@@ -8,14 +8,24 @@ local fast = new Mapping<String, Step> {
   ["shfmt"] = Builtins.shfmt
   ["tofu"] = Builtins.tofu
   ["mise"] = Builtins.mise
+  // Fails on a secret (a private key, a token) in any file. The builtin
+  // reads only files hk types as text, which leaves out a file without an
+  // extension, such as an SSH key named id_ed25519.
+  ["betterleaks"] = (Builtins.betterleaks) {
+    types = null
+  }
+  // What each top-level folder may hold and name; see contracts/layout.
+  ["layout"] {
+    check = "mise run layout:lint"
+  }
   // Schema and read-only rules for the live cluster suites.
   ["chainsaw"] {
-    glob = List("environment/*/tests/cluster/**/*.yaml", "components/*/tests/cluster/**/*.yaml")
+    glob = List("environments/*/tests/cluster/**/*.yaml", "packages/*/tests/cluster/**/*.yaml")
     check = "mise run chainsaw:lint"
   }
   // Renders and schema-validates each environment's Flux build.
   ["flux"] {
-    glob = List("components/**", "environment/*/flux/**", ".mise/flux-test-values.env", ".mise/flux-schemas/**")
+    glob = List("packages/**", "environments/*/flux/**", ".mise/flux-test-values.env", ".mise/flux-schemas/**")
     check = "mise run flux:lint"
   }
 }
@@ -32,7 +42,7 @@ local slow = new Mapping<String, Step> {
     exclusive = true
   }
   ["test"] {
-    glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "environment/*/tests/cluster/**/*.yaml", "components/**", "environment/*/flux/**", ".mise/flux-test-values.env", "environment/*/tests/upgrade-unaffected", ".mise/tests/fortio/**", ".mise/traffic/**")
+    glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "hk.pkl", "contracts/**", "environments/*/tests/cluster/**/*.yaml", "packages/**", "environments/*/flux/**", ".mise/flux-test-values.env", "environments/*/tests/upgrade-unaffected", ".mise/tests/fortio/**", ".mise/traffic/**")
     check = "mise run test"
     exclusive = true
   }

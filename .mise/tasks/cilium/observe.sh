@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Follow Hubble flows from every node through a Hubble Relay port-forward on a random local port; Ctrl-C stops it"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

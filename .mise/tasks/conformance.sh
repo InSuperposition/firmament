@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Run every *:conformance task against an environment, one at a time; --only runs the tests the chosen modules need (slow; deploys test workloads)"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 #USAGE flag "--only <modules>" help="Comma-separated modules, such as cilium; each *:conformance task runs only the tests their tests/conformance files list (default: every test)"
 #USAGE flag "--changed" help="Choose the modules this branch changed since it left origin/main, instead of --only"
 set -euo pipefail

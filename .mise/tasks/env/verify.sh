@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Run the read-only chainsaw suites against the environment's cluster: its own tests/cluster, then tests/cluster of each component its Flux build deploys"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 #USAGE flag "--only <modules>" help="Comma-separated modules whose suites run, such as cilium,flux; the environment's own suite always runs (default: every module)"
 #USAGE flag "--changed" help="Choose the modules this branch changed since it left origin/main, instead of --only"
 set -euo pipefail

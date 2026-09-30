@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Plan only the k0s cluster and its kubeconfig (pulls in the machine and readiness check if they don't exist yet)"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
