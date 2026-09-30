@@ -2,7 +2,7 @@
 
 ## Abstract
 
-`layout.yaml` describes the repository's top-level folders: what each one holds, what it may reference, and where a cluster name may appear. `layout.cue` is its schema. `mise run layout:lint` validates the data against the schema, then fails on any file that breaks a rule. `mise run lint` and `mise run check` include it.
+`layout.yaml` describes the repository's top-level folders: what each one holds, what it may reference, and where a cluster name may appear. `schema.cue` is its schema. `mise run layout:lint` validates the data against the schema, then fails on any file that breaks a rule. `mise run lint` and `mise run check` include it.
 
 ## Goals
 
