@@ -1,6 +1,6 @@
 # cni-cilium
 
-Abstract: The Flux component that runs Cilium, with Hubble Relay and
+Abstract: The Flux package that runs Cilium, with Hubble Relay and
 Hubble UI, as the cluster network. The OpenTofu bootstrap installs the
 chart once, before any pod network exists; Flux then adopts the release
 and upgrades it from these manifests.

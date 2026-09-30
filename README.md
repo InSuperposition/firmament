@@ -61,9 +61,12 @@ environments/local/bootstrap/
 modules/vm-orb/       the OrbStack VM
 modules/os-ubuntu/    Ubuntu readiness check (SSH probe + postconditions)
 modules/orch-k0s/     the k0s controller+worker node; installs no charts
-packages/           packages Flux reconciles in the cluster (plain
+contracts/layout/     what each top-level folder may hold and name,
+                      checked by `mise run layout:lint`
+packages/             packages Flux reconciles in the cluster (plain
                       Kustomize): cni-cilium (Cilium and Hubble) and
-                      gitops-flux (Flux itself)
+                      gitops-flux (Flux itself); data, tests and
+                      sourced helpers in lib/, never executables
 .mise/tasks/          one executable script per mise task, named
                       <noun>/<verb>.sh and run as `mise run <noun>:<verb>`
 .mise/lib.sh          loads the helpers the task scripts share from
@@ -72,7 +75,7 @@ packages/           packages Flux reconciles in the cluster (plain
                       own helpers live in packages/<name>/lib/
 ```
 
-Each module and component has its own README with its contract.
+Each module and package has its own README with its contract.
 `mise run env:apply` applies the whole environment in dependency order
 (VM, then the readiness check, then k0s, then the bootstrap root that
 installs Cilium and Flux), and `mise run env:destroy` destroys the
@@ -99,7 +102,9 @@ that verb for every noun. The verb also says how far a task reaches:
 | `plan`, `apply`, `destroy` | drive OpenTofu; `destroy` asks first (`-y` skips) | none |
 
 `mise run check` runs every offline check: `lint` (shellcheck, shfmt,
-`tofu fmt`, `mise fmt`, `mise tasks validate`, `chainsaw:lint` for the
+`tofu fmt`, `mise fmt`, `mise tasks validate`, `layout:lint` for the
+folder rules in `contracts/layout`, `secrets:lint` (betterleaks on every
+tracked file), `chainsaw:lint` for the
 live cluster suites, and `flux:lint`, which renders each environment's
 Flux build with test runtime values through `flux envsubst --strict` and
 validates it with `flux-schema` against the schemas vendored in
@@ -111,9 +116,9 @@ values, variable validation, preconditions) are `tests/*.tftest.hcl`,
 run by `tofu:test`. Suites that run shell or check OpenTofu's own error
 output stay on bats (`tests/*.bats`). Read-only checks of a live cluster
 are chainsaw suites in `tests/cluster/`: each environment has one for the
-cluster itself, and each component has one for its own workloads.
+cluster itself, and each package has one for its own workloads.
 `env:verify` runs the environment's suite, then the suite of every
-component the environment's Flux build lists. A component's module name is
+package the environment's Flux build lists. A package's module name is
 its folder name without the role prefix (`packages/cni-cilium` is
 `cilium`), which is also the noun of its tasks (`cilium:verify`).
 `verify --only cilium,flux` checks only those modules, plus the

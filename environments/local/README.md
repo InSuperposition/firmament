@@ -43,7 +43,7 @@ module, pinned by commit. Its Job installs Cilium, then Flux Operator and
 the `FluxInstance`, once; from then on Flux reconciles all three from
 `packages/cni-cilium` and `packages/gitops-flux`, through
 `flux/kustomization.yaml`. The bootstrap reads each chart digest, the
-values and the `FluxInstance` from those components, so both install the
+values and the `FluxInstance` from those packages, so both install the
 same bytes, under the release names Flux adopts. Increment
 `bootstrap_revision` only to rerun the Job on purpose.
 
@@ -51,12 +51,12 @@ The Job installs the pod network, so it runs before one exists: on the
 host network, with the API address set directly, tolerating the node
 that is not Ready yet.
 
-`runtime_info` carries the values the components substitute: the API
+`runtime_info` carries the values the packages substitute: the API
 address and port, the kube-proxy mode, the Cilium datapath and operator
 replicas (derived here, since Flux substitution cannot evaluate
 conditionals), the environment name and the Git branch. The same values
 are the `runtime_info` output: `env:verify` passes them to the chainsaw
-suites as `$values`, so a component suite checks the cluster against what
+suites as `$values`, so a package suite checks the cluster against what
 this environment asked for rather than fixed values.
 
 The bootstrap is its own root, applied after this one: the Kubernetes
@@ -116,8 +116,8 @@ k0sctl reaches the machine with the SSH key OrbStack creates,
 | `mise run verify [--only <modules> \| --changed]` | Run every `*:verify` task below, one at a time, `env:verify` first so the others check what the pushed commit deploys. `--only cilium` or `--only flux` skips the other modules' suites and tasks; the environment's own checks (`env:verify`'s own suite, `k0s:verify`, `ubuntu:verify`) always run. `--changed` chooses the modules the branch changed since it left `origin/main`: a change under `packages/<name>/` selects that module, Markdown selects nothing, any other change selects every module |
 | `mise run k0s:verify` | Wait for every node to be Ready, using the kubeconfig path recorded in state |
 | `mise run cilium:verify` | Wait until the `cilium` release runs the values in the `cilium-values` ConfigMap (`helm get values`) and the agent DaemonSet has rolled out, then for the Cilium agent, operator, Hubble Relay and Hubble UI, using the kubeconfig path recorded in state |
-| `mise run env:verify` | Run the read-only chainsaw suites against the cluster: this environment's `tests/cluster` (nodes Ready, no kube-proxy, no k0s Charts), then `tests/cluster` of each component `flux/kustomization.yaml` lists: `cni-cilium` (Cilium running the kube-proxy mode and datapath `runtime_info` sets) and `gitops-flux` (the `FluxInstance` and both HelmReleases Ready and owning their workloads, and the root Kustomization applied at `refs/heads/<branch>@sha1:<origin tip>`) |
-| `mise run env:test` | Test that the modules and components are wired together (shared API address and port, kube-proxy setting, bootstrap charts, values and runtime info) against a plan in a temporary state, with no OrbStack calls |
+| `mise run env:verify` | Run the read-only chainsaw suites against the cluster: this environment's `tests/cluster` (nodes Ready, no kube-proxy, no k0s Charts), then `tests/cluster` of each package `flux/kustomization.yaml` lists: `cni-cilium` (Cilium running the kube-proxy mode and datapath `runtime_info` sets) and `gitops-flux` (the `FluxInstance` and both HelmReleases Ready and owning their workloads, and the root Kustomization applied at `refs/heads/<branch>@sha1:<origin tip>`) |
+| `mise run env:test` | Test that the modules and packages are wired together (shared API address and port, kube-proxy setting, bootstrap charts, values and runtime info) against a plan in a temporary state, with no OrbStack calls |
 | `mise run conformance [--only <modules> \| --changed]` | Run every `*:conformance` task, passing `--only` on. With `--only`, each task runs only the tests the chosen modules list, one regular expression per line, in `packages/<name>/tests/conformance`: `cni-cilium` lists the whole suite, `gitops-flux` lists none, so `--only flux` runs nothing |
 | `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests, with Hubble flow logs for failed actions through a Relay port-forward (`--hubble-port`, default 4245; fails if that port is taken or Relay is unreachable; flow validation is disabled until cilium-cli can match these flows, see [BUGS.md](../../packages/cni-cilium/BUGS.md#flow-validation-never-matches-reverse-nated-service-replies)), then remove its test workloads; a failed run keeps them for debugging (slow, manual only) |
 | `mise run cilium:traffic-start` | Start traffic for `cilium:traffic-check` to measure: cilium-cli conn-disrupt connections held open, and fortio in the `traffic-probe` namespace opening 100 new connections a second through a ClusterIP Service. Records the fortio run and the Cilium agent pods in the environment's state directory, replacing any earlier run. `FIRMAMENT_FORTIO_START_TIMEOUT` (whole seconds, default 30) bounds the wait for fortio to start sending |
