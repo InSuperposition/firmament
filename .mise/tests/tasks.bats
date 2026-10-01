@@ -1819,3 +1819,15 @@ contract_repository() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"no contracts/*/schema.cue to check"* ]]
 }
+
+@test "secrets:lint fails on a private key in a tracked file without an extension" {
+  local repository="$BATS_TEST_TMPDIR/leaky"
+  mkdir -p "$repository/keys"
+  cp "$root_directory/hk.pkl" "$repository/"
+  git -C "$repository" init -q
+  ssh-keygen -q -t ed25519 -N '' -C test -f "$repository/keys/id_ed25519" >/dev/null
+  git -C "$repository" add hk.pkl keys/id_ed25519
+  run bash -c "cd '$repository' && hk check --all --step betterleaks"
+  [ "$status" -ne 0 ] || fail "accepted a private key: $output"
+  [[ "$output" == *"keys/id_ed25519"* ]] || fail "$output"
+}

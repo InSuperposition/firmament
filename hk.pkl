@@ -8,6 +8,11 @@ local fast = new Mapping<String, Step> {
   ["shfmt"] = Builtins.shfmt
   ["tofu"] = Builtins.tofu
   ["mise"] = Builtins.mise
+  // Every file, not only those hk types as text: a private key is often
+  // a file without an extension (id_ed25519).
+  ["betterleaks"] = (Builtins.betterleaks) {
+    types = null
+  }
   // Schema and read-only rules for the live cluster suites.
   ["chainsaw"] {
     glob = List("clusters/*/tests/cluster/**/*.yaml", "packages/*/tests/cluster/**/*.yaml")
