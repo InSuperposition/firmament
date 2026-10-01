@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Apply the machine root: create the OrbStack machine, check Ubuntu readiness, write the machine-hosts contract, then print the machine's native metadata"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

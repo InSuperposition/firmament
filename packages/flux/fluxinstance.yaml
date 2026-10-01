@@ -1,6 +1,6 @@
 # Flux itself, installed from the manifests embedded in the Flux Operator
 # image, and the sync that points Flux at this repository. ${git_branch} and
-# ${environment} come from the flux-runtime-info ConfigMap: the bootstrap
+# ${cluster} come from the flux-runtime-info ConfigMap: the bootstrap
 # substitutes them once, and the root Kustomization on every reconcile.
 apiVersion: fluxcd.controlplane.io/v1
 kind: FluxInstance
@@ -23,7 +23,7 @@ spec:
     kind: GitRepository
     url: https://github.com/InSuperposition/firmament.git
     ref: refs/heads/${git_branch}
-    path: environment/${environment}/flux
+    path: clusters/${cluster}/flux
   kustomize:
     patches:
       - target:

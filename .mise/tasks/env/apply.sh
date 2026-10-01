@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Apply the machine, Kubernetes and bootstrap roots in order, then wait for Flux and Cilium to be ready and the node to be Ready"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

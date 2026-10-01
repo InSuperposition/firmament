@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Measure the traffic cilium:traffic-start began: fails when a conn-disrupt connection broke, any fortio request failed or fortio sent under 90% of the requested rate, prints the slowest request, and ends with whether the traffic crossed a Cilium agent restart; removes the test workloads when it passes"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

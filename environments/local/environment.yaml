@@ -1,0 +1,2 @@
+# The cluster definition this environment runs, from clusters/<name>/.
+cluster: singularity

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Test each root's wiring and the contracts between roots against plans in a temporary state, without touching infrastructure"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

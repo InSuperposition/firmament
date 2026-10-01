@@ -45,7 +45,7 @@ run_task() {
 @test "read-only tasks never apply or destroy" {
   local script
   # env:verify reads origin's branch tip, so the tasks run in a pushed checkout.
-  e2e_repository environment/local/tests/cluster/chainsaw-test.yaml
+  e2e_repository clusters/singularity/tests/cluster/chainsaw-test.yaml
   # A recorded cluster with a kubeconfig file, so env:doctor checks the API too.
   record_contracts "$BATS_TEST_TMPDIR/admin.kubeconfig"
   : >"$BATS_TEST_TMPDIR/admin.kubeconfig"
@@ -926,7 +926,7 @@ STUB
 
 # A pushed checkout of feature/test with one environment, as env:e2e needs.
 e2e_repository() {
-  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environment/local/README.md "$@")
+  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environments/local/environment.yaml "$@")
   export MISE_PROJECT_ROOT
 }
 
@@ -938,8 +938,8 @@ record_chainsaw_kubeconfig() {
 # A pushed checkout of feature/test whose main branch, on origin, already
 # hands Cilium to Flux and lists the workloads an upgrade must leave running.
 upgrade_repository() {
-  e2e_repository packages/cilium/helmrelease.yaml environment/local/tests/upgrade-unaffected
-  printf 'kube-system k8s-app=kube-dns\n' >"$MISE_PROJECT_ROOT/environment/local/tests/upgrade-unaffected"
+  e2e_repository packages/cilium/helmrelease.yaml environments/local/tests/upgrade-unaffected
+  printf 'kube-system k8s-app=kube-dns\n' >"$MISE_PROJECT_ROOT/environments/local/tests/upgrade-unaffected"
   commit_and_push "$MISE_PROJECT_ROOT" feature/test unaffected
   commit_and_push "$MISE_PROJECT_ROOT" main baseline
   git -C "$MISE_PROJECT_ROOT" reset -q --hard origin/feature/test
@@ -1164,7 +1164,7 @@ mise run --yes env:destroy local" ]
 
 @test "env:e2e --from-branch refuses a baseline that does not hand Cilium to Flux" {
   e2e_mise_stub
-  e2e_repository environment/local/tests/upgrade-unaffected
+  e2e_repository environments/local/tests/upgrade-unaffected
   commit_and_push "$MISE_PROJECT_ROOT" main k0s-baseline
   git -C "$MISE_PROJECT_ROOT" reset -q --hard origin/feature/test
   usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
@@ -1207,9 +1207,9 @@ mise run --yes env:destroy local" ]
 # on a branch whose only change appends to the given file.
 run_changed() {
   local script="$1" changed="$2"
-  MISE_PROJECT_ROOT=$(make_pushed_repository main environment/local/flux/kustomization.yaml README.md \
-    packages/cilium/values.yaml packages/flux/fluxinstance.yaml)
-  cp "$root_directory/environment/local/flux/kustomization.yaml" "$MISE_PROJECT_ROOT/environment/local/flux/"
+  MISE_PROJECT_ROOT=$(make_pushed_repository main environments/local/environment.yaml \
+    clusters/singularity/flux/kustomization.yaml README.md packages/cilium/values.yaml packages/flux/fluxinstance.yaml)
+  cp "$root_directory/clusters/singularity/flux/kustomization.yaml" "$MISE_PROJECT_ROOT/clusters/singularity/flux/"
   commit_and_push "$MISE_PROJECT_ROOT" main layout
   git -C "$MISE_PROJECT_ROOT" switch -q -c feature
   printf 'x\n' >>"$MISE_PROJECT_ROOT/$changed"
@@ -1220,10 +1220,10 @@ run_changed() {
 # A pushed checkout whose local environment deploys cilium, which has a
 # cluster suite, and flux, which has none.
 verify_repository() {
-  make_repository environment/local/flux/kustomization.yaml >/dev/null
+  make_repository clusters/singularity/flux/kustomization.yaml >/dev/null
   printf 'resources:\n  - ../../../packages/cilium\n  - ../../../packages/flux\n' \
-    >"$BATS_TEST_TMPDIR/repository/environment/local/flux/kustomization.yaml"
-  e2e_repository environment/local/tests/cluster/chainsaw-test.yaml \
+    >"$BATS_TEST_TMPDIR/repository/clusters/singularity/flux/kustomization.yaml"
+  e2e_repository clusters/singularity/tests/cluster/chainsaw-test.yaml \
     packages/cilium/tests/cluster/chainsaw-test.yaml packages/flux/kustomization.yaml
 }
 
@@ -1236,7 +1236,7 @@ verify_repository() {
   run grep -E '^(kubectl .* wait kustomization|chainsaw )' "$CALLS"
   [ "${#lines[@]}" -eq 2 ]
   [ "${lines[0]%% |*}" = "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system wait kustomization/flux-system --for=jsonpath={.status.lastAppliedRevision}=$revision --timeout=10m" ]
-  [[ "${lines[1]}" =~ ^"chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/packages/cilium/tests/cluster --values "([^ ]+)" --set-string flux_revision=$revision | KUBECONFIG=/state/admin.kubeconfig"$ ]]
+  [[ "${lines[1]}" =~ ^"chainsaw test --test-dir $MISE_PROJECT_ROOT/clusters/singularity/tests/cluster --test-dir $MISE_PROJECT_ROOT/packages/cilium/tests/cluster --values "([^ ]+)" --set-string flux_revision=$revision | KUBECONFIG=/state/admin.kubeconfig"$ ]]
 }
 
 @test "env:verify --only runs the environment's suite and the chosen packages' suites" {
@@ -1248,7 +1248,7 @@ verify_repository() {
   usage_only=flux run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -eq 0 ]
   run grep '^chainsaw ' "$CALLS"
-  [[ "${lines[0]}" == "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/packages/flux/tests/cluster --values "* ]]
+  [[ "${lines[0]}" == "chainsaw test --test-dir $MISE_PROJECT_ROOT/clusters/singularity/tests/cluster --test-dir $MISE_PROJECT_ROOT/packages/flux/tests/cluster --values "* ]]
 }
 
 @test "env:verify refuses an unknown package before fetching or waiting" {
@@ -1296,27 +1296,28 @@ STUB
 @test "env:verify runs no suite when it cannot read the environment's Flux build" {
   record_chainsaw_kubeconfig
   verify_repository
-  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/environment/local/flux/kustomization.yaml"
+  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/clusters/singularity/flux/kustomization.yaml"
   commit_and_push "$MISE_PROJECT_ROOT" feature/test broken
   run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -ne 0 ]
   ! grep -q '^chainsaw ' "$CALLS"
 }
 
-@test "env:verify fails for an environment without a cluster suite" {
-  MISE_PROJECT_ROOT=$(make_repository environment/bare/main.tf)
+@test "env:verify fails for an environment whose cluster has no suite" {
+  MISE_PROJECT_ROOT=$(make_repository environments/bare/environment.yaml clusters/singularity/flux/kustomization.yaml)
   run_task "$root_directory/.mise/tasks/env/verify.sh" bare
   [ "$status" -ne 0 ]
-  [[ "$output" == *"environment 'bare' has no cluster suite at $MISE_PROJECT_ROOT/environment/bare/tests/cluster"* ]]
+  [[ "$output" == *"environment 'bare' runs a cluster with no suite at $MISE_PROJECT_ROOT/clusters/singularity/tests/cluster"* ]]
   [ ! -e "$CALLS" ]
 }
 
-# Builds a stand-in repository with one chainsaw suite for environment "x":
-# the local suite, edited by the given yq expression. Uses the real chainsaw.
+# Builds a stand-in repository with one chainsaw suite for cluster "x":
+# the singularity suite, edited by the given yq expression. Uses the real
+# chainsaw.
 edited_suite_repository() {
-  local repository suite=environment/x/tests/cluster/chainsaw-test.yaml
+  local repository suite=clusters/x/tests/cluster/chainsaw-test.yaml
   repository=$(make_repository "$suite")
-  yq "$1" "$root_directory/environment/local/tests/cluster/chainsaw-test.yaml" >"$repository/$suite"
+  yq "$1" "$root_directory/clusters/singularity/tests/cluster/chainsaw-test.yaml" >"$repository/$suite"
   rm "$stubs/chainsaw"
   printf '%s\n' "$repository"
 }
@@ -1405,10 +1406,10 @@ fail() {
 
 @test "flux:lint fails when there is no Flux build to check" {
   rm "$stubs/kubectl"
-  MISE_PROJECT_ROOT=$(make_repository environment/local/README.md)
+  MISE_PROJECT_ROOT=$(make_repository environments/local/environment.yaml)
   run "$MISE_PROJECT_ROOT/.mise/tasks/flux/lint.sh"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"no environment/*/flux build to validate"* ]]
+  [[ "$output" == *"no clusters/*/flux build to validate"* ]]
 }
 
 @test "flux:lint validates without the network, against the vendored schemas" {
@@ -1420,14 +1421,14 @@ fail() {
 @test "flux:lint names flux:schemas when a kind has no vendored schema" {
   rm "$stubs/kubectl"
   MISE_PROJECT_ROOT=$(make_repository)
-  mkdir -p "$MISE_PROJECT_ROOT/environment/new/flux"
-  cat >"$MISE_PROJECT_ROOT/environment/new/flux/kustomization.yaml" <<'YAML'
+  mkdir -p "$MISE_PROJECT_ROOT/clusters/new/flux"
+  cat >"$MISE_PROJECT_ROOT/clusters/new/flux/kustomization.yaml" <<'YAML'
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - secret.yaml
 YAML
-  cat >"$MISE_PROJECT_ROOT/environment/new/flux/secret.yaml" <<'YAML'
+  cat >"$MISE_PROJECT_ROOT/clusters/new/flux/secret.yaml" <<'YAML'
 apiVersion: v1
 kind: Secret
 metadata:
@@ -1453,7 +1454,7 @@ STUB
   repository="$BATS_TEST_TMPDIR/schemas-repository"
   mkdir -p "$repository/.mise"
   cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/flux-test-values.env" "$repository/.mise/"
-  cp -R "$root_directory/environment" "$root_directory/packages" "$repository/"
+  cp -R "$root_directory/clusters" "$root_directory/packages" "$repository/"
   MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/flux/schemas.sh"
   [ "$status" -eq 0 ]
   run grep -c '^curl -fsSL https://raw.githubusercontent.com/fluxcd/flux-schema/88c74c0294aaf472a8df920f92a2f28811a47d72/catalog/latest/' "$CALLS"
@@ -1469,7 +1470,7 @@ STUB
   repository="$BATS_TEST_TMPDIR/schemas-repository"
   mkdir -p "$repository/.mise"
   cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/flux-test-values.env" "$root_directory/.mise/flux-schemas" "$repository/.mise/"
-  cp -R "$root_directory/environment" "$root_directory/packages" "$repository/"
+  cp -R "$root_directory/clusters" "$root_directory/packages" "$repository/"
   MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/flux/schemas.sh"
   [ "$status" -ne 0 ]
   diff -r "$root_directory/.mise/flux-schemas" "$repository/.mise/flux-schemas"
@@ -1478,14 +1479,14 @@ STUB
 @test "flux:lint rejects a Flux build that breaks its schema" {
   rm "$stubs/kubectl"
   MISE_PROJECT_ROOT=$(make_repository)
-  mkdir -p "$MISE_PROJECT_ROOT/environment/bad/flux"
-  cat >"$MISE_PROJECT_ROOT/environment/bad/flux/kustomization.yaml" <<'YAML'
+  mkdir -p "$MISE_PROJECT_ROOT/clusters/bad/flux"
+  cat >"$MISE_PROJECT_ROOT/clusters/bad/flux/kustomization.yaml" <<'YAML'
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - helmrelease.yaml
 YAML
-  cat >"$MISE_PROJECT_ROOT/environment/bad/flux/helmrelease.yaml" <<'YAML'
+  cat >"$MISE_PROJECT_ROOT/clusters/bad/flux/helmrelease.yaml" <<'YAML'
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -1500,20 +1501,20 @@ spec:
 YAML
   run "$MISE_PROJECT_ROOT/.mise/tasks/flux/lint.sh"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"environment/bad/flux: the rendered Flux build is not valid"* ]]
+  [[ "$output" == *"clusters/bad/flux: the rendered Flux build is not valid"* ]]
 }
 
 @test "flux:lint rejects a Flux build with a variable no runtime value sets" {
   rm "$stubs/kubectl"
   MISE_PROJECT_ROOT=$(make_repository)
-  mkdir -p "$MISE_PROJECT_ROOT/environment/bad/flux"
-  cat >"$MISE_PROJECT_ROOT/environment/bad/flux/kustomization.yaml" <<'YAML'
+  mkdir -p "$MISE_PROJECT_ROOT/clusters/bad/flux"
+  cat >"$MISE_PROJECT_ROOT/clusters/bad/flux/kustomization.yaml" <<'YAML'
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - configmap.yaml
 YAML
-  cat >"$MISE_PROJECT_ROOT/environment/bad/flux/configmap.yaml" <<'YAML'
+  cat >"$MISE_PROJECT_ROOT/clusters/bad/flux/configmap.yaml" <<'YAML'
 apiVersion: v1
 kind: ConfigMap
 metadata:

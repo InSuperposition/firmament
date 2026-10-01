@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Delete the OrbStack machine and the k0s cluster on it (the Kubernetes root, then the machine root); Flux's objects go with it"
 #MISE confirm="Delete the OrbStack machine in {{usage.environment}} and everything that depends on it?"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

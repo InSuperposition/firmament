@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Explain why an environment task would fail, without changing anything: one line per boundary, and the next command for each failure"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

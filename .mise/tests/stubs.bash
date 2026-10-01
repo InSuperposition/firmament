@@ -124,7 +124,12 @@ make_repository() {
   ln -sfn "$root_directory/.mise" "$repository/.mise"
   for path in "$@"; do
     mkdir -p "$repository/$(dirname -- "$path")"
-    : >"$repository/$path"
+    # An environment names the one cluster definition the fixtures use.
+    if [[ "$path" == environments/*/environment.yaml ]]; then
+      printf 'cluster: singularity\n' >"$repository/$path"
+    else
+      : >"$repository/$path"
+    fi
   done
   printf '%s\n' "$repository"
 }

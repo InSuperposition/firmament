@@ -4,7 +4,7 @@ setup_file() {
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../.." && pwd)
   export k0s_root="$root_directory/roots/kubernetes-k0s"
   export bootstrap_root="$root_directory/roots/bootstrap-flux"
-  export flux_build="$root_directory/environment/local/flux"
+  export flux_build="$root_directory/clusters/singularity/flux"
   export packages_directory="$root_directory/packages"
   export root_directory
   export TF_VAR_git_branch=feature/test

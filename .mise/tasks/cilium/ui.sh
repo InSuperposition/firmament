@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Open the Hubble UI in the browser through a port-forward; Ctrl-C stops it"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 #USAGE flag "--port <port>" help="Local port the Hubble UI port-forward listens on (default 12000)"
 set -euo pipefail
 # shellcheck source=../../lib.sh

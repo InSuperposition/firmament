@@ -36,13 +36,13 @@ MISE_LOCKED_SCOPES=project mise install --locked
 ```
 
 `mise install` then runs `mise run repo:setup`, which installs the Git
-hooks and trusts each `environment/<env>/mise.toml`. Run it again after
+hooks and trusts each `environments/<env>/mise.toml`. Run it again after
 adding an environment.
 
 Make the pinned tools and project environment (including `KUBECONFIG`)
 available in your shell. `KUBECONFIG` points at the `local` cluster at the
 repository root, and at each environment's own cluster inside
-`environment/<env>/`. Either activate mise persistently in your shell
+`environments/<env>/`. Either activate mise persistently in your shell
 profile — see mise's
 [shell activation docs](https://mise.jdx.dev/getting-started.html#activate-mise) —
 or, for a one-off shell session:
@@ -59,8 +59,10 @@ roots/machine-orb/    the OrbStack machine and its readiness check;
 roots/kubernetes-k0s/ k0s on that machine; writes the kubeconfig and the
                       cluster-access contract with the runtime values
 roots/bootstrap-flux/ bootstraps Cilium and Flux into the cluster
-environment/local/    what the local environment deploys: its Flux build,
-                      cluster suite and upgrade checks
+clusters/singularity/ the cluster definition: its Flux build (which
+                      packages Flux applies) and its cluster suite
+environments/local/   the local environment's data: environment.yaml names
+                      its cluster; its upgrade checks and mise.toml
 modules/vm-orb/       the OrbStack VM
 modules/os-ubuntu/    Ubuntu readiness check (SSH probe + postconditions)
 modules/orch-k0s/     the k0s controller+worker node; installs no charts
@@ -80,7 +82,7 @@ Flux), and `mise run env:destroy` destroys the Kubernetes root, then the
 machine root; the bootstrap's objects go with the machine. Both take an
 environment name, defaulting to `local`. Narrower tasks act on one root:
 `orb:*` and `ubuntu:verify` on the machine root, `k0s:*` on the Kubernetes
-root. See `environment/local/README.md` for the full task list.
+root. See `environments/local/README.md` for the full task list.
 
 Task names follow `<noun>:<verb>` for a task that acts on one thing
 (`shell:lint`, `k0s:apply`). A bare `<verb>` is an aggregate that runs

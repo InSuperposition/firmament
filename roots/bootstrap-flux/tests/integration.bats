@@ -95,11 +95,12 @@ load ../../kubernetes-k0s/tests/setup.bash
   [ "$planned" = "$linted" ]
 }
 
-@test "tells Flux which branch and environment to follow" {
+@test "tells Flux which branch, environment and cluster to follow" {
   run bootstrap_values
   [ "$status" -eq 0 ]
   [ "$(yq -r '.managedResources.runtimeInfo.data.git_branch' <<<"$output")" = feature/test ]
   [ "$(yq -r '.managedResources.runtimeInfo.data.environment' <<<"$output")" = local ]
+  [ "$(yq -r '.managedResources.runtimeInfo.data.cluster' <<<"$output")" = singularity ]
 }
 
 @test "makes Flux follow a new branch as soon as the runtime values change" {

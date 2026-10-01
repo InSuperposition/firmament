@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Open the Flux Web UI that Flux Operator serves in the browser through a port-forward; Ctrl-C stops it"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 #USAGE flag "--port <port>" help="Local port the Flux Web UI port-forward listens on (default 9080)"
 set -euo pipefail
 # shellcheck source=../../lib.sh

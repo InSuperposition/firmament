@@ -20,11 +20,11 @@ fail() {
   return 1
 }
 
-# Prints the OpenTofu root directory of an environment, or fails when the
-# environment does not exist.
+# Prints the data directory of an environment, environments/<name>, or fails
+# when the environment does not exist.
 environment_directory() {
   local environment="$1"
-  local directory="${MISE_PROJECT_ROOT:?run this through mise}/environment/$environment"
+  local directory="${MISE_PROJECT_ROOT:?run this through mise}/environments/$environment"
   if [[ ! -d "$directory" ]]; then
     fail "unknown environment '$environment': $directory does not exist"
     return
@@ -199,12 +199,26 @@ environment_kubeconfig() {
   contract_field "$1" cluster-access.yaml .kubeconfig_path
 }
 
+# Prints the directory of the cluster definition an environment runs:
+# clusters/<name>, named by the cluster field of its environment.yaml.
+# Fails when the field is missing or names no cluster directory.
+cluster_directory() {
+  local environment="$1" directory cluster
+  directory=$(environment_directory "$environment") || return
+  cluster=$(yq -r '.cluster // ""' "$directory/environment.yaml") || return
+  if [[ -z "$cluster" || ! -d "$MISE_PROJECT_ROOT/clusters/$cluster" ]]; then
+    fail "environment '$environment' names cluster '$cluster' in $directory/environment.yaml, but clusters/$cluster does not exist"
+    return
+  fi
+  printf '%s\n' "$MISE_PROJECT_ROOT/clusters/$cluster"
+}
+
 # Prints the directory of each package an environment's Flux build lists,
 # one per line, or nothing for an environment without a Flux build. Only
 # directories are packages; a resource file the build lists is not.
 deployed_packages() {
   local directory resources resource
-  directory=$(environment_directory "$1") || return
+  directory=$(cluster_directory "$1") || return
   [[ -f "$directory/flux/kustomization.yaml" ]] || return 0
   resources=$(yq -r '.resources[]' "$directory/flux/kustomization.yaml") || return
   while IFS= read -r resource; do
@@ -297,13 +311,13 @@ package_selection() {
 }
 
 # Prints the chainsaw suite directories an environment's cluster must pass,
-# one per line: the environment's own tests/cluster first, then tests/cluster
+# one per line: the cluster definition's own tests/cluster first, then tests/cluster
 # of each package its Flux build lists, for packages that have one. A
 # comma-separated package list keeps only those packages' suites; the
 # environment's own suite always runs.
 cluster_suites() {
   local environment="$1" only="${2:-}" directory packages package
-  directory=$(environment_directory "$environment") || return
+  directory=$(cluster_directory "$environment") || return
   check_packages "$environment" "$only" || return
   packages=$(deployed_packages "$environment") || return
   printf '%s\n' "$directory/tests/cluster"

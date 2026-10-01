@@ -15,6 +15,10 @@ locals {
   # The machine-hosts contract the machine root wrote.
   machine = yamldecode(file("${var.state_directory}/machine-hosts.yaml"))
 
+  # The environment's data names the cluster definition it runs.
+  environment_data = yamldecode(file("${path.module}/../../environments/${var.environment}/environment.yaml"))
+  cluster          = local.environment_data.cluster
+
   # The machine's DNS name resolves on both the host and the guest.
   api_address = local.machine.dns_name
   api_port    = 6443
@@ -35,7 +39,21 @@ locals {
     cilium_datapath_mode     = local.kube_proxy_replacement ? "netkit" : "veth"
     cilium_operator_replicas = "1"
     environment              = var.environment
+    cluster                  = local.cluster
     git_branch               = var.git_branch
+  }
+}
+
+# Flux syncs clusters/<cluster>/flux, so the cluster the environment names
+# must exist; checked here, where the environment data is read.
+resource "terraform_data" "cluster_definition" {
+  input = local.cluster
+
+  lifecycle {
+    precondition {
+      condition     = can(regex("^[a-z][a-z0-9-]*$", local.cluster)) && fileexists("${path.module}/../../clusters/${local.cluster}/flux/kustomization.yaml")
+      error_message = "environments/${var.environment}/environment.yaml names cluster '${local.cluster}', but clusters/${local.cluster}/flux/kustomization.yaml does not exist."
+    }
   }
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Run the Cilium connectivity suite against the cluster, with Hubble flow logs for failed actions, checking only logs written during the tests, then remove its test workloads (slow; deploys test workloads)"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 #USAGE flag "--hubble-port <port>" help="Local port the Hubble Relay port-forward listens on (default 4245)"
 #USAGE flag "--test-concurrency <count>" help="Namespaces the suite splits its tests across, run in parallel (default 3)"
 #USAGE flag "--only <packages>" help="Comma-separated packages, such as cilium; runs only the tests their tests/conformance files list (default: the whole suite)"

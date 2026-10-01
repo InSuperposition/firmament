@@ -4,11 +4,12 @@ Abstract: The local environment on one OrbStack machine. Three OpenTofu
 roots build it in order, each from the contract file the one before it
 wrote: `roots/machine-orb` (the machine and its readiness check),
 `roots/kubernetes-k0s` (k0s on it) and `roots/bootstrap-flux` (Cilium and
-Flux). From then on Flux runs both from `packages/`, through
-`flux/kustomization.yaml`. This folder holds what is specific to the
-environment: that Flux build, the cluster suite in `tests/cluster/`, the
-workloads an upgrade must leave running (`tests/upgrade-unaffected`) and
-the `mise.toml` that points kubectl at this cluster.
+Flux). From then on Flux runs both from `packages/`, through the Flux
+build of the cluster definition `environment.yaml` names
+(`clusters/singularity/flux/kustomization.yaml`). This folder holds only
+what is specific to the environment: `environment.yaml`, the workloads an
+upgrade must leave running (`tests/upgrade-unaffected`) and the
+`mise.toml` that points kubectl at this cluster.
 
 Flux follows a branch of the public repository, so commits reach the
 cluster only after they are pushed. The tasks pass the checked-out branch
@@ -31,10 +32,10 @@ talk to this environment's state or machine.
 | `mise run orb:destroy` | Destroy the Kubernetes root, then the machine root: k0s cannot outlive its machine |
 | `mise run ubuntu:verify` | Plan the machine root, which runs the Ubuntu readiness probe over SSH |
 | `mise run k0s:plan` / `k0s:apply` | Plan or apply the Kubernetes root against the `machine-hosts` contract; `k0s:apply` waits for the node to register, not for Cilium |
-| `mise run verify [--only <packages> \| --changed]` | Run every `*:verify` task below, one at a time, `env:verify` first so the others check what the pushed commit deploys. `--only cilium` or `--only flux` skips the other packages' suites and tasks; the environment's own checks (`env:verify`'s own suite, `k0s:verify`, `ubuntu:verify`) always run. `--changed` chooses the packages the branch changed since it left `origin/main`: a change under `packages/<name>/` selects that package, Markdown selects nothing, any other change selects every package |
+| `mise run verify [--only <packages> \| --changed]` | Run every `*:verify` task below, one at a time, `env:verify` first so the others check what the pushed commit deploys. `--only cilium` or `--only flux` skips the other packages' suites and tasks; the environment's own checks (the cluster's own suite, `k0s:verify`, `ubuntu:verify`) always run. `--changed` chooses the packages the branch changed since it left `origin/main`: a change under `packages/<name>/` selects that package, Markdown selects nothing, any other change selects every package |
 | `mise run k0s:verify` | Wait for every node to be Ready, using the kubeconfig path in the `cluster-access` contract |
 | `mise run cilium:verify` | Wait until the `cilium` release runs the values in the `cilium-values` ConfigMap (`helm get values`) and the agent DaemonSet has rolled out, then for the Cilium agent, operator, Hubble Relay and Hubble UI, using the kubeconfig path in the `cluster-access` contract |
-| `mise run env:verify` | Run the read-only chainsaw suites against the cluster: this environment's `tests/cluster` (nodes Ready, no kube-proxy, no k0s Charts), then `tests/cluster` of each package `flux/kustomization.yaml` lists: `cilium` (Cilium running the kube-proxy mode and datapath `runtime_info` sets) and `flux` (the `FluxInstance` and both HelmReleases Ready and owning their workloads, and the root Kustomization applied at `refs/heads/<branch>@sha1:<origin tip>`) |
+| `mise run env:verify` | Run the read-only chainsaw suites against the cluster: the cluster's `tests/cluster` (nodes Ready, no kube-proxy, no k0s Charts), then `tests/cluster` of each package its Flux build lists: `cilium` (Cilium running the kube-proxy mode and datapath `runtime_info` sets) and `flux` (the `FluxInstance` and both HelmReleases Ready and owning their workloads, and the root Kustomization applied at `refs/heads/<branch>@sha1:<origin tip>`) |
 | `mise run env:test` | Test each root and the contracts between them (shared API address and port, kube-proxy setting, bootstrap charts, values and runtime info) against plans in a temporary state, with no OrbStack calls |
 | `mise run conformance [--only <packages> \| --changed]` | Run every `*:conformance` task, passing `--only` on. With `--only`, each task runs only the tests the chosen packages list, one regular expression per line, in `packages/<name>/tests/conformance`: `cilium` lists the whole suite, `flux` lists none, so `--only flux` runs nothing |
 | `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests, with Hubble flow logs for failed actions through a Relay port-forward (`--hubble-port`, default 4245; fails if that port is taken or Relay is unreachable; flow validation is disabled until cilium-cli can match these flows, see [BUGS.md](../../packages/cilium/BUGS.md#flow-validation-never-matches-reverse-nated-service-replies)), then remove its test workloads; a failed run keeps them for debugging (slow, manual only) |

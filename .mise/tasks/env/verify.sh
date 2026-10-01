@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-#MISE description="Run the read-only chainsaw suites against the environment's cluster: its own tests/cluster, then tests/cluster of each package its Flux build deploys"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#MISE description="Run the read-only chainsaw suites against the environment's cluster: its cluster definition's tests/cluster, then tests/cluster of each package its Flux build deploys"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 #USAGE flag "--only <packages>" help="Comma-separated packages whose suites run, such as cilium,flux; the environment's own suite always runs (default: every package)"
 #USAGE flag "--changed" help="Choose the packages this branch changed since it left origin/main, instead of --only"
 set -euo pipefail
@@ -9,9 +9,9 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
 environment="$usage_environment"
 
-suite="$(environment_directory "$environment")/tests/cluster"
+suite="$(cluster_directory "$environment")/tests/cluster"
 if [[ ! -d "$suite" ]]; then
-  fail "environment '$environment' has no cluster suite at $suite"
+  fail "environment '$environment' runs a cluster with no suite at $suite"
 fi
 only=$(package_selection "$environment" "${usage_only:-}" "${usage_changed:-false}")
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Wait for every node in the cluster to be Ready"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

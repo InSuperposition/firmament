@@ -4,6 +4,6 @@ set -euo pipefail
 
 hk install --mise
 mkdir -p "${TF_PLUGIN_CACHE_DIR:?TF_PLUGIN_CACHE_DIR is unset; run this through mise}"
-for config in "${MISE_PROJECT_ROOT:?}"/environment/*/mise.toml; do
+for config in "${MISE_PROJECT_ROOT:?}"/environments/*/mise.toml; do
   mise trust --quiet "$config"
 done

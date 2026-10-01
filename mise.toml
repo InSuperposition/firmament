@@ -9,7 +9,7 @@ FIRMAMENT_STATE_HOME = "{% if env.FIRMAMENT_STATE_HOME %}{{ env.FIRMAMENT_STATE_
 # Every OpenTofu run, task or test shares one provider cache, so init makes
 # no registry call once a provider is cached.
 TF_PLUGIN_CACHE_DIR = "{% if env.XDG_CACHE_HOME %}{{ env.XDG_CACHE_HOME }}{% else %}{{ env.HOME }}/.cache{% endif %}/firmament/tofu-plugins"
-# Default cluster at the repository root; each environment/<env>/mise.toml
+# Default cluster at the repository root; each environments/<env>/mise.toml
 # points KUBECONFIG at its own cluster.
 KUBECONFIG = "{{ env.FIRMAMENT_STATE_HOME }}/environment/local/admin.kubeconfig"
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Apply the Kubernetes root (k0s, its kubeconfig and the cluster-access contract), then wait for the node to register; Cilium and Flux come from env:apply"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

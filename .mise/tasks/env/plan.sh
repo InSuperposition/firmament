@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Plan the machine root, then the Kubernetes root once a machine is recorded, then the bootstrap root once a cluster is recorded"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
