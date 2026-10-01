@@ -1,7 +1,6 @@
 setup_file() {
   export TF_DATA_DIR="$BATS_FILE_TMPDIR/tofu"
-  export TF_PLUGIN_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/firmament/tofu-plugins"
-  mkdir -p "$TF_PLUGIN_CACHE_DIR"
+  mkdir -p "${TF_PLUGIN_CACHE_DIR:?run this through mise}"
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../.." && pwd)
   export environment_directory="$root_directory/environment/local"
   export components_directory="$root_directory/components"

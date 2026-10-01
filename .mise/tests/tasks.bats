@@ -1753,3 +1753,12 @@ STUB
   [[ "$output" == *"next: mise run k0s:apply local"* ]]
   ! grep -q 'readyz' "$CALLS"
 }
+
+@test "repo:setup creates the shared OpenTofu provider cache" {
+  stub hk
+  export TF_PLUGIN_CACHE_DIR="$BATS_TEST_TMPDIR/cache/tofu-plugins"
+  run "$root_directory/.mise/tasks/repo/setup.sh"
+  [ "$status" -eq 0 ] || fail "$output"
+  [ -d "$TF_PLUGIN_CACHE_DIR" ] || fail "no cache directory at $TF_PLUGIN_CACHE_DIR"
+  grep -q '^hk install --mise ' "$CALLS" || fail "hk hooks not installed: $(cat "$CALLS")"
+}
