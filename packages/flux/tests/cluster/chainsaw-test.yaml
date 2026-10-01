@@ -5,9 +5,9 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: gitops-flux
+  name: flux
   labels:
-    component: gitops-flux
+    component: flux
 spec:
   namespace: kube-system
   steps:

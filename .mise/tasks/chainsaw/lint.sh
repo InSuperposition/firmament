@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Check every environment's and component's chainsaw suite against the chainsaw schema and allow only read-only operations"
+#MISE description="Check every environment's and package's chainsaw suite against the chainsaw schema and allow only read-only operations"
 set -euo pipefail
 
 # Prints one line per rule a suite breaks. A suite may only read the
@@ -18,7 +18,7 @@ read_only_violations() {
 }
 
 status=0
-mapfile -t suites < <(find "${MISE_PROJECT_ROOT:?}/environment" "${MISE_PROJECT_ROOT:?}/components" -path '*/tests/cluster/*' -name chainsaw-test.yaml | sort)
+mapfile -t suites < <(find "${MISE_PROJECT_ROOT:?}/environment" "${MISE_PROJECT_ROOT:?}/packages" -path '*/tests/cluster/*' -name chainsaw-test.yaml | sort)
 for suite in "${suites[@]}"; do
   if ! schema=$(chainsaw lint test -f "$suite" 2>&1); then
     printf '%s: not a valid chainsaw test\n%s\n' "$suite" "$schema" >&2

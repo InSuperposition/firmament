@@ -1,4 +1,4 @@
-# cni-cilium
+# cilium
 
 Abstract: The Flux component that runs Cilium, with Hubble Relay and
 Hubble UI, as the cluster network. The OpenTofu bootstrap installs the

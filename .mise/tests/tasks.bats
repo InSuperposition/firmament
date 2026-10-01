@@ -237,7 +237,7 @@ local_state() {
   [ "${lines[2]%% |*}" = "mise run k0s:verify local" ]
 }
 
-@test "verify --only runs the environment's own tasks and the chosen modules' tasks" {
+@test "verify --only runs the environment's own tasks and the chosen packages' tasks" {
   TASKS="cilium:verify env:verify flux:verify k0s:verify" usage_only=cilium run_task "$root_directory/.mise/tasks/verify.sh" local
   [ "$status" -eq 0 ]
   run grep '^mise run' "$CALLS"
@@ -247,8 +247,8 @@ local_state() {
   [ "${lines[2]%% |*}" = "mise run k0s:verify local" ]
 }
 
-@test "verify --changed checks the modules the branch changed, plus the environment" {
-  TASKS="cilium:verify env:verify flux:verify k0s:verify" usage_changed=true run_changed "$root_directory/.mise/tasks/verify.sh" components/gitops-flux/fluxinstance.yaml
+@test "verify --changed checks the packages the branch changed, plus the environment" {
+  TASKS="cilium:verify env:verify flux:verify k0s:verify" usage_changed=true run_changed "$root_directory/.mise/tasks/verify.sh" packages/flux/fluxinstance.yaml
   [ "$status" -eq 0 ]
   run grep '^mise run' "$CALLS"
   [ "${#lines[@]}" -eq 3 ]
@@ -257,29 +257,28 @@ local_state() {
   [ "${lines[2]%% |*}" = "mise run k0s:verify local" ]
 }
 
-@test "conformance --changed runs nothing when no module changed" {
+@test "conformance --changed runs nothing when no package changed" {
   TASKS="cilium:conformance" usage_changed=true run_changed "$root_directory/.mise/tasks/conformance.sh" README.md
   [ "$status" -eq 0 ]
-  [[ "$output" == *"No modules changed, so no conformance tests run"* ]]
+  [[ "$output" == *"No packages changed, so no conformance tests run"* ]]
   [ ! -e "$CALLS" ]
 }
 
-@test "verify refuses a module the environment does not deploy, before running any task" {
+@test "verify refuses a package the environment does not deploy, before running any task" {
   usage_only=cilium,nope run_task "$root_directory/.mise/tasks/verify.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown module 'nope' for environment 'local'; choose from: cilium flux"* ]]
+  [[ "$output" == *"unknown package 'nope' for environment 'local'; choose from: cilium flux"* ]]
   [ ! -e "$CALLS" ]
 }
 
-@test "every component is named <role>-<module>, and no two share a module name" {
-  local component names=""
-  for component in "$root_directory"/components/*/; do
-    component="${component%/}"
-    [[ "${component##*/}" =~ ^[a-z0-9]+-[a-z0-9-]+$ ]] || fail "${component##*/} is not named <role>-<module>"
-    names+="${component##*/*-}"$'\n'
+@test "every package is named <tool>[-<concern>], and none is named none" {
+  local package
+  for package in "$root_directory"/packages/*/; do
+    package="${package%/}"
+    package="${package##*/}"
+    [[ "$package" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || fail "$package is not named <tool>[-<concern>]"
+    [[ "$package" != none ]] || fail "no package may be named none; it means no package"
   done
-  [ -z "$(sort <<<"$names" | uniq -d)" ] || fail "module names repeat: $(sort <<<"$names" | uniq -d)"
-  ! grep -qx none <<<"$names" || fail "no module may be named none; it means no module"
 }
 
 @test "cilium:verify waits for the release to run Flux's values, then for the rollout, then for Cilium" {
@@ -392,24 +391,24 @@ local_state() {
   kill "$listener"
 }
 
-@test "cilium:conformance --only runs the tests the chosen modules list" {
+@test "cilium:conformance --only runs the tests the chosen packages list" {
   usage_only=cilium run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
   [ "$status" -eq 0 ]
   run grep ' connectivity test --log-check-only-test-time ' "$CALLS"
   [[ "${lines[0]%% |*}" == *" --test-concurrency 3 --test .*" ]]
 }
 
-@test "cilium:conformance --only runs nothing when no chosen module lists a test" {
+@test "cilium:conformance --only runs nothing when no chosen package lists a test" {
   usage_only=flux run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
   [ "$status" -eq 0 ]
   [[ "$output" == *"No conformance tests apply to: flux"* ]]
   [ ! -e "$CALLS" ]
 }
 
-@test "cilium:conformance refuses an unknown module before calling any tool" {
+@test "cilium:conformance refuses an unknown package before calling any tool" {
   usage_only=nope run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown module 'nope' for environment 'local'; choose from: cilium flux"* ]]
+  [[ "$output" == *"unknown package 'nope' for environment 'local'; choose from: cilium flux"* ]]
   [ ! -e "$CALLS" ]
 }
 
@@ -422,7 +421,7 @@ local_state() {
   [ "${lines[1]%% |*}" = "mise run other:conformance local --only flux" ]
 }
 
-@test "conformance refuses an unknown module before running any task" {
+@test "conformance refuses an unknown package before running any task" {
   usage_only=nope run_task "$root_directory/.mise/tasks/conformance.sh" local
   [ "$status" -ne 0 ]
   [ ! -e "$CALLS" ]
@@ -923,7 +922,7 @@ record_chainsaw_kubeconfig() {
 # A pushed checkout of feature/test whose main branch, on origin, already
 # hands Cilium to Flux and lists the workloads an upgrade must leave running.
 upgrade_repository() {
-  e2e_repository components/cni-cilium/helmrelease.yaml environment/local/tests/upgrade-unaffected
+  e2e_repository packages/cilium/helmrelease.yaml environment/local/tests/upgrade-unaffected
   printf 'kube-system k8s-app=kube-dns\n' >"$MISE_PROJECT_ROOT/environment/local/tests/upgrade-unaffected"
   commit_and_push "$MISE_PROJECT_ROOT" feature/test unaffected
   commit_and_push "$MISE_PROJECT_ROOT" main baseline
@@ -1193,7 +1192,7 @@ mise run --yes env:destroy local" ]
 run_changed() {
   local script="$1" changed="$2"
   MISE_PROJECT_ROOT=$(make_pushed_repository main environment/local/flux/kustomization.yaml README.md \
-    components/cni-cilium/values.yaml components/gitops-flux/fluxinstance.yaml)
+    packages/cilium/values.yaml packages/flux/fluxinstance.yaml)
   cp "$root_directory/environment/local/flux/kustomization.yaml" "$MISE_PROJECT_ROOT/environment/local/flux/"
   commit_and_push "$MISE_PROJECT_ROOT" main layout
   git -C "$MISE_PROJECT_ROOT" switch -q -c feature
@@ -1202,14 +1201,14 @@ run_changed() {
   run_task "$script" local
 }
 
-# A pushed checkout whose local environment deploys cni-cilium, which has a
-# cluster suite, and gitops-flux, which has none.
+# A pushed checkout whose local environment deploys cilium, which has a
+# cluster suite, and flux, which has none.
 verify_repository() {
   make_repository environment/local/flux/kustomization.yaml >/dev/null
-  printf 'resources:\n  - ../../../components/cni-cilium\n  - ../../../components/gitops-flux\n' \
+  printf 'resources:\n  - ../../../packages/cilium\n  - ../../../packages/flux\n' \
     >"$BATS_TEST_TMPDIR/repository/environment/local/flux/kustomization.yaml"
   e2e_repository environment/local/tests/cluster/chainsaw-test.yaml \
-    components/cni-cilium/tests/cluster/chainsaw-test.yaml components/gitops-flux/kustomization.yaml
+    packages/cilium/tests/cluster/chainsaw-test.yaml packages/flux/kustomization.yaml
 }
 
 @test "env:verify waits for Flux to apply origin's tip, then checks it" {
@@ -1221,26 +1220,26 @@ verify_repository() {
   run grep -E '^(kubectl .* wait kustomization|chainsaw )' "$CALLS"
   [ "${#lines[@]}" -eq 2 ]
   [ "${lines[0]%% |*}" = "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system wait kustomization/flux-system --for=jsonpath={.status.lastAppliedRevision}=$revision --timeout=10m" ]
-  [[ "${lines[1]}" =~ ^"chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/components/cni-cilium/tests/cluster --values "([^ ]+)" --set-string flux_revision=$revision | KUBECONFIG=/state/admin.kubeconfig"$ ]]
+  [[ "${lines[1]}" =~ ^"chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/packages/cilium/tests/cluster --values "([^ ]+)" --set-string flux_revision=$revision | KUBECONFIG=/state/admin.kubeconfig"$ ]]
 }
 
-@test "env:verify --only runs the environment's suite and the chosen modules' suites" {
+@test "env:verify --only runs the environment's suite and the chosen packages' suites" {
   record_chainsaw_kubeconfig
   verify_repository
-  mkdir -p "$MISE_PROJECT_ROOT/components/gitops-flux/tests/cluster"
-  : >"$MISE_PROJECT_ROOT/components/gitops-flux/tests/cluster/chainsaw-test.yaml"
+  mkdir -p "$MISE_PROJECT_ROOT/packages/flux/tests/cluster"
+  : >"$MISE_PROJECT_ROOT/packages/flux/tests/cluster/chainsaw-test.yaml"
   commit_and_push "$MISE_PROJECT_ROOT" feature/test flux-suite
   usage_only=flux run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -eq 0 ]
   run grep '^chainsaw ' "$CALLS"
-  [[ "${lines[0]}" == "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/components/gitops-flux/tests/cluster --values "* ]]
+  [[ "${lines[0]}" == "chainsaw test --test-dir $MISE_PROJECT_ROOT/environment/local/tests/cluster --test-dir $MISE_PROJECT_ROOT/packages/flux/tests/cluster --values "* ]]
 }
 
-@test "env:verify refuses an unknown module before fetching or waiting" {
+@test "env:verify refuses an unknown package before fetching or waiting" {
   verify_repository
   usage_only=nope run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown module 'nope' for environment 'local'; choose from: cilium flux"* ]]
+  [[ "$output" == *"unknown package 'nope' for environment 'local'; choose from: cilium flux"* ]]
   [ ! -e "$CALLS" ]
 }
 
@@ -1274,13 +1273,13 @@ STUB
   ! grep -q '^chainsaw ' "$CALLS"
 }
 
-@test "every value a component suite reads is a runtime value or the Flux revision" {
+@test "every value a package suite reads is a runtime value or the Flux revision" {
   local known used
   known=$(grep -Ev '^[[:space:]]*(#|$)' "$root_directory/.mise/flux-test-values.env" | cut -d= -f1)$'\nflux_revision'
-  used=$(grep -rhoE '\$values\.[a-z_]+' "$root_directory"/components/*/tests/cluster | cut -d. -f2 | sort -u)
+  used=$(grep -rhoE '\$values\.[a-z_]+' "$root_directory"/packages/*/tests/cluster | cut -d. -f2 | sort -u)
   [ -n "$used" ]
   while IFS= read -r key; do
-    grep -qx -- "$key" <<<"$known" || fail "a component suite reads \$values.$key, which no environment sets"
+    grep -qx -- "$key" <<<"$known" || fail "a package suite reads \$values.$key, which no environment sets"
   done <<<"$used"
 }
 
@@ -1312,18 +1311,18 @@ edited_suite_repository() {
   printf '%s\n' "$repository"
 }
 
-@test "chainsaw:lint rejects a component suite that changes the cluster" {
-  local repository suite=components/x/tests/cluster/chainsaw-test.yaml
+@test "chainsaw:lint rejects a package suite that changes the cluster" {
+  local repository suite=packages/x/tests/cluster/chainsaw-test.yaml
   repository=$(make_repository "$suite")
   yq '.spec.steps[0].try[0] = {"apply": .spec.steps[0].try[0].assert}' \
-    "$root_directory/components/cni-cilium/tests/cluster/chainsaw-test.yaml" >"$repository/$suite"
+    "$root_directory/packages/cilium/tests/cluster/chainsaw-test.yaml" >"$repository/$suite"
   rm "$stubs/chainsaw"
   MISE_PROJECT_ROOT=$repository run "$root_directory/.mise/tasks/chainsaw/lint.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"$suite: try may not run apply"* ]]
 }
 
-@test "chainsaw:lint accepts every environment's and component's cluster suite" {
+@test "chainsaw:lint accepts every environment's and package's cluster suite" {
   rm "$stubs/chainsaw"
   run "$root_directory/.mise/tasks/chainsaw/lint.sh"
   [ "$status" -eq 0 ]
@@ -1444,7 +1443,7 @@ STUB
   repository="$BATS_TEST_TMPDIR/schemas-repository"
   mkdir -p "$repository/.mise"
   cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/flux-test-values.env" "$repository/.mise/"
-  cp -R "$root_directory/environment" "$root_directory/components" "$repository/"
+  cp -R "$root_directory/environment" "$root_directory/packages" "$repository/"
   MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/flux/schemas.sh"
   [ "$status" -eq 0 ]
   run grep -c '^curl -fsSL https://raw.githubusercontent.com/fluxcd/flux-schema/88c74c0294aaf472a8df920f92a2f28811a47d72/catalog/latest/' "$CALLS"
@@ -1460,7 +1459,7 @@ STUB
   repository="$BATS_TEST_TMPDIR/schemas-repository"
   mkdir -p "$repository/.mise"
   cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$root_directory/.mise/flux-test-values.env" "$root_directory/.mise/flux-schemas" "$repository/.mise/"
-  cp -R "$root_directory/environment" "$root_directory/components" "$repository/"
+  cp -R "$root_directory/environment" "$root_directory/packages" "$repository/"
   MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/flux/schemas.sh"
   [ "$status" -ne 0 ]
   diff -r "$root_directory/.mise/flux-schemas" "$repository/.mise/flux-schemas"

@@ -5,9 +5,9 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: cni-cilium
+  name: cilium
   labels:
-    component: cni-cilium
+    component: cilium
 spec:
   namespace: kube-system
   steps:

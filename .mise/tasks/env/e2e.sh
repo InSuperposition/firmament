@@ -114,8 +114,8 @@ if [[ -n "$from_branch" ]]; then
   fi
   # k0s uninstalls a Cilium it installed once Flux takes it over, so the
   # baseline must already hand Cilium to Flux.
-  if ! git -C "$MISE_PROJECT_ROOT" cat-file -e "$baseline:components/cni-cilium/helmrelease.yaml" 2>/dev/null; then
-    fail "origin/$from_branch at $baseline does not hand Cilium to Flux (no components/cni-cilium/helmrelease.yaml); --from-branch needs a baseline where Flux owns Cilium"
+  if ! git -C "$MISE_PROJECT_ROOT" cat-file -e "$baseline:packages/cilium/helmrelease.yaml" 2>/dev/null; then
+    fail "origin/$from_branch at $baseline does not hand Cilium to Flux (no packages/cilium/helmrelease.yaml); --from-branch needs a baseline where Flux owns Cilium"
     exit 1
   fi
   unaffected="$(environment_directory "$environment")/tests/upgrade-unaffected"

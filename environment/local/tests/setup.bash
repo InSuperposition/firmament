@@ -3,7 +3,7 @@ setup_file() {
   mkdir -p "${TF_PLUGIN_CACHE_DIR:?run this through mise}"
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../.." && pwd)
   export environment_directory="$root_directory/environment/local"
-  export components_directory="$root_directory/components"
+  export packages_directory="$root_directory/packages"
   export root_directory
   export TF_VAR_git_branch=feature/test
 

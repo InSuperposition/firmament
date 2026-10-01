@@ -259,13 +259,13 @@ setup() {
   [[ "$output" == *"nothing listens on local port 1 after 1s"* ]]
 }
 
-@test "lists the environment's own suite, then each deployed component's suite" {
+@test "lists the environment's own suite, then each deployed package's suite" {
   run cluster_suites local
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 3 ]
   [ "${lines[0]}" = "$root_directory/environment/local/tests/cluster" ]
-  [ "${lines[1]}" = "$root_directory/components/cni-cilium/tests/cluster" ]
-  [ "${lines[2]}" = "$root_directory/components/gitops-flux/tests/cluster" ]
+  [ "${lines[1]}" = "$root_directory/packages/cilium/tests/cluster" ]
+  [ "${lines[2]}" = "$root_directory/packages/flux/tests/cluster" ]
 }
 
 @test "lists only the environment's own suite when it has no Flux build" {
@@ -275,33 +275,33 @@ setup() {
   [ "$output" = "$MISE_PROJECT_ROOT/environment/bare/tests/cluster" ]
 }
 
-@test "skips a deployed component without a suite and a component the environment does not deploy" {
+@test "skips a deployed package without a suite and a package the environment does not deploy" {
   MISE_PROJECT_ROOT=$(make_repository environment/x/flux/kustomization.yaml \
-    components/tested/tests/cluster/chainsaw-test.yaml components/untested/kustomization.yaml \
-    components/undeployed/tests/cluster/chainsaw-test.yaml)
-  printf 'resources:\n  - ../../../components/untested\n  - ../../../components/tested\n' \
+    packages/tested/tests/cluster/chainsaw-test.yaml packages/untested/kustomization.yaml \
+    packages/undeployed/tests/cluster/chainsaw-test.yaml)
+  printf 'resources:\n  - ../../../packages/untested\n  - ../../../packages/tested\n' \
     >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
   run cluster_suites x
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 2 ]
-  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/components/tested/tests/cluster" ]
+  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/packages/tested/tests/cluster" ]
 }
 
-@test "keeps only the chosen modules' suites, and always the environment's own" {
+@test "keeps only the chosen packages' suites, and always the environment's own" {
   run cluster_suites local flux
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 2 ]
   [ "${lines[0]}" = "$root_directory/environment/local/tests/cluster" ]
-  [ "${lines[1]}" = "$root_directory/components/gitops-flux/tests/cluster" ]
+  [ "${lines[1]}" = "$root_directory/packages/flux/tests/cluster" ]
 }
 
-@test "refuses a module the environment does not deploy, naming the ones it does" {
-  run cluster_suites local cilium,cni-cilium
+@test "refuses a package the environment does not deploy, naming the ones it does" {
+  run cluster_suites local cilium,kyverno
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown module 'cni-cilium' for environment 'local'; choose from: cilium flux"* ]]
+  [[ "$output" == *"unknown package 'kyverno' for environment 'local'; choose from: cilium flux"* ]]
 }
 
-@test "lists the conformance tests the chosen modules need" {
+@test "lists the conformance tests the chosen packages need" {
   run conformance_patterns local cilium
   [ "$status" -eq 0 ]
   [ "$output" = ".*" ]
@@ -310,22 +310,22 @@ setup() {
   [ -z "$output" ]
 }
 
-@test "reads conformance tests without comments or blank lines, from every module when none is chosen" {
+@test "reads conformance tests without comments or blank lines, from every package when none is chosen" {
   MISE_PROJECT_ROOT=$(make_repository environment/x/flux/kustomization.yaml \
-    components/net-a/tests/conformance components/net-b/tests/conformance)
-  printf 'resources:\n  - ../../../components/net-a\n  - ../../../components/net-b\n' \
+    packages/net-a/tests/conformance packages/net-b/tests/conformance)
+  printf 'resources:\n  - ../../../packages/net-a\n  - ../../../packages/net-b\n' \
     >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
-  printf '# policy tests\n\nclient-egress\n  # indented comment\n' >"$MISE_PROJECT_ROOT/components/net-a/tests/conformance"
-  printf 'to-fqdns\n' >"$MISE_PROJECT_ROOT/components/net-b/tests/conformance"
+  printf '# policy tests\n\nclient-egress\n  # indented comment\n' >"$MISE_PROJECT_ROOT/packages/net-a/tests/conformance"
+  printf 'to-fqdns\n' >"$MISE_PROJECT_ROOT/packages/net-b/tests/conformance"
   run conformance_patterns x
   [ "$status" -eq 0 ]
   [ "$output" = $'client-egress\nto-fqdns' ]
 }
 
-@test "refuses conformance tests for a module the environment does not deploy" {
+@test "refuses conformance tests for a package the environment does not deploy" {
   run conformance_patterns local nope
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown module 'nope'"* ]]
+  [[ "$output" == *"unknown package 'nope'"* ]]
 }
 
 @test "names an env:e2e step after the task it runs, or its first word" {
@@ -353,95 +353,89 @@ setup() {
 }
 
 # A repository on main, pushed to origin, whose environment x deploys
-# cni-cilium and gitops-flux but not policy-kyverno, then a branch off it.
+# cilium and flux but not policy-kyverno, then a branch off it.
 branch_repository() {
   MISE_PROJECT_ROOT=$(make_pushed_repository main environment/x/flux/kustomization.yaml environment/x/main.tf \
-    components/cni-cilium/values.yaml components/gitops-flux/fluxinstance.yaml components/policy-kyverno/policy.yaml README.md)
-  printf 'resources:\n  - ../../../components/cni-cilium\n  - ../../../components/gitops-flux\n' \
+    packages/cilium/values.yaml packages/flux/fluxinstance.yaml packages/policy-kyverno/policy.yaml README.md)
+  printf 'resources:\n  - ../../../packages/cilium\n  - ../../../packages/flux\n' \
     >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
-  commit_and_push "$MISE_PROJECT_ROOT" main components
+  commit_and_push "$MISE_PROJECT_ROOT" main packages
   git -C "$MISE_PROJECT_ROOT" switch -q -c feature
 }
 
-@test "changed modules: a component change selects its module" {
+@test "changed packages: a package change selects its package" {
   branch_repository
-  printf 'x\n' >>"$MISE_PROJECT_ROOT/components/cni-cilium/values.yaml"
-  run changed_modules x
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/packages/cilium/values.yaml"
+  run changed_packages x
   [ "$status" -eq 0 ]
   [ "$output" = cilium ]
 }
 
-@test "changed modules: committed and untracked changes to two components select both, once each" {
+@test "changed packages: committed and untracked changes to two packages select both, once each" {
   branch_repository
-  printf 'x\n' >>"$MISE_PROJECT_ROOT/components/gitops-flux/fluxinstance.yaml"
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/packages/flux/fluxinstance.yaml"
   git -C "$MISE_PROJECT_ROOT" -c user.name=t -c user.email=t@example.test commit -qam flux
-  mkdir -p "$MISE_PROJECT_ROOT/components/cni-cilium/tests"
-  : >"$MISE_PROJECT_ROOT/components/cni-cilium/tests/conformance"
-  printf 'y\n' >>"$MISE_PROJECT_ROOT/components/gitops-flux/fluxinstance.yaml"
-  run changed_modules x
+  mkdir -p "$MISE_PROJECT_ROOT/packages/cilium/tests"
+  : >"$MISE_PROJECT_ROOT/packages/cilium/tests/conformance"
+  printf 'y\n' >>"$MISE_PROJECT_ROOT/packages/flux/fluxinstance.yaml"
+  run changed_packages x
   [ "$status" -eq 0 ]
   [ "$output" = flux,cilium ]
 }
 
-@test "changed modules: Markdown and components the environment does not deploy select none" {
+@test "changed packages: Markdown and packages the environment does not deploy select none" {
   branch_repository
   printf 'x\n' >>"$MISE_PROJECT_ROOT/README.md"
-  printf 'x\n' >>"$MISE_PROJECT_ROOT/components/policy-kyverno/policy.yaml"
-  run changed_modules x
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/packages/policy-kyverno/policy.yaml"
+  run changed_packages x
   [ "$status" -eq 0 ]
   [ "$output" = none ]
 }
 
-@test "changed modules: a change outside components selects every module" {
+@test "changed packages: a change outside packages selects every package" {
   branch_repository
-  printf 'x\n' >>"$MISE_PROJECT_ROOT/components/cni-cilium/values.yaml"
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/packages/cilium/values.yaml"
   printf 'x\n' >>"$MISE_PROJECT_ROOT/environment/x/main.tf"
-  run changed_modules x
+  run changed_packages x
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
-@test "changed modules: fails without origin/main" {
+@test "changed packages: fails without origin/main" {
   MISE_PROJECT_ROOT=$(make_repository environment/x/main.tf)
   git -C "$MISE_PROJECT_ROOT" init -q
-  run changed_modules x
+  run changed_packages x
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot find where this branch left origin/main; fetch origin first"* ]]
 }
 
-@test "module selection refuses --only together with --changed" {
-  run module_selection local cilium true
+@test "package selection refuses --only together with --changed" {
+  run package_selection local cilium true
   [ "$status" -ne 0 ]
   [[ "$output" == *"--only and --changed cannot be combined"* ]]
 }
 
-@test "module selection passes --only on, and selects every module without flags" {
-  [ "$(module_selection local flux false)" = flux ]
-  [ -z "$(module_selection local "" false)" ]
+@test "package selection passes --only on, and selects every package without flags" {
+  [ "$(package_selection local flux false)" = flux ]
+  [ -z "$(package_selection local "" false)" ]
 }
 
-@test "none selects no module and passes the module check" {
-  run check_modules local none
+@test "none selects no package and passes the package check" {
+  run check_packages local none
   [ "$status" -eq 0 ]
-  ! module_selected cilium none
+  ! package_selected cilium none
   run cluster_suites local none
   [ "$output" = "$root_directory/environment/local/tests/cluster" ]
 }
 
-@test "names a component's module after its folder without the role prefix" {
-  [ "$(module_name /x/components/cni-cilium)" = cilium ]
-  [ "$(module_name components/gitops-flux)" = flux ]
-  [ "$(module_name components/policy-kyverno-audit)" = kyverno-audit ]
-}
-
-@test "counts only directories the Flux build lists as components" {
+@test "counts only directories the Flux build lists as packages" {
   MISE_PROJECT_ROOT=$(make_repository environment/x/flux/kustomization.yaml environment/x/flux/namespace.yaml \
-    components/cni-cilium/kustomization.yaml)
-  printf 'resources:\n  - namespace.yaml\n  - ../../../components/cni-cilium\n' \
+    packages/cilium/kustomization.yaml)
+  printf 'resources:\n  - namespace.yaml\n  - ../../../packages/cilium\n' \
     >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
-  run deployed_components x
+  run deployed_packages x
   [ "$status" -eq 0 ]
-  [ "$output" = "$MISE_PROJECT_ROOT/components/cni-cilium" ]
+  [ "$output" = "$MISE_PROJECT_ROOT/packages/cilium" ]
 }
 
 @test "fails when the environment's Flux build cannot be read" {

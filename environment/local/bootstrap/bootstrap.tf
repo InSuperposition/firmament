@@ -1,17 +1,17 @@
 # Installs Cilium, then Flux Operator and the FluxInstance, once, and leaves
 # all three to Flux. Chart digests, release identities, values and the
-# FluxInstance are read from components/cni-cilium and components/gitops-flux,
+# FluxInstance are read from packages/cilium and packages/flux,
 # so Flux and the bootstrap install the same bytes.
 locals {
   # Increment only to rerun the bootstrap on purpose, for example after a
   # failed bootstrap, without rebuilding the machine.
   bootstrap_revision = 1
 
-  components            = "${path.module}/../../../components"
-  cilium_source         = yamldecode(file("${local.components}/cni-cilium/ocirepository.yaml"))
-  cilium_release        = yamldecode(file("${local.components}/cni-cilium/helmrelease.yaml"))
-  flux_operator_source  = yamldecode(file("${local.components}/gitops-flux/ocirepository.yaml"))
-  flux_operator_release = yamldecode(file("${local.components}/gitops-flux/helmrelease.yaml"))
+  packages              = "${path.module}/../../../packages"
+  cilium_source         = yamldecode(file("${local.packages}/cilium/ocirepository.yaml"))
+  cilium_release        = yamldecode(file("${local.packages}/cilium/helmrelease.yaml"))
+  flux_operator_source  = yamldecode(file("${local.packages}/flux/ocirepository.yaml"))
+  flux_operator_release = yamldecode(file("${local.packages}/flux/helmrelease.yaml"))
 }
 
 module "bootstrap_flux" {
@@ -21,7 +21,7 @@ module "bootstrap_flux" {
   revision = local.bootstrap_revision
 
   gitops_resources = {
-    instance_yaml = file("${local.components}/gitops-flux/fluxinstance.yaml")
+    instance_yaml = file("${local.packages}/flux/fluxinstance.yaml")
     prerequisites = {
       # Cilium goes first: nothing else gets a pod network until it runs.
       charts = [{
@@ -29,7 +29,7 @@ module "bootstrap_flux" {
         namespace        = local.cilium_release.spec.targetNamespace
         repository       = "${trimprefix(local.cilium_source.spec.url, "oci://")}@${local.cilium_source.spec.ref.digest}"
         create_namespace = false
-        values_yaml      = file("${local.components}/cni-cilium/values.yaml")
+        values_yaml      = file("${local.packages}/cilium/values.yaml")
         # Once helm-controller labels the agent DaemonSet, the bootstrap
         # leaves the release to Flux.
         flux_adoption_check = {

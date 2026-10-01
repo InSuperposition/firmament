@@ -52,12 +52,12 @@ load setup.bash
   [ "$(jq -r '.no_drain' <<<"$output")" = true ]
 }
 
-@test "bootstraps Cilium from the chart digest the cni-cilium component pins" {
+@test "bootstraps Cilium from the chart digest the cilium package pins" {
   run bootstrap_values
   [ "$status" -eq 0 ]
   chart=$(yq '.gitopsResources.prerequisites.charts[0]' <<<"$output")
-  source_url=$(yq -r '.spec.url' "$components_directory/cni-cilium/ocirepository.yaml")
-  digest=$(yq -r '.spec.ref.digest' "$components_directory/cni-cilium/ocirepository.yaml")
+  source_url=$(yq -r '.spec.url' "$packages_directory/cilium/ocirepository.yaml")
+  digest=$(yq -r '.spec.ref.digest' "$packages_directory/cilium/ocirepository.yaml")
   [ "$(yq -r '.gitopsResources.prerequisites.charts | length' <<<"$output")" = 1 ]
   [ "$(yq -r '.repository' <<<"$chart")" = "${source_url#oci://}@$digest" ]
   [ "$(yq -r '.version' <<<"$chart")" = "" ]
@@ -67,7 +67,7 @@ load setup.bash
   run bootstrap_values
   [ "$status" -eq 0 ]
   chart=$(yq '.gitopsResources.prerequisites.charts[0]' <<<"$output")
-  release="$components_directory/cni-cilium/helmrelease.yaml"
+  release="$packages_directory/cilium/helmrelease.yaml"
   [ "$(yq -r '.name' <<<"$chart")" = "$(yq -r '.spec.releaseName' "$release")" ]
   [ "$(yq -r '.namespace' <<<"$chart")" = "$(yq -r '.spec.storageNamespace' "$release")" ]
   [ "$(yq -r '.createNamespace' <<<"$chart")" = false ]
@@ -101,11 +101,11 @@ load setup.bash
   [ "$output" = /keys/id_ed25519 ]
 }
 
-@test "bootstraps the Flux Operator chart digest the gitops-flux component pins" {
+@test "bootstraps the Flux Operator chart digest the flux package pins" {
   run bootstrap_values
   [ "$status" -eq 0 ]
-  source_url=$(yq -r '.spec.url' "$components_directory/gitops-flux/ocirepository.yaml")
-  digest=$(yq -r '.spec.ref.digest' "$components_directory/gitops-flux/ocirepository.yaml")
+  source_url=$(yq -r '.spec.url' "$packages_directory/flux/ocirepository.yaml")
+  digest=$(yq -r '.spec.ref.digest' "$packages_directory/flux/ocirepository.yaml")
   [[ "$digest" == sha256:* ]]
   [ "$(yq -r '.gitopsResources.operatorChart.repository' <<<"$output")" = "${source_url#oci://}@$digest" ]
   [ "$(yq -r '.gitopsResources.operatorChart.version' <<<"$output")" = "" ]
@@ -114,15 +114,15 @@ load setup.bash
 @test "bootstraps Flux Operator with the values its HelmRelease declares" {
   run bootstrap_values
   [ "$status" -eq 0 ]
-  expected=$(yq -o=json -I=0 '.spec.values' "$components_directory/gitops-flux/helmrelease.yaml")
+  expected=$(yq -o=json -I=0 '.spec.values' "$packages_directory/flux/helmrelease.yaml")
   [ "$(yq -r '.gitopsResources.operatorChart.values' <<<"$output" | yq -o=json -I=0 '.')" = "$expected" ]
-  [[ "$(yq -r '.spec.values.image.tag' "$components_directory/gitops-flux/helmrelease.yaml")" == *@sha256:* ]]
+  [[ "$(yq -r '.spec.values.image.tag' "$packages_directory/flux/helmrelease.yaml")" == *@sha256:* ]]
 }
 
-@test "bootstraps the FluxInstance the gitops-flux component declares" {
+@test "bootstraps the FluxInstance the flux package declares" {
   run bootstrap_values
   [ "$status" -eq 0 ]
-  [ "$(yq -r '.gitopsResources.instance' <<<"$output")" = "$(cat "$components_directory/gitops-flux/fluxinstance.yaml")" ]
+  [ "$(yq -r '.gitopsResources.instance' <<<"$output")" = "$(cat "$packages_directory/flux/fluxinstance.yaml")" ]
 }
 
 @test "sets every runtime value the Flux build is linted with, and no other" {
