@@ -9,7 +9,6 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 environment="$usage_environment"
 port="${usage_port:-9080}"
 
-init_environment "$environment"
 kubeconfig=$(environment_kubeconfig "$environment")
 require_free_local_port "$port"
 kubectl --kubeconfig "$kubeconfig" -n flux-system port-forward svc/flux-operator "$port:9080" >/dev/null &

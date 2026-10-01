@@ -1,11 +1,7 @@
 #!/usr/bin/env bats
-load setup.bash
-
-@test "installs no Helm charts through k0s" {
-  run cluster_config
-  [ "$status" -eq 0 ]
-  [ "$(yq -r '.spec | has("extensions")' <<<"$output")" = false ]
-}
+# Plans the bootstrap root against the cluster-access contract the
+# Kubernetes root plans, so these tests also check the two roots agree.
+load ../../kubernetes-k0s/tests/setup.bash
 
 @test "replaces kube-proxy with Cilium on the netkit datapath" {
   run cluster_config
@@ -28,28 +24,6 @@ load setup.bash
   [ "$(yq -r '.managedResources.runtimeInfo.data.api_address' <<<"$output")" = "$api_address" ]
   [ "$(yq -r '.managedResources.runtimeInfo.data.api_port' <<<"$output")" = "$api_port" ]
   [ "$(yq -r '.managedResources.runtimeInfo.data.cilium_operator_replicas' <<<"$output")" = 1 ]
-}
-
-@test "keeps every in-cluster object out of the environment root" {
-  local plan="$BATS_TEST_ROOT/plan.tfplan"
-  tofu -chdir="$environment_directory" plan -input=false -out="$plan" \
-    -var="state_directory=$BATS_TEST_ROOT/state" >/dev/null
-  run bash -c "tofu -chdir='$environment_directory' show -json '$plan' | jq -r '.resource_changes[].provider_name' | sort -u"
-  [ "$status" -eq 0 ]
-  [[ "$output" != *hashicorp/helm* ]]
-  [[ "$output" != *hashicorp/kubernetes* ]]
-}
-
-@test "destroys k0s with the machine instead of resetting it over SSH" {
-  run k0sctl_config
-  [ "$status" -eq 0 ]
-  [ "$(jq -r '.skip_destroy' <<<"$output")" = true ]
-}
-
-@test "never drains the single node before an upgrade" {
-  run k0sctl_config
-  [ "$status" -eq 0 ]
-  [ "$(jq -r '.no_drain' <<<"$output")" = true ]
 }
 
 @test "bootstraps Cilium from the chart digest the cilium package pins" {
@@ -77,7 +51,7 @@ load setup.bash
 @test "bootstraps Cilium with the values Flux applies" {
   run bootstrap_values
   [ "$status" -eq 0 ]
-  flux_values=$(kubectl kustomize "$environment_directory/flux" | yq -r 'select(.kind == "ConfigMap" and .metadata.name == "cilium-values") | .data["values.yaml"]')
+  flux_values=$(kubectl kustomize "$flux_build" | yq -r 'select(.kind == "ConfigMap" and .metadata.name == "cilium-values") | .data["values.yaml"]')
   [ -n "$flux_values" ]
   [ "$(yq -r '.gitopsResources.prerequisites.charts[0].values' <<<"$output")" = "$flux_values" ]
 }
@@ -87,18 +61,6 @@ load setup.bash
   [ "$status" -eq 0 ]
   [ "$(yq -r '.job.tolerations[] | select(.key == "node.kubernetes.io/not-ready") | .operator' <<<"$output")" = Exists ]
   [ "$(yq -r '.job.tolerations[] | select(.key == "node.cilium.io/agent-not-ready") | .operator' <<<"$output")" = Exists ]
-}
-
-@test "reaches the machine with OrbStack's own SSH key by default" {
-  run ssh_key_path
-  [ "$status" -eq 0 ]
-  [ "$output" = "$HOME/.orbstack/ssh/id_ed25519" ]
-}
-
-@test "reaches the machine with the SSH key the caller sets" {
-  run ssh_key_path -var='orbstack_ssh_key_path=/keys/id_ed25519'
-  [ "$status" -eq 0 ]
-  [ "$output" = /keys/id_ed25519 ]
 }
 
 @test "bootstraps the Flux Operator chart digest the flux package pins" {
@@ -131,14 +93,6 @@ load setup.bash
   planned=$(yq -r '.managedResources.runtimeInfo.data | keys | .[]' <<<"$output" | sort)
   linted=$(grep -Ev '^[[:space:]]*(#|$)' "$root_directory/.mise/flux-test-values.env" | cut -d= -f1 | sort)
   [ "$planned" = "$linted" ]
-}
-
-@test "exposes the runtime values it gives Flux, for the cluster suites" {
-  run planned_output runtime_info
-  [ "$status" -eq 0 ]
-  exposed=$(jq -r 'keys | .[]' <<<"$output" | sort)
-  linted=$(grep -Ev '^[[:space:]]*(#|$)' "$root_directory/.mise/flux-test-values.env" | cut -d= -f1 | sort)
-  [ "$exposed" = "$linted" ]
 }
 
 @test "tells Flux which branch and environment to follow" {

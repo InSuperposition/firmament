@@ -7,7 +7,6 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
 environment="$usage_environment"
 
-init_environment "$environment"
 kubeconfig=$(environment_kubeconfig "$environment")
 # Port 0 lets hubble pick a free local port, so a busy port never stops it.
 hubble observe --kubeconfig "$kubeconfig" --port-forward --port-forward-port 0 --follow

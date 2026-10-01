@@ -9,7 +9,6 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 environment="$usage_environment"
 port="${usage_port:-12000}"
 
-init_environment "$environment"
 kubeconfig=$(environment_kubeconfig "$environment")
 require_free_local_port "$port"
 cilium --kubeconfig "$kubeconfig" hubble ui --port-forward "$port"

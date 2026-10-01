@@ -7,7 +7,7 @@ locals {
   # failed bootstrap, without rebuilding the machine.
   bootstrap_revision = 1
 
-  packages              = "${path.module}/../../../packages"
+  packages              = "${path.module}/../../packages"
   cilium_source         = yamldecode(file("${local.packages}/cilium/ocirepository.yaml"))
   cilium_release        = yamldecode(file("${local.packages}/cilium/helmrelease.yaml"))
   flux_operator_source  = yamldecode(file("${local.packages}/flux/ocirepository.yaml"))
@@ -47,7 +47,7 @@ module "bootstrap_flux" {
 
   managed_resources = {
     runtime_info = {
-      data = local.environment.runtime_info
+      data = local.cluster.runtime_info
       # A change, such as a new branch to follow, reaches the root
       # Kustomization at once instead of at its next interval.
       labels = {
@@ -63,8 +63,8 @@ module "bootstrap_flux" {
   job = {
     host_network = true
     env = {
-      KUBERNETES_SERVICE_HOST = local.environment.runtime_info.api_address
-      KUBERNETES_SERVICE_PORT = local.environment.runtime_info.api_port
+      KUBERNETES_SERVICE_HOST = local.cluster.runtime_info.api_address
+      KUBERNETES_SERVICE_PORT = local.cluster.runtime_info.api_port
     }
     tolerations = [
       { key = "node.kubernetes.io/not-ready", operator = "Exists", effect = "NoSchedule" },

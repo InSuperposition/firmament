@@ -2,17 +2,19 @@
 
 Abstract: Declarative bootstrap for a dedicated Kubernetes host — one
 OrbStack VM, verified Ubuntu-ready, running k0s with Cilium and Hubble.
-`environment/local` composes three real OpenTofu modules under `modules/`
-into one applied environment, then a second root with its own state
-bootstraps Flux, which runs Cilium and itself from `packages/`.
+Three OpenTofu roots under `roots/` compose the modules under `modules/`,
+one concern each: the machine, k0s on it, then the bootstrap of Flux,
+which runs Cilium and itself from `packages/`. Each root hands the next a
+contract file.
 
 ## Goals
 
 - Reproducible, idempotent bootstrap of one `firmament` target.
-- Real OpenTofu modules, composed from one root config — not standalone
-  scripts wired together by task ordering.
+- Real OpenTofu modules, composed by roots that each declare one concern
+  and hand the next root a contract file — not standalone scripts wired
+  together by task ordering.
 - Each module stays generic (host-agnostic where the underlying tool
-  allows it); OrbStack-specific wiring lives in `environment/local`, not
+  allows it); OrbStack-specific wiring lives in `roots/machine-orb`, not
   inside the modules themselves.
 
 ## Constraints
@@ -52,12 +54,13 @@ eval "$(mise env)"
 ## Structure
 
 ```text
-environment/local/    root config: composes the three modules below,
-                      owns the environment's state and the kubeconfig
-                      file and the runtime values
-environment/local/bootstrap/
-                      root config applied after it, with its own state:
-                      bootstraps Cilium and Flux into the cluster
+roots/machine-orb/    the OrbStack machine and its readiness check;
+                      writes the machine-hosts contract
+roots/kubernetes-k0s/ k0s on that machine; writes the kubeconfig and the
+                      cluster-access contract with the runtime values
+roots/bootstrap-flux/ bootstraps Cilium and Flux into the cluster
+environment/local/    what the local environment deploys: its Flux build,
+                      cluster suite and upgrade checks
 modules/vm-orb/       the OrbStack VM
 modules/os-ubuntu/    Ubuntu readiness check (SSH probe + postconditions)
 modules/orch-k0s/     the k0s controller+worker node; installs no charts
@@ -71,16 +74,13 @@ packages/flux/        Flux itself (Flux Operator and the FluxInstance)
 ```
 
 Each module and package has its own README with its contract.
-`mise run env:apply` applies the whole environment in dependency order
-(VM, then the readiness check, then k0s, then the bootstrap root that
-installs Cilium and Flux), and `mise run env:destroy` destroys the
-environment root; the bootstrap's objects go with the machine. Both take an
-environment name, defaulting to `local`. Narrower tasks
-(`orb:apply`, `ubuntu:verify`, `k0s:apply`, and their counterparts) target
-one module via `tofu -target` against the same shared state (`k0s:*` also
-targets the kubeconfig file) —
-see `environment/local/README.md` for the full task list and what
-`-target` does and doesn't isolate.
+`mise run env:apply` applies the three roots in order (the machine and its
+readiness check, then k0s, then the bootstrap that installs Cilium and
+Flux), and `mise run env:destroy` destroys the Kubernetes root, then the
+machine root; the bootstrap's objects go with the machine. Both take an
+environment name, defaulting to `local`. Narrower tasks act on one root:
+`orb:*` and `ubuntu:verify` on the machine root, `k0s:*` on the Kubernetes
+root. See `environment/local/README.md` for the full task list.
 
 Task names follow `<noun>:<verb>` for a task that acts on one thing
 (`shell:lint`, `k0s:apply`). A bare `<verb>` is an aggregate that runs

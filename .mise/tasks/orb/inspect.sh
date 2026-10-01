@@ -7,5 +7,5 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
 environment="$usage_environment"
 
-init_environment "$environment"
-orb info "$(environment_output "$environment" machine_name)" --format json
+machine=$(contract_field "$environment" machine-hosts.yaml .name)
+orb info "$machine" --format json

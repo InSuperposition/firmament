@@ -1,7 +1,7 @@
-# The bootstrap has its own root and state, applied after the environment
+# The bootstrap has its own root and state, applied after the Kubernetes
 # root has created the cluster. The Kubernetes provider must not be
 # configured from resources created in the same apply, and keeping the
-# in-cluster objects out of the environment's state lets a destroy remove
+# in-cluster objects out of the other roots' state lets a destroy remove
 # the machine without reaching the API server. After a rebuild, refresh
 # finds the old namespace and release gone and plans them again.
 terraform {
@@ -21,26 +21,18 @@ terraform {
   backend "local" {}
 }
 
-# The environment root's outputs: the kubeconfig it wrote and the runtime
-# values Flux substitutes.
-data "terraform_remote_state" "environment" {
-  backend = "local"
-
-  config = {
-    path = "${var.state_directory}/terraform.tfstate"
-  }
-}
-
+# The cluster-access contract the Kubernetes root wrote: the kubeconfig
+# path and the runtime values Flux substitutes.
 locals {
-  environment = data.terraform_remote_state.environment.outputs
+  cluster = yamldecode(file("${var.state_directory}/cluster-access.yaml"))
 }
 
 provider "kubernetes" {
-  config_path = local.environment.kubeconfig_path
+  config_path = local.cluster.kubeconfig_path
 }
 
 provider "helm" {
   kubernetes = {
-    config_path = local.environment.kubeconfig_path
+    config_path = local.cluster.kubeconfig_path
   }
 }

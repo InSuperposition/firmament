@@ -11,7 +11,6 @@ environment="$usage_environment"
 # throughout.
 readonly minimum_percent=90
 
-init_environment "$environment"
 claim_environment "$environment"
 kubeconfig=$(environment_kubeconfig "$environment")
 traffic=$(traffic_directory "$environment")

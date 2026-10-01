@@ -32,10 +32,16 @@ setup() {
   [[ "$output" == *"FIRMAMENT_STATE_HOME is unset"* ]]
 }
 
-@test "runs tofu in the environment root with its state directory and branch" {
-  tofu_in_environment local plan -input=false
+@test "runs tofu in one root with the environment's state directory and branch" {
+  tofu_in_root local kubernetes-k0s plan -input=false
   run cat "$CALLS"
-  [ "$output" = "tofu -chdir=$root_directory/environment/local plan -input=false | state=$FIRMAMENT_STATE_HOME/environment/local branch=feature/test" ]
+  [ "$output" = "tofu -chdir=$root_directory/roots/kubernetes-k0s plan -input=false | state=$FIRMAMENT_STATE_HOME/environment/local branch=feature/test" ]
+}
+
+@test "tells a root the name of the environment it runs for" {
+  tofu() { printf '%s' "$TF_VAR_environment"; }
+  run tofu_in_root local machine-orb plan
+  [ "$output" = local ]
 }
 
 @test "follows the checked-out branch when the caller names none" {
@@ -54,7 +60,7 @@ setup() {
   git -C "$MISE_PROJECT_ROOT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m start
   git -C "$MISE_PROJECT_ROOT" checkout -q --detach
   mkdir -p "$MISE_PROJECT_ROOT/environment/local"
-  run tofu_in_environment local plan
+  run tofu_in_root local machine-orb plan
   [ "$status" -ne 0 ]
   [[ "$output" == *"HEAD is detached; set FIRMAMENT_GIT_BRANCH"* ]]
   [ ! -e "$CALLS" ]
@@ -75,69 +81,54 @@ setup() {
 }
 
 @test "refuses a caller-named branch that is not a valid name" {
-  FIRMAMENT_GIT_BRANCH='main;touch x' run tofu_in_environment local plan
+  FIRMAMENT_GIT_BRANCH='main;touch x' run tofu_in_root local machine-orb plan
   [ "$status" -ne 0 ]
   [ ! -e "$CALLS" ]
 }
 
 @test "prints the revision Flux reports for origin's branch tip" {
-  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environment/local/main.tf)
+  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environment/local/README.md)
   run flux_revision feature/test
   [ "$status" -eq 0 ]
   [ "$output" = "refs/heads/feature/test@sha1:$(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD)" ]
 }
 
 @test "fails for a branch that origin does not have" {
-  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environment/local/main.tf)
+  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environment/local/README.md)
   run flux_revision feature/other
   [ "$status" -ne 0 ]
   [[ "$output" == *"origin/feature/other does not exist; push the branch first"* ]]
 }
 
 @test "creates no state directory for an environment that does not exist" {
-  run init_environment nowhere
+  run init_root nowhere machine-orb
   [ "$status" -ne 0 ]
   [ ! -e "$FIRMAMENT_STATE_HOME/environment/nowhere" ]
   [ ! -e "$CALLS" ]
 }
 
 @test "refuses an empty state file before running tofu" {
-  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  : >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
-  run init_environment local
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate is empty"* ]]
-  [[ "$output" == *"terraform.tfstate.backup"* ]]
+  local root
+  for root in machine-orb kubernetes-k0s bootstrap-flux; do
+    mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
+    : >"$FIRMAMENT_STATE_HOME/environment/local/$root.tfstate"
+    run init_root local "$root"
+    [ "$status" -ne 0 ] || fail "$root accepted an empty state file"
+    [[ "$output" == *"$FIRMAMENT_STATE_HOME/environment/local/$root.tfstate is empty"* ]]
+    [[ "$output" == *"$root.tfstate.backup"* ]]
+    rm "$FIRMAMENT_STATE_HOME/environment/local/$root.tfstate"
+  done
   [ ! -e "$CALLS" ]
 }
 
-@test "points the bootstrap root at its own state file, next to the environment's" {
-  init_bootstrap local
-  run cat "$CALLS"
-  [[ "$output" == *"tofu -chdir=$root_directory/environment/local/bootstrap init -input=false -reconfigure -lockfile=readonly -backend-config=path=$FIRMAMENT_STATE_HOME/environment/local/bootstrap.tfstate"* ]]
-}
-
-@test "refuses an empty bootstrap state file before running tofu" {
-  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  : >"$FIRMAMENT_STATE_HOME/environment/local/bootstrap.tfstate"
-  run init_bootstrap local
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"$FIRMAMENT_STATE_HOME/environment/local/bootstrap.tfstate is empty"* ]]
-  [ ! -e "$CALLS" ]
-}
-
-@test "moves nothing when the environment's state holds no bootstrap" {
-  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
-  STATE_LIST=module.vm_orb.orbstack_machine.this init_environment local
-  ! grep -q ' state mv ' "$CALLS"
-}
-
-@test "points the backend at the environment's state file" {
-  init_environment local
+@test "points each root's backend at its own state file in the environment's state directory" {
+  local root
+  for root in machine-orb kubernetes-k0s bootstrap-flux; do
+    init_root local "$root"
+    grep -q "^tofu -chdir=$root_directory/roots/$root init -input=false -reconfigure -lockfile=readonly -backend-config=path=$FIRMAMENT_STATE_HOME/environment/local/$root.tfstate " "$CALLS" ||
+      fail "$root: $(cat "$CALLS")"
+  done
   [ -d "$FIRMAMENT_STATE_HOME/environment/local" ]
-  run cat "$CALLS"
-  [[ "$output" == *"init -input=false -reconfigure -lockfile=readonly -backend-config=path=$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"* ]]
 }
 
 @test "waits for Cilium, then Flux and the Cilium release, then Cilium again, then the nodes" {
@@ -181,10 +172,33 @@ setup() {
   [ "$status" -ne 0 ]
 }
 
-@test "fails for an output the state has no value for, instead of printing nothing" {
-  NO_OUTPUTS=1 run environment_output local kubeconfig_path
+@test "reads the kubeconfig path from the cluster-access contract" {
+  record_contracts /some/admin.kubeconfig
+  run environment_kubeconfig local
+  [ "$status" -eq 0 ]
+  [ "$output" = /some/admin.kubeconfig ]
+}
+
+@test "prints a contract object as JSON" {
+  run contract_field local cluster-access.yaml .runtime_info
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .cilium_datapath_mode <<<"$output")" = netkit ]
+}
+
+@test "fails for a contract the environment has no file for, instead of printing nothing" {
+  forget_contract cluster-access.yaml
+  run environment_kubeconfig local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"environment 'local' has no kubeconfig_path in its state; apply it first"* ]]
+  [[ "$output" == *"environment 'local' has no .kubeconfig_path in cluster-access.yaml; apply it first"* ]]
+  run contract_field_or_empty local cluster-access.yaml .kubeconfig_path
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "refuses to read a contract for an environment that does not exist" {
+  run contract_field_or_empty nowhere machine-hosts.yaml .name
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown environment 'nowhere'"* ]]
 }
 
 @test "initializes a directory without a backend" {
@@ -193,14 +207,14 @@ setup() {
   [ "${output%% |*}" = "tofu -chdir=/modules/a init -backend=false -input=false -reconfigure -lockfile=readonly" ]
 }
 
-@test "finds each module and environment holding an OpenTofu test suite, once" {
+@test "finds each module and root holding an OpenTofu test suite, once" {
   MISE_PROJECT_ROOT=$(make_repository modules/a/tests/unit.tftest.hcl modules/a/tests/more.tftest.hcl \
-    modules/b/tests/unit.bats environment/e/tests/wiring.tftest.hcl)
+    modules/b/tests/unit.bats roots/r/tests/wiring.tftest.hcl)
   run tofu_test_directories
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 2 ]
-  [ "${lines[0]}" = "$MISE_PROJECT_ROOT/environment/e" ]
-  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/modules/a" ]
+  [ "${lines[0]}" = "$MISE_PROJECT_ROOT/modules/a" ]
+  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/roots/r" ]
 }
 
 @test "finds no test directories when no suite exists" {
@@ -211,8 +225,9 @@ setup() {
 }
 
 @test "stops before tofu when the environment does not exist" {
-  run tofu_in_environment nowhere plan
+  run tofu_in_root nowhere machine-orb plan
   [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown environment 'nowhere'"* ]]
   [ ! -e "$CALLS" ]
 }
 

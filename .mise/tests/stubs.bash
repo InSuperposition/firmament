@@ -2,17 +2,15 @@
 # first on PATH. Each call is appended to $CALLS as
 # "<tool> <arguments> | state=<TF_VAR_state_directory> branch=<TF_VAR_git_branch>".
 # $real_mise keeps the real mise for tests that read the resolved
-# configuration. $STATE_LIST is what `tofu state list` prints, $NODES what
+# configuration. $NODES is what
 # `kubectl get nodes -o name` prints, $PODS names the file whose JSON
 # `kubectl get pods` prints, and $K0S_CHARTS is what `kubectl get
 # charts.helm.k0sproject.io` prints; $K0S_CHARTS_ERROR makes it fail with
 # that message instead. $CILIUM_VALUES is the values.yaml the cilium-values
 # ConfigMap holds and $RELEASE_VALUES what `helm get values cilium` prints;
 # both default to the same values, so the release runs what Flux applied.
-# `tofu output` records the kubeconfig at $KUBECONFIG_OUTPUT (default
-# /state/admin.kubeconfig). $NO_OUTPUTS makes it print nothing, as after a
-# destroy, and
-# $OUTPUT_ERROR makes it fail with that message. Calls to the fortio REST
+# The local environment's contract files record a machine and a cluster
+# (record_contracts below). Calls to the fortio REST
 # API print the replies fortio gave in a live run, kept in $FORTIO_REPLIES
 # (its result is from a run whose server was down for 3 s, so it counts 28
 # failed requests);
@@ -44,6 +42,26 @@ setup_stubs() {
     stub "$tool"
   done
   PATH="$stubs:$PATH"
+  record_contracts
+}
+
+# Writes the contract files a healthy local environment's roots leave in its
+# state directory: machine-hosts.yaml for a machine named firmament and
+# cluster-access.yaml for a cluster whose kubeconfig is at $1 (default
+# /state/admin.kubeconfig). Tasks read these instead of running tofu.
+record_contracts() {
+  local state="$FIRMAMENT_STATE_HOME/environment/local" kubeconfig="${1:-/state/admin.kubeconfig}"
+  mkdir -p "$state"
+  printf 'name: firmament\ndns_name: firmament.orb.local\nip_address: 192.168.139.10\nssh: {address: 127.0.0.1, port: 32222, user: root@firmament, key_path: /keys/id_ed25519}\n' \
+    >"$state/machine-hosts.yaml"
+  printf 'kubeconfig_path: %s\nruntime_info: {kube_proxy_replacement: "true", cilium_datapath_mode: netkit}\n' "$kubeconfig" \
+    >"$state/cluster-access.yaml"
+}
+
+# Removes one contract file of the local environment, as destroying the
+# root that wrote it does: machine-hosts.yaml or cluster-access.yaml.
+forget_contract() {
+  rm -f "$FIRMAMENT_STATE_HOME/environment/local/$1"
 }
 
 # Confines git to the stand-in repositories a test builds. It clears the
@@ -63,12 +81,6 @@ stub() {
 #!/usr/bin/env bash
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
-  *"output -json"*)
-    if [[ -n "\${OUTPUT_ERROR:-}" ]]; then printf '%s\\n' "\$OUTPUT_ERROR" >&2; exit 1; fi
-    if [[ -n "\${NO_OUTPUTS:-}" ]]; then printf '{}'; else
-      printf '{"kubeconfig_path":{"value":"%s"},"machine_name":{"value":"firmament"},"runtime_info":{"value":{"kube_proxy_replacement":"true","cilium_datapath_mode":"netkit"}}}' "\${KUBECONFIG_OUTPUT:-/state/admin.kubeconfig}"
-    fi ;;
-  *"state list"*) printf '%s' "\${STATE_LIST:-}" ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;
   *"get charts.helm.k0sproject.io"*)
     if [[ -n "\${K0S_CHARTS_ERROR:-}" ]]; then printf '%s\\n' "\$K0S_CHARTS_ERROR" >&2; exit 1; fi

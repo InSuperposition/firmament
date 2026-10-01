@@ -57,7 +57,8 @@ else
 fi
 
 state_problem=""
-for file in "$state/terraform.tfstate" "$state/bootstrap.tfstate"; do
+for root in machine-orb kubernetes-k0s bootstrap-flux; do
+  file="$state/$root.tfstate"
   if ! problem=$(refuse_empty_state "$file" 2>&1); then
     failed state "$problem" "restore $file from $file.backup"
     state_problem=1
@@ -72,24 +73,19 @@ else
   failed orbstack "OrbStack is ${orbstack:-not answering}" "orbctl start"
 fi
 
-# What the state records comes from its resources: a targeted destroy such
-# as orb:destroy removes the machine and the cluster but leaves the outputs
-# as they were.
+# What is recorded comes from the contract files: each root deletes its own
+# when it is destroyed.
 machine="" kubeconfig="" cluster=""
-if [[ -z "$state_problem" && -s "$state/terraform.tfstate" ]]; then
-  if outputs=$(tofu output -json -state="$state/terraform.tfstate" 2>&1) &&
-    resources=$(tofu state list -state="$state/terraform.tfstate" 2>&1); then
-    if grep -qx 'module\.vm_orb\.orbstack_machine\.this' <<<"$resources"; then
-      machine=$(jq -r '.machine_name.value // empty' <<<"$outputs")
-    fi
-    if grep -qx 'module\.orch_k0s\.k0sctl_config\.this' <<<"$resources"; then
-      cluster=1
-      kubeconfig=$(jq -r '.kubeconfig_path.value // empty' <<<"$outputs")
-    fi
-  else
-    failed state "cannot read $state/terraform.tfstate: $(head -n 1 <<<"${resources:-$outputs}")" \
-      "restore $state/terraform.tfstate from $state/terraform.tfstate.backup"
+if [[ -z "$state_problem" ]]; then
+  if ! machine=$(contract_field_or_empty "$environment" machine-hosts.yaml .name 2>&1); then
+    failed state "cannot read $state/machine-hosts.yaml: $(head -n 1 <<<"$machine")" "mise run orb:apply $environment, which writes it again"
+    machine=""
   fi
+  if ! kubeconfig=$(contract_field_or_empty "$environment" cluster-access.yaml .kubeconfig_path 2>&1); then
+    failed state "cannot read $state/cluster-access.yaml: $(head -n 1 <<<"$kubeconfig")" "mise run k0s:apply $environment, which writes it again"
+    kubeconfig=""
+  fi
+  [[ -z "$kubeconfig" ]] || cluster=1
 fi
 
 if [[ -z "$machine" ]]; then

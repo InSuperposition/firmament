@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Delete the OrbStack machine, and anything that depends on it"
+#MISE description="Delete the OrbStack machine and the k0s cluster on it (the Kubernetes root, then the machine root); Flux's objects go with it"
 #MISE confirm="Delete the OrbStack machine in {{usage.environment}} and everything that depends on it?"
 #USAGE arg "[environment]" default="local" help="Directory name under environment/"
 set -euo pipefail
@@ -13,9 +13,17 @@ environment="$usage_environment"
 FIRMAMENT_GIT_BRANCH=$(git_branch 2>/dev/null) || FIRMAMENT_GIT_BRANCH=main
 export FIRMAMENT_GIT_BRANCH
 
-init_environment "$environment"
+environment_directory "$environment" >/dev/null
 claim_environment "$environment"
-# The bootstrap root is left alone: its objects live in the cluster and go
-# with the machine, and the next apply's refresh drops them from its state.
-tofu_in_environment "$environment" destroy -input=false -auto-approve -target=module.vm_orb
+state=$(state_directory "$environment")
+# k0s cannot outlive its machine, so the Kubernetes root goes first: a k0s
+# record left pointing at a deleted machine would make the next apply skip
+# installing k0s on the new one. The bootstrap root is left alone: its
+# objects go with the machine, and the next apply's refresh drops them. A
+# root with no state file has nothing to destroy.
+for root in kubernetes-k0s machine-orb; do
+  [[ -f "$state/$root.tfstate" ]] || continue
+  init_root "$environment" "$root"
+  tofu_in_root "$environment" "$root" destroy -input=false -auto-approve
+done
 release_environment "$environment"

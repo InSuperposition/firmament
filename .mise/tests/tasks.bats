@@ -46,6 +46,9 @@ run_task() {
   local script
   # env:verify reads origin's branch tip, so the tasks run in a pushed checkout.
   e2e_repository environment/local/tests/cluster/chainsaw-test.yaml
+  # A recorded cluster with a kubeconfig file, so env:doctor checks the API too.
+  record_contracts "$BATS_TEST_TMPDIR/admin.kubeconfig"
+  : >"$BATS_TEST_TMPDIR/admin.kubeconfig"
   for script in $(environment_scripts); do
     case "$(basename "$script")" in
     # e2e.sh destroys through `mise run`; its own tests check what it runs.
@@ -84,146 +87,159 @@ run_task() {
   ! grep -q ' apply -input=false' "$CALLS"
 }
 
-# Gives the local environment a state file, as any applied environment has.
+# Gives the local environment's machine and Kubernetes roots a state file,
+# as any applied environment has.
 local_state() {
   mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
+  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environment/local/machine-orb.tfstate"
+  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environment/local/kubernetes-k0s.tfstate"
 }
 
 @test "orb:destroy refuses an empty state file instead of destroying nothing" {
   mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  : >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
+  : >"$FIRMAMENT_STATE_HOME/environment/local/machine-orb.tfstate"
   run_task "$root_directory/.mise/tasks/orb/destroy.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"terraform.tfstate is empty"* ]]
+  [[ "$output" == *"machine-orb.tfstate is empty"* ]]
   ! grep -q ' destroy ' "$CALLS" 2>/dev/null || fail "ran destroy against an empty state: $(cat "$CALLS")"
 }
 
-@test "env:destroy destroys the environment root and leaves the bootstrap root alone" {
+@test "env:destroy destroys the Kubernetes root, then the machine root, and leaves the bootstrap root alone" {
   local_state
-  STATE_LIST=module.vm_orb.orbstack_machine.this run_task "$root_directory/.mise/tasks/env/destroy.sh" local
-  [ "$status" -eq 0 ]
-  grep -q "^tofu -chdir=$root_directory/environment/local destroy -input=false -auto-approve " "$CALLS"
-  ! grep -q -- '/bootstrap ' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
+  run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  run grep -E '^tofu -chdir=.* (init|destroy) ' "$CALLS"
+  [ "${#lines[@]}" -eq 4 ]
+  [[ "${lines[0]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s init "* ]]
+  [[ "${lines[1]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s destroy -input=false -auto-approve "* ]]
+  [[ "${lines[2]}" == "tofu -chdir=$root_directory/roots/machine-orb init "* ]]
+  [[ "${lines[3]}" == "tofu -chdir=$root_directory/roots/machine-orb destroy -input=false -auto-approve "* ]]
+  ! grep -q -- 'roots/bootstrap-flux' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
   ! grep -q ' state rm ' "$CALLS" || fail "removed state by hand: $(cat "$CALLS")"
 }
 
-@test "env:destroy first moves an older environment's bootstrap into the bootstrap root's state" {
-  local_state
-  local state="$FIRMAMENT_STATE_HOME/environment/local"
-  STATE_LIST=$'module.bootstrap_flux.helm_release.this\nmodule.vm_orb.orbstack_machine.this' run_task "$root_directory/.mise/tasks/env/destroy.sh" local
-  [ "$status" -eq 0 ]
-  run grep -E '^tofu (state mv|-chdir=.* (init|destroy)) ' "$CALLS"
-  [ "${#lines[@]}" -eq 3 ]
-  [[ "${lines[0]}" == "tofu state mv -state=$state/terraform.tfstate -state-out=$state/bootstrap.tfstate -backup=$state/terraform.tfstate.before-bootstrap-root -backup-out=- module.bootstrap_flux module.bootstrap_flux "* ]]
-  [[ "${lines[1]}" == *" init "* ]]
-  [[ "${lines[2]}" == *" destroy -input=false -auto-approve "* ]]
-}
-
-@test "env:destroy runs on a fresh machine with no state yet" {
+@test "env:destroy runs on a fresh machine with no state yet, and destroys nothing" {
   run_task "$root_directory/.mise/tasks/env/destroy.sh" local
   [ "$status" -eq 0 ]
-  [ "$(grep -c ' state ' "$CALLS")" -eq 0 ]
-  grep -q ' destroy -input=false -auto-approve ' "$CALLS"
+  ! grep -q ' destroy ' "$CALLS" 2>/dev/null || fail "destroyed a root with no state: $(cat "$CALLS")"
 }
 
 @test "env:destroy runs from a detached HEAD" {
   unset FIRMAMENT_GIT_BRANCH
   e2e_repository
   git -C "$MISE_PROJECT_ROOT" checkout -q --detach
+  local_state
   run_task "$root_directory/.mise/tasks/env/destroy.sh" local
   [ "$status" -eq 0 ]
   grep -q ' destroy -input=false -auto-approve .*branch=main$' "$CALLS"
 }
 
-@test "orb:destroy destroys the machine and leaves the bootstrap root alone" {
+@test "orb:destroy destroys the k0s record before the machine it runs on, and leaves the bootstrap root alone" {
   local_state
-  STATE_LIST=module.vm_orb.orbstack_machine.this run_task "$root_directory/.mise/tasks/orb/destroy.sh" local
+  run_task "$root_directory/.mise/tasks/orb/destroy.sh" local
   [ "$status" -eq 0 ]
-  grep -q "^tofu -chdir=$root_directory/environment/local destroy -input=false -auto-approve -target=module.vm_orb " "$CALLS"
-  ! grep -q -- '/bootstrap ' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
+  run grep -E '^tofu -chdir=.* destroy ' "$CALLS"
+  [ "${#lines[@]}" -eq 2 ]
+  [[ "${lines[0]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s destroy -input=false -auto-approve "* ]]
+  [[ "${lines[1]}" == "tofu -chdir=$root_directory/roots/machine-orb destroy -input=false -auto-approve "* ]]
+  ! grep -q -- 'roots/bootstrap-flux' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
 }
 
-@test "env:apply applies the environment root, then the bootstrap root, then waits" {
+@test "env:apply applies the machine root, then the Kubernetes root, then the bootstrap root, then waits" {
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ] || fail "$output"
-  local state="$FIRMAMENT_STATE_HOME/environment/local"
+  local state="$FIRMAMENT_STATE_HOME/environment/local" root i=0
   run grep -E '^(tofu -chdir=.* (init|apply) |cilium )' "$CALLS"
-  [[ "${lines[0]}" == "tofu -chdir=$root_directory/environment/local init "*"-backend-config=path=$state/terraform.tfstate "* ]]
-  [[ "${lines[1]}" == "tofu -chdir=$root_directory/environment/local apply -input=false -auto-approve "* ]]
-  [[ "${lines[2]}" == "tofu -chdir=$root_directory/environment/local/bootstrap init "*"-backend-config=path=$state/bootstrap.tfstate "* ]]
-  [[ "${lines[3]}" == "tofu -chdir=$root_directory/environment/local/bootstrap apply -input=false -auto-approve "* ]]
-  [[ "${lines[4]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
+  for root in machine-orb kubernetes-k0s bootstrap-flux; do
+    [[ "${lines[i]}" == "tofu -chdir=$root_directory/roots/$root init "*"-backend-config=path=$state/$root.tfstate "* ]] || fail "line $i: ${lines[i]}"
+    [[ "${lines[i + 1]}" == "tofu -chdir=$root_directory/roots/$root apply -input=false -auto-approve "* ]] || fail "line $((i + 1)): ${lines[i + 1]}"
+    i=$((i + 2))
+  done
+  [[ "${lines[6]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
 }
 
-@test "env:plan plans the bootstrap root once the environment records a cluster" {
+@test "env:plan plans every root once the environment records a machine and a cluster" {
   run_task "$root_directory/.mise/tasks/env/plan.sh" local
   [ "$status" -eq 0 ] || fail "$output"
-  grep -q "^tofu -chdir=$root_directory/environment/local plan -input=false " "$CALLS"
-  grep -q "^tofu -chdir=$root_directory/environment/local/bootstrap plan -input=false " "$CALLS"
+  local root
+  for root in machine-orb kubernetes-k0s bootstrap-flux; do
+    grep -q "^tofu -chdir=$root_directory/roots/$root plan -input=false " "$CALLS" || fail "$root not planned"
+  done
 }
 
 @test "env:plan skips the bootstrap root while the environment records no cluster" {
-  NO_OUTPUTS=1 run_task "$root_directory/.mise/tasks/env/plan.sh" local
+  forget_contract cluster-access.yaml
+  run_task "$root_directory/.mise/tasks/env/plan.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   [[ "$output" == *"No cluster recorded yet, so the bootstrap is not planned"* ]]
-  grep -q "^tofu -chdir=$root_directory/environment/local plan -input=false " "$CALLS"
-  ! grep -q -- '/bootstrap ' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
+  grep -q "^tofu -chdir=$root_directory/roots/kubernetes-k0s plan -input=false " "$CALLS"
+  ! grep -q -- 'roots/bootstrap-flux' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
+}
+
+@test "env:plan plans only the machine root while the environment records no machine" {
+  forget_contract machine-hosts.yaml
+  forget_contract cluster-access.yaml
+  run_task "$root_directory/.mise/tasks/env/plan.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"No machine recorded yet, so k0s and the bootstrap are not planned"* ]]
+  grep -q "^tofu -chdir=$root_directory/roots/machine-orb plan -input=false " "$CALLS"
+  ! grep -qE -- 'roots/(kubernetes-k0s|bootstrap-flux)' "$CALLS" || fail "planned a later root: $(cat "$CALLS")"
 }
 
 @test "env:apply refuses a recorded cluster that cannot say whether k0s installs charts" {
-  STATE_LIST=module.orch_k0s.k0sctl_config.this K0S_CHARTS_ERROR="Unable to connect to the server: dial tcp: i/o timeout" run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  K0S_CHARTS_ERROR="Unable to connect to the server: dial tcp: i/o timeout" run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot tell whether k0s installs Helm charts"*"i/o timeout"* ]]
   ! grep -q ' apply -input=false' "$CALLS"
 }
 
-@test "env:apply refuses an environment whose state it cannot read" {
-  OUTPUT_ERROR="Error: Failed to load state: lock held" run_task "$root_directory/.mise/tasks/env/apply.sh" local
+@test "env:apply refuses a contract file it cannot read" {
+  printf 'kubeconfig_path: [unclosed\n' >"$FIRMAMENT_STATE_HOME/environment/local/cluster-access.yaml"
+  run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"Failed to load state: lock held"* ]]
   ! grep -q ' apply -input=false' "$CALLS"
 }
 
 @test "env:apply applies a destroyed environment without asking it for k0s charts" {
-  # The stub keeps printing no outputs after the apply, so the wait that
-  # follows fails, and only there.
-  NO_OUTPUTS=1 run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  forget_contract machine-hosts.yaml
+  forget_contract cluster-access.yaml
+  # The stub tofu writes no contract, so the wait that follows the applies
+  # fails, and only there.
+  run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"environment 'local' has no kubeconfig_path in its state"* ]]
+  [[ "$output" == *"environment 'local' has no .kubeconfig_path in cluster-access.yaml"* ]]
   grep -q ' apply -input=false -auto-approve ' "$CALLS"
   ! grep -q 'get charts.helm.k0sproject.io' "$CALLS"
 }
 
 @test "env:apply applies a cluster where k0s installs no charts" {
-  STATE_LIST=module.orch_k0s.k0sctl_config.this run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ]
   grep -q 'get charts.helm.k0sproject.io' "$CALLS"
   grep -q ' apply -input=false -auto-approve ' "$CALLS"
 }
 
-@test "env:apply rebuilds after orb:destroy, whose stale kubeconfig output names no cluster" {
-  # A targeted destroy removes the cluster and its kubeconfig file but
-  # leaves the root outputs as they were.
-  STATE_LIST=module.os_ubuntu.data.external.readiness run_task "$root_directory/.mise/tasks/env/apply.sh" local
+@test "env:apply asks no cluster for charts while the machine-hosts contract is missing" {
+  forget_contract machine-hosts.yaml
+  run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   ! grep -q 'get charts.helm.k0sproject.io' "$CALLS" || fail "asked a destroyed cluster for charts"
   grep -q ' apply -input=false -auto-approve ' "$CALLS"
 }
 
 @test "env:apply refuses a cluster whose Helm charts k0s still installs" {
-  STATE_LIST=module.orch_k0s.k0sctl_config.this K0S_CHARTS=chart.helm.k0sproject.io/k0s-addon-chart-cilium run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  K0S_CHARTS=chart.helm.k0sproject.io/k0s-addon-chart-cilium run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"k0s still installs Helm charts on this cluster"*"k0s-addon-chart-cilium"* ]]
   ! grep -q ' apply -input=false' "$CALLS"
 }
 
-@test "k0s:apply applies only the cluster and its kubeconfig, then waits for the node" {
+@test "k0s:apply applies the Kubernetes root, then waits for the node" {
   NODES=node/firmament run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
   [ "$status" -eq 0 ]
   run grep -nE '^(tofu .* apply |kubectl |cilium )' "$CALLS"
   [ "${#lines[@]}" -eq 2 ]
-  [[ "${lines[0]}" == *"apply -input=false -auto-approve -target=module.orch_k0s -target=local_sensitive_file.kubeconfig "* ]]
+  [[ "${lines[0]}" == *"tofu -chdir=$root_directory/roots/kubernetes-k0s apply -input=false -auto-approve "* ]]
   [[ "${lines[1]}" == *"kubectl --kubeconfig /state/admin.kubeconfig get nodes -o name "* ]]
 }
 
@@ -292,14 +308,14 @@ local_state() {
 }
 
 @test "tofu:test initializes and tests each suite directory, and never applies" {
-  MISE_PROJECT_ROOT=$(make_repository modules/a/tests/unit.tftest.hcl environment/e/tests/wiring.tftest.hcl)
+  MISE_PROJECT_ROOT=$(make_repository modules/a/tests/unit.tftest.hcl roots/r/tests/wiring.tftest.hcl)
   run "$root_directory/.mise/tasks/tofu/test.sh"
   [ "$status" -eq 0 ]
   run cut -d"|" -f1 "$CALLS"
-  [ "${lines[0]}" = "tofu -chdir=$MISE_PROJECT_ROOT/environment/e init -backend=false -input=false -reconfigure -lockfile=readonly " ]
-  [ "${lines[1]}" = "tofu -chdir=$MISE_PROJECT_ROOT/environment/e test " ]
-  [ "${lines[2]}" = "tofu -chdir=$MISE_PROJECT_ROOT/modules/a init -backend=false -input=false -reconfigure -lockfile=readonly " ]
-  [ "${lines[3]}" = "tofu -chdir=$MISE_PROJECT_ROOT/modules/a test " ]
+  [ "${lines[0]}" = "tofu -chdir=$MISE_PROJECT_ROOT/modules/a init -backend=false -input=false -reconfigure -lockfile=readonly " ]
+  [ "${lines[1]}" = "tofu -chdir=$MISE_PROJECT_ROOT/modules/a test " ]
+  [ "${lines[2]}" = "tofu -chdir=$MISE_PROJECT_ROOT/roots/r init -backend=false -input=false -reconfigure -lockfile=readonly " ]
+  [ "${lines[3]}" = "tofu -chdir=$MISE_PROJECT_ROOT/roots/r test " ]
   [ "${#lines[@]}" -eq 4 ]
 }
 
@@ -910,7 +926,7 @@ STUB
 
 # A pushed checkout of feature/test with one environment, as env:e2e needs.
 e2e_repository() {
-  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environment/local/main.tf "$@")
+  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environment/local/README.md "$@")
   export MISE_PROJECT_ROOT
 }
 
@@ -1260,16 +1276,10 @@ STUB
 @test "env:verify runs no suite when the state records no runtime values" {
   record_chainsaw_kubeconfig
   verify_repository
-  cat >"$stubs/tofu" <<'STUB'
-#!/usr/bin/env bash
-printf 'tofu %s\n' "$*" >>"$CALLS"
-if [[ "$*" == *"output -json"* ]]; then
-  printf '%s' '{"kubeconfig_path":{"value":"/state/admin.kubeconfig"}}'
-fi
-STUB
+  printf 'kubeconfig_path: /state/admin.kubeconfig\n' >"$FIRMAMENT_STATE_HOME/environment/local/cluster-access.yaml"
   run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"environment 'local' has no runtime_info in its state; apply it first"* ]]
+  [[ "$output" == *"environment 'local' has no .runtime_info in cluster-access.yaml; apply it first"* ]]
   ! grep -q '^chainsaw ' "$CALLS"
 }
 
@@ -1395,7 +1405,7 @@ fail() {
 
 @test "flux:lint fails when there is no Flux build to check" {
   rm "$stubs/kubectl"
-  MISE_PROJECT_ROOT=$(make_repository environment/local/main.tf)
+  MISE_PROJECT_ROOT=$(make_repository environment/local/README.md)
   run "$MISE_PROJECT_ROOT/.mise/tasks/flux/lint.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"no environment/*/flux build to validate"* ]]
@@ -1594,12 +1604,17 @@ STUB
 # Runs env:doctor for the local environment. Unless a test says otherwise,
 # the state records the machine and the cluster, and the kubeconfig file
 # exists.
+# Runs env:doctor against the recorded machine and cluster, with a
+# kubeconfig file that exists unless DOCTOR_KUBECONFIG names another path.
+# A test removes a contract first to record less.
 run_doctor() {
+  local contract="$FIRMAMENT_STATE_HOME/environment/local/cluster-access.yaml"
   local kubeconfig="$BATS_TEST_TMPDIR/admin.kubeconfig"
   : >"$kubeconfig"
-  KUBECONFIG_OUTPUT="${KUBECONFIG_OUTPUT-$kubeconfig}" \
-    STATE_LIST="${STATE_LIST-$'module.vm_orb.orbstack_machine.this\nmodule.orch_k0s.k0sctl_config.this\nlocal_sensitive_file.kubeconfig'}" \
-    run_task "$root_directory/.mise/tasks/env/doctor.sh" local
+  if [[ -f "$contract" ]]; then
+    yq -i ".kubeconfig_path = \"${DOCTOR_KUBECONFIG:-$kubeconfig}\"" "$contract"
+  fi
+  run_task "$root_directory/.mise/tasks/env/doctor.sh" local
 }
 
 @test "env:doctor passes on a healthy host and changes nothing" {
@@ -1615,6 +1630,8 @@ run_doctor() {
 }
 
 @test "env:doctor treats an environment with no state as ready for env:apply" {
+  forget_contract machine-hosts.yaml
+  forget_contract cluster-access.yaml
   run_doctor
   [ "$status" -eq 0 ] || fail "$output"
   [[ "$output" == *"skip  machine: no machine recorded yet; env:apply creates it"* ]]
@@ -1634,17 +1651,19 @@ run_doctor() {
 
 @test "env:doctor reports an empty state file with the backup to restore" {
   mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  : >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
+  : >"$FIRMAMENT_STATE_HOME/environment/local/machine-orb.tfstate"
   run_doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *"FAIL  state: "*"terraform.tfstate is empty"* ]]
+  [[ "$output" == *"FAIL  state: "*"machine-orb.tfstate is empty"* ]]
 }
 
-@test "env:doctor reports a state whose outputs it cannot read" {
+@test "env:doctor reports a contract file it cannot read, and what writes it again" {
   local_state
-  OUTPUT_ERROR='Error: Failed to load state' run_doctor
+  printf 'name: [unclosed\n' >"$FIRMAMENT_STATE_HOME/environment/local/machine-hosts.yaml"
+  run_doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *"FAIL  state: cannot read "*"Error: Failed to load state"* ]]
+  [[ "$output" == *"FAIL  state: cannot read $FIRMAMENT_STATE_HOME/environment/local/machine-hosts.yaml"* ]]
+  [[ "$output" == *"next: mise run orb:apply local, which writes it again"* ]]
 }
 
 @test "env:doctor stops at a stopped OrbStack and skips what depends on it" {
@@ -1718,19 +1737,19 @@ case "$*" in
 esac
 STUB
   chmod +x "$stubs/orb"
+  record_contracts "$BATS_TEST_TMPDIR/admin.kubeconfig"
   : >"$BATS_TEST_TMPDIR/admin.kubeconfig"
   run script -q /dev/null env usage_environment=local \
-    STATE_LIST=$'module.vm_orb.orbstack_machine.this\nmodule.orch_k0s.k0sctl_config.this' \
-    KUBECONFIG_OUTPUT="$BATS_TEST_TMPDIR/admin.kubeconfig" \
     "$root_directory/.mise/tasks/env/doctor.sh" </dev/null
   output=${output//$'\r'/}
   [[ "$output" == *"ok    machine dns: firmament resolves host.orb.internal"* ]] || fail "$output"
   [[ "$output" == *"ok    machine dns: firmament resolves ghcr.io"* ]] || fail "$output"
 }
 
-@test "env:doctor treats the stale outputs orb:destroy leaves as no machine" {
+@test "env:doctor treats a missing machine-hosts contract as no machine" {
   local_state
-  STATE_LIST=module.os_ubuntu.data.external.readiness run_doctor
+  forget_contract machine-hosts.yaml
+  run_doctor
   [ "$status" -eq 0 ] || fail "$output"
   [[ "$output" == *"skip  machine: no machine recorded yet; env:apply creates it"* ]]
   ! grep -q '^orb ' "$CALLS"
@@ -1738,7 +1757,8 @@ STUB
 
 @test "env:doctor skips the API server while no cluster is recorded" {
   local_state
-  STATE_LIST=module.vm_orb.orbstack_machine.this run_doctor
+  forget_contract cluster-access.yaml
+  run_doctor
   [ "$status" -eq 0 ] || fail "$output"
   [[ "$output" == *"skip  api: no cluster recorded yet; env:apply creates it"* ]]
   ! grep -q 'readyz' "$CALLS"
@@ -1746,7 +1766,7 @@ STUB
 
 @test "env:doctor sends a missing kubeconfig file to k0s:apply, which writes it again" {
   local_state
-  KUBECONFIG_OUTPUT="$BATS_TEST_TMPDIR/missing.kubeconfig" run_doctor
+  DOCTOR_KUBECONFIG="$BATS_TEST_TMPDIR/missing.kubeconfig" run_doctor
   [ "$status" -eq 1 ]
   [[ "$output" == *"FAIL  api: the kubeconfig file $BATS_TEST_TMPDIR/missing.kubeconfig is missing"* ]]
   [[ "$output" == *"next: mise run k0s:apply local"* ]]

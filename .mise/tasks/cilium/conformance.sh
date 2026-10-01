@@ -31,7 +31,6 @@ if [[ -n "$only" ]]; then
   done <<<"$patterns"
 fi
 
-init_environment "$environment"
 claim_environment "$environment"
 kubeconfig=$(environment_kubeconfig "$environment")
 # The suite reaches Hubble Relay only on a local address and opens no

@@ -15,7 +15,6 @@ if [[ ! "$run_start_timeout" =~ ^(0|[1-9][0-9]{0,5})$ ]]; then
   fail "FIRMAMENT_FORTIO_START_TIMEOUT must be whole seconds, at most 6 digits and without a leading zero, not '$run_start_timeout'"
 fi
 
-init_environment "$environment"
 claim_environment "$environment"
 kubeconfig=$(environment_kubeconfig "$environment")
 traffic=$(traffic_directory "$environment")
