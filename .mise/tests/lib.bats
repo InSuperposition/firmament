@@ -1,5 +1,7 @@
 #!/usr/bin/env bats
 
+bats_require_minimum_version 1.5.0
+
 load stubs.bash
 
 setup() {
@@ -232,13 +234,13 @@ setup() {
 }
 
 @test "treats an empty XDG_STATE_HOME as unset" {
-  run env -u FIRMAMENT_STATE_HOME XDG_STATE_HOME= "$real_mise" env --json -C "$root_directory"
+  run --separate-stderr env -u FIRMAMENT_STATE_HOME XDG_STATE_HOME= "$real_mise" env --json -C "$root_directory"
   [ "$status" -eq 0 ]
   [ "$(jq -r .FIRMAMENT_STATE_HOME <<<"$output")" = "$HOME/.local/state/firmament" ]
 }
 
 @test "honors a FIRMAMENT_STATE_HOME set by the caller" {
-  run env FIRMAMENT_STATE_HOME=/custom "$real_mise" env --json -C "$root_directory"
+  run --separate-stderr env FIRMAMENT_STATE_HOME=/custom "$real_mise" env --json -C "$root_directory"
   [ "$(jq -r .FIRMAMENT_STATE_HOME <<<"$output")" = /custom ]
 }
 
