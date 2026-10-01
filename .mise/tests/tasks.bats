@@ -1782,3 +1782,40 @@ STUB
   [ -d "$TF_PLUGIN_CACHE_DIR" ] || fail "no cache directory at $TF_PLUGIN_CACHE_DIR"
   grep -q '^hk install --mise ' "$CALLS" || fail "hk hooks not installed: $(cat "$CALLS")"
 }
+
+# A stand-in repository holding a copy of the layout contract.
+contract_repository() {
+  local repository
+  repository=$(make_repository)
+  cp -R "$root_directory/contracts" "$repository/"
+  printf '%s\n' "$repository"
+}
+
+@test "contracts:lint accepts every contract in the repository" {
+  run "$root_directory/.mise/tasks/contracts/lint.sh"
+  [ "$status" -eq 0 ] || fail "$output"
+}
+
+@test "contracts:lint refuses a field the schema does not declare, naming the file and field" {
+  MISE_PROJECT_ROOT=$(contract_repository)
+  yq -i '.folders.roots.owner = "someone"' "$MISE_PROJECT_ROOT/contracts/layout/layout.yaml"
+  run "$root_directory/.mise/tasks/contracts/lint.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"folders.roots.owner"* ]] || fail "$output"
+  [[ "$output" == *"contracts/layout: data does not match #Contract"* ]]
+}
+
+@test "contracts:lint refuses a layout that leaves out a folder" {
+  MISE_PROJECT_ROOT=$(contract_repository)
+  yq -i 'del(.folders.clusters)' "$MISE_PROJECT_ROOT/contracts/layout/layout.yaml"
+  run "$root_directory/.mise/tasks/contracts/lint.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"folders.clusters"* ]] || fail "$output"
+}
+
+@test "contracts:lint fails when there is no contract to check" {
+  MISE_PROJECT_ROOT=$(make_repository)
+  run "$root_directory/.mise/tasks/contracts/lint.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no contracts/*/schema.cue to check"* ]]
+}

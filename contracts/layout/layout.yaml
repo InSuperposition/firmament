@@ -1,0 +1,44 @@
+# The repository layout: each top-level folder, what it may reference and
+# what it must never do, the places a cluster name appears (C40), and the
+# rules review checks because no tool consumes them (C79).
+folders:
+  contracts:
+    holds: interface documents and the schemas that check them
+    may_reference: []
+    must_never: [reference another folder]
+  packages:
+    holds: what Flux applies, one folder per package, named <tool>[-<concern>]
+    may_reference: [contracts]
+    must_never: [name a cluster, environment or namespace]
+  modules:
+    holds: reusable OpenTofu modules, named <layer>-<tool>
+    may_reference: [contracts]
+    must_never: [reference packages, clusters or environments]
+  roots:
+    holds: executable OpenTofu roots, named <concern>-<variant>, linked by contract files
+    may_reference: [modules, contracts, packages, clusters, environments]
+    must_never: [hardcode an environment or cluster name]
+  clusters:
+    holds: cluster definitions; each runs in every environment that names it
+    may_reference: [packages, contracts]
+    must_never: [reference an environment, hold a literal environment fact]
+  environments:
+    holds: environment data; environment.yaml names the cluster
+    may_reference: [clusters, roots]
+    must_never: [contain code]
+cluster_name_places:
+  - clusters/<name>/
+  - the cluster field of environments/<env>/environment.yaml
+reference_notes:
+  - roots/bootstrap-flux reads the packages it bootstraps (packages/cilium, packages/flux) so the bootstrap and Flux install the same bytes
+  - environments/<env>/mise.toml is configuration, not data; it goes when the state layout moves (C81)
+standalone_checks:
+  - rule: chainsaw suites only read the cluster
+    task: chainsaw:lint
+review_checks:
+  - a package names no cluster, environment or namespace
+  - a module references no package, cluster or environment
+  - a root hardcodes no environment or cluster name
+  - a contract references no other folder
+  - a cluster definition names no environment
+  - a .mise/tasks/<name>/ folder named like a package has packages/<name>/ (C49)

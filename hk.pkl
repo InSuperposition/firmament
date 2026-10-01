@@ -13,7 +13,12 @@ local fast = new Mapping<String, Step> {
     glob = List("clusters/*/tests/cluster/**/*.yaml", "packages/*/tests/cluster/**/*.yaml")
     check = "mise run chainsaw:lint"
   }
-  // Renders and schema-validates each environment's Flux build.
+  // Each contract's data against its schema.
+  ["contracts"] {
+    glob = List("contracts/**")
+    check = "mise run contracts:lint"
+  }
+  // Renders and schema-validates each cluster's Flux build.
   ["flux"] {
     glob = List("packages/**", "clusters/*/flux/**", ".mise/flux-test-values.env", ".mise/flux-schemas/**")
     check = "mise run flux:lint"

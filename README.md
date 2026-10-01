@@ -59,6 +59,8 @@ roots/machine-orb/    the OrbStack machine and its readiness check;
 roots/kubernetes-k0s/ k0s on that machine; writes the kubeconfig and the
                       cluster-access contract with the runtime values
 roots/bootstrap-flux/ bootstraps Cilium and Flux into the cluster
+contracts/layout/     the layout contract: folders, what each may
+                      reference, the review checks (C79)
 clusters/singularity/ the cluster definition: its Flux build (which
                       packages Flux applies) and its cluster suite
 environments/local/   the local environment's data: environment.yaml names
