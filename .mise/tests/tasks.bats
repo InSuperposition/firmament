@@ -54,7 +54,7 @@ run_task() {
     # e2e.sh destroys through `mise run`; its own tests check what it runs.
     # The traffic tasks deploy workloads and measure a run started earlier;
     # their own tests below check them.
-    apply.sh | destroy.sh | e2e.sh | traffic-start.sh | traffic-check.sh) continue ;;
+    apply.sh | destroy.sh | e2e.sh | restart-agent.sh | traffic-start.sh | traffic-check.sh) continue ;;
     esac
     rm -f "$CALLS"
     run_task "$script" local
@@ -73,7 +73,7 @@ run_task() {
 @test "every task that changes an environment claims it first" {
   local script
   for script in "$root_directory"/.mise/tasks/*/apply.sh "$root_directory"/.mise/tasks/*/destroy.sh \
-    "$root_directory/.mise/tasks/env/e2e.sh" "$root_directory"/.mise/tasks/cilium/{conformance,traffic-start,traffic-check}.sh; do
+    "$root_directory/.mise/tasks/env/e2e.sh" "$root_directory"/.mise/tasks/cilium/{conformance,restart-agent,traffic-start,traffic-check}.sh; do
     grep -q '^claim_environment "\$environment"$' "$script" || fail "$script changes the environment without claiming it"
   done
 }
@@ -305,6 +305,16 @@ local_state() {
   [[ "${lines[1]}" == "helm --kubeconfig /state/admin.kubeconfig -n kube-system get values cilium -o yaml "* ]]
   [[ "${lines[2]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system rollout status daemonset/cilium --timeout=10m "* ]]
   [[ "${lines[3]}" == "cilium --kubeconfig /state/admin.kubeconfig status --wait --interactive=false "* ]]
+}
+
+@test "cilium:restart-agent restarts the agent DaemonSet, then waits for the rollout and for Cilium" {
+  run_task "$root_directory/.mise/tasks/cilium/restart-agent.sh" local
+  [ "$status" -eq 0 ]
+  run grep -E '^(kubectl|helm|cilium) ' "$CALLS"
+  [ "${#lines[@]}" -eq 3 ]
+  [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system rollout restart daemonset/cilium "* ]]
+  [[ "${lines[1]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system rollout status daemonset/cilium --timeout=10m "* ]]
+  [[ "${lines[2]}" == "cilium --kubeconfig /state/admin.kubeconfig status --wait --interactive=false "* ]]
 }
 
 @test "tofu:test initializes and tests each suite directory, and never applies" {
@@ -1066,16 +1076,17 @@ mise run --yes env:destroy local" ]
   [[ "$output" == *"Baseline: origin/main at $(git -C "$MISE_PROJECT_ROOT" rev-parse origin/main)"* ]]
   [[ "${lines[-1]}" == "env:e2e passed for local at $(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD): traffic held across the Cilium agent restart; the cluster is destroyed." ]]
   run grep '^mise ' "$CALLS"
-  [ "${#lines[@]}" -eq 9 ]
+  [ "${#lines[@]}" -eq 10 ]
   [ "${lines[0]}" = "mise run --yes env:destroy local | branch=feature/test" ]
   [[ "${lines[1]}" == "mise --cd "*"/baseline run env:apply local | branch=main" ]]
   [[ "${lines[2]}" == "mise --cd "*"/baseline run env:verify local | branch=main" ]]
   [ "${lines[3]}" = "mise run cilium:traffic-start local | branch=feature/test" ]
   [ "${lines[4]}" = "mise run env:apply local | branch=feature/test" ]
   [ "${lines[5]}" = "mise run verify local | branch=feature/test" ]
-  [ "${lines[6]}" = "mise run cilium:traffic-check local | branch=feature/test" ]
-  [ "${lines[7]}" = "mise run cilium:conformance local | branch=feature/test" ]
-  [ "${lines[8]}" = "mise run --yes env:destroy local | branch=feature/test" ]
+  [ "${lines[6]}" = "mise run cilium:restart-agent local | branch=feature/test" ]
+  [ "${lines[7]}" = "mise run cilium:traffic-check local | branch=feature/test" ]
+  [ "${lines[8]}" = "mise run cilium:conformance local | branch=feature/test" ]
+  [ "${lines[9]}" = "mise run --yes env:destroy local | branch=feature/test" ]
   ! git -C "$MISE_PROJECT_ROOT" worktree list | grep -q /baseline
 }
 
@@ -1086,6 +1097,15 @@ mise run --yes env:destroy local" ]
   [ "$status" -ne 0 ]
   [[ "$output" == *"env:e2e stopped at: check_traffic"* ]]
   [ "$(mise_calls | tail -1)" = "mise run cilium:traffic-check local" ]
+}
+
+@test "env:e2e --from-branch stops when the agent does not restart, before measuring traffic" {
+  e2e_mise_stub
+  upgrade_repository
+  FAIL_CALL="run cilium:restart-agent local" usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"env:e2e stopped at: mise run cilium:restart-agent local"* ]]
+  [ "$(mise_calls | tail -1)" = "mise run cilium:restart-agent local" ]
 }
 
 @test "env:e2e --from-branch stops before the switch when traffic does not start" {

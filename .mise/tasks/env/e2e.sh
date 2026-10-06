@@ -170,6 +170,10 @@ fi
 step mise run verify "$environment"
 if [[ -n "$from_branch" ]]; then
   step workloads_unchanged
+  # An upgrade that leaves the agent alone would leave the traffic check with
+  # nothing to prove, so the agent restarts here, after the workloads check
+  # and while the traffic runs.
+  step mise run cilium:restart-agent "$environment"
   # Before conformance, whose cleanup removes the conn-disrupt workloads.
   step check_traffic
 fi
