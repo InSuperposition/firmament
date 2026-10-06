@@ -12,7 +12,12 @@ terraform {
 }
 
 locals {
-  ssh_key_path = coalesce(var.orbstack_ssh_key_path, pathexpand("~/.orbstack/ssh/id_ed25519"))
+  # The environment's data names the cluster definition it runs.
+  environment_file = "${coalesce(var.environments_directory, "${path.module}/../../environments")}/${var.environment}/environment.yaml"
+  environment_data = yamldecode(file(local.environment_file))
+  cluster          = local.environment_data.cluster
+
+  machine_name = "${var.environment}-${local.cluster}"
 
   # The machine-hosts contract: everything the Kubernetes root needs to
   # reach this machine, and nothing about OrbStack beyond it.
@@ -20,17 +25,28 @@ locals {
     name       = module.vm_orb.name
     dns_name   = module.vm_orb.dns_name
     ip_address = module.vm_orb.ip_address
-    ssh = {
-      address  = module.vm_orb.root_ssh.address
-      port     = module.vm_orb.root_ssh.port
-      user     = module.vm_orb.root_ssh.user
-      key_path = local.ssh_key_path
+    ssh        = module.vm_orb.ssh
+  }
+}
+
+# The machine is named for a cluster the environment allocates; checked
+# here, where the environment data is read.
+resource "terraform_data" "environment_cluster" {
+  input = local.cluster
+
+  lifecycle {
+    precondition {
+      condition     = try(contains(keys(local.environment_data.clusters), local.cluster), false)
+      error_message = "${local.environment_file}: clusters must hold an allocation for the cluster ${try(local.cluster, "")}."
     }
   }
 }
 
 module "vm_orb" {
   source = "../../modules/vm-orb"
+  name   = local.machine_name
+
+  depends_on = [terraform_data.environment_cluster]
 }
 
 module "os_ubuntu" {
