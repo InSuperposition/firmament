@@ -1,0 +1,3 @@
+reason: A single node has nowhere to run a second operator replica.
+values:
+  operator.replicas: 1

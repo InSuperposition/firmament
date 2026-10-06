@@ -67,6 +67,9 @@ contracts/machine-hosts/, cluster-access/, environment/
                       the data files that cross roots and tasks: closed
                       schemas, checked offline by contracts:lint and by
                       the root that reads each file
+contracts/package-spec/, cluster-spec/, bindings-spec/, tenant-spec/, delta-spec/
+                      the formats of the files authors write; the Timoni
+                      modules that read them check them again
 clusters/singularity/ the cluster definition: its Flux build (which
                       packages Flux applies) and its cluster suite
 environments/local/   the local environment's data: environment.yaml names

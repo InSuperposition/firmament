@@ -1,1 +1,8 @@
 cluster: Singularity
+target: orbstack
+engine: flux
+artifact_source: ghcr.io/insuperposition/firmament
+clusters:
+  Singularity:
+    mesh_id: 1
+    pod_cidr: 10.240.0.0/16

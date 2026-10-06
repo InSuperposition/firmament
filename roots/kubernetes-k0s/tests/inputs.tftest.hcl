@@ -99,3 +99,14 @@ run "rejects_a_field_the_environment_schema_does_not_declare" {
 
   expect_failures = [terraform_data.environment_contract]
 }
+
+run "rejects_an_environment_without_artifact_source_naming_the_field" {
+  command = plan
+
+  variables {
+    environment            = "no-artifact-source"
+    environments_directory = "tests/fixtures/environments"
+  }
+
+  expect_failures = [terraform_data.environment_contract]
+}

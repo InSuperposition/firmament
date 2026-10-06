@@ -1,0 +1,6 @@
+- package: cilium
+  namespace: kube-system
+  tenant: platform
+- package: openbao
+  namespace: openbao
+  tenant: platform

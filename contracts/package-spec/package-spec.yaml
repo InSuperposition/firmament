@@ -1,0 +1,20 @@
+name: openbao
+layer: identity
+pin:
+  source: oci://ghcr.io/openbao/charts/openbao
+  version: 0.18.0
+  digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+bootstrap: false
+delta_keys:
+  - server.replicas
+requires:
+  - capability: storage
+    scope: cluster
+provides:
+  - capability: secrets
+    scope: cluster
+    port: 8200
+    protocol: TCP
+    readiness:
+      kind: StatefulSet
+      name: openbao

@@ -1914,6 +1914,34 @@ expect_planted_value_refused() {
   [[ "$output" == *"contracts/environment/extra.yaml: untracked, not checked"* ]] || fail "$output"
 }
 
+@test "contracts:lint refuses a namespace field in package-spec" {
+  expect_planted_value_refused package-spec '.namespace = "openbao"' namespace
+}
+
+@test "contracts:lint refuses a pin without a digest in package-spec" {
+  expect_planted_value_refused package-spec 'del(.pin.digest)' pin.digest
+}
+
+@test "contracts:lint refuses a role in cluster-spec" {
+  expect_planted_value_refused cluster-spec '.role = "workload"' role
+}
+
+@test "contracts:lint refuses a binding without a tenant in bindings-spec" {
+  expect_planted_value_refused bindings-spec 'del(.[0].tenant)' tenant
+}
+
+@test "contracts:lint refuses an environment without artifact_source" {
+  expect_planted_value_refused environment 'del(.artifact_source)' artifact_source
+}
+
+@test "contracts:lint refuses the reserved cluster kind in tenant-spec" {
+  expect_planted_value_refused tenant-spec '.kind = "cluster"' kind
+}
+
+@test "contracts:lint refuses a delta without a reason in delta-spec" {
+  expect_planted_value_refused delta-spec 'del(.reason)' reason
+}
+
 @test "contracts:lint fails when there is no contract to check" {
   MISE_PROJECT_ROOT=$(make_repository)
   run "$root_directory/.mise/tasks/contracts/lint.sh"

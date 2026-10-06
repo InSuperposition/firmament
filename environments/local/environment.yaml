@@ -1,2 +1,10 @@
-# The cluster definition this environment runs, from clusters/<name>/.
+# What this environment is: the cluster definition it runs (clusters/<name>/),
+# where it runs, how it is delivered and its mesh allocation.
 cluster: singularity
+target: orbstack
+engine: flux
+artifact_source: ghcr.io/insuperposition/firmament
+clusters:
+  singularity:
+    mesh_id: 1
+    pod_cidr: 10.240.0.0/16

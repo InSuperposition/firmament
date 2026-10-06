@@ -69,4 +69,5 @@ State: `$FIRMAMENT_STATE_HOME/environments/<env>/kubernetes-k0s.tfstate`.
 `tests/fixtures/machine-hosts.yaml` contract. `tests/inputs.tftest.hcl`
 checks the branch and environment validations, and rejects a planted
 value in the machine-hosts and environment contracts (`ssh.port`,
-`ssh.host_keys`, `cluster`, an undeclared field), each naming the field.
+`ssh.host_keys`, `cluster`, `artifact_source`, an undeclared field), each naming
+the field.
