@@ -16,7 +16,8 @@ locals {
   machine = yamldecode(file("${var.state_directory}/machine-hosts.yaml"))
 
   # The environment's data names the cluster definition it runs.
-  environment_data = yamldecode(file("${path.module}/../../environments/${var.environment}/environment.yaml"))
+  environment_file = "${coalesce(var.environments_directory, "${path.module}/../../environments")}/${var.environment}/environment.yaml"
+  environment_data = yamldecode(file(local.environment_file))
   cluster          = local.environment_data.cluster
 
   # The machine's DNS name resolves on both the host and the guest.
@@ -44,6 +45,61 @@ locals {
   }
 }
 
+# The machine-hosts contract, checked where it is read. The same fields
+# contracts/machine-hosts/schema.cue declares; contracts:lint checks the
+# sample against that schema and this checks the file the machine root wrote.
+resource "terraform_data" "machine_hosts_contract" {
+  input = local.machine
+
+  lifecycle {
+    precondition {
+      condition     = try(can(regex("^[a-z][a-z0-9-]*$", local.machine.name)) && local.machine.dns_name != "", false)
+      error_message = "machine-hosts.yaml: name must be lowercase letters, digits and -, starting with a letter, and dns_name must be set."
+    }
+    precondition {
+      condition     = try(can(cidrhost("${local.machine.ip_address}/32", 0)) || can(cidrhost("${local.machine.ip_address}/128", 0)), false)
+      error_message = "machine-hosts.yaml: ip_address must be an IP address."
+    }
+    precondition {
+      condition     = try(local.machine.ssh.address != "" && local.machine.ssh.user != "" && local.machine.ssh.key_path != "", false)
+      error_message = "machine-hosts.yaml: ssh.address, ssh.user and ssh.key_path must be set."
+    }
+    precondition {
+      condition = try(
+        jsonencode(local.machine.ssh.port) == tostring(local.machine.ssh.port) &&
+        local.machine.ssh.port == floor(local.machine.ssh.port) &&
+        local.machine.ssh.port >= 1 && local.machine.ssh.port <= 65535,
+        false
+      )
+      error_message = "machine-hosts.yaml: ssh.port must be an integer from 1 to 65535."
+    }
+    precondition {
+      condition = try(alltrue([
+        for key in try(local.machine.ssh.host_keys, []) :
+        can(regex("^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0-9+/=]+$", key))
+      ]), false)
+      error_message = "machine-hosts.yaml: ssh.host_keys must be a list of known_hosts key strings, '<type> <base64 key>'."
+    }
+  }
+}
+
+# The environment contract, checked where it is read: only cluster, a
+# lowercase name.
+resource "terraform_data" "environment_contract" {
+  input = local.environment_data
+
+  lifecycle {
+    precondition {
+      condition     = try(can(regex("^[a-z][a-z0-9-]*$", local.environment_data.cluster)), false)
+      error_message = "environment.yaml: cluster must be lowercase letters, digits and -, starting with a letter."
+    }
+    precondition {
+      condition     = try(length(setsubtract(keys(local.environment_data), ["cluster"])) == 0, false)
+      error_message = "environment.yaml: only the field cluster is allowed; found ${try(join(", ", sort(setsubtract(keys(local.environment_data), ["cluster"]))), "none")}."
+    }
+  }
+}
+
 # Flux syncs clusters/<cluster>/flux, so the cluster the environment names
 # must exist; checked here, where the environment data is read.
 resource "terraform_data" "cluster_definition" {
@@ -51,10 +107,12 @@ resource "terraform_data" "cluster_definition" {
 
   lifecycle {
     precondition {
-      condition     = can(regex("^[a-z][a-z0-9-]*$", local.cluster)) && fileexists("${path.module}/../../clusters/${local.cluster}/flux/kustomization.yaml")
-      error_message = "environments/${var.environment}/environment.yaml names cluster '${local.cluster}', but clusters/${local.cluster}/flux/kustomization.yaml does not exist."
+      condition     = fileexists("${path.module}/../../clusters/${local.cluster}/flux/kustomization.yaml")
+      error_message = "${local.environment_file} names cluster '${local.cluster}', but clusters/${local.cluster}/flux/kustomization.yaml does not exist."
     }
   }
+
+  depends_on = [terraform_data.environment_contract]
 }
 
 module "orch_k0s" {

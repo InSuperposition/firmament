@@ -1,0 +1,10 @@
+kubeconfig_path: tests/fixtures/admin.kubeconfig
+runtime_info:
+  api_address: firmament.orb.local
+  api_port: "6443"
+  kube_proxy_replacement: "true"
+  cilium_datapath_mode: netkit
+  cilium_operator_replicas: "1"
+  environment: local
+  cluster: singularity
+  git_branch: main

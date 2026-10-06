@@ -20,6 +20,8 @@ module "bootstrap_flux" {
 
   revision = local.bootstrap_revision
 
+  depends_on = [terraform_data.cluster_access_contract]
+
   gitops_resources = {
     instance_yaml = file("${local.packages}/flux/fluxinstance.yaml")
     prerequisites = {

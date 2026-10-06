@@ -58,6 +58,7 @@ k0s goes with the machine, so a reset over SSH would be redundant.
 | `state_directory` | the mise tasks (`TF_VAR_state_directory`) |
 | `environment` | the mise tasks (`TF_VAR_environment`), from `MISE_ENV` |
 | `environments/<environment>/environment.yaml` | read from the repository: `cluster` names the cluster definition, which must have `clusters/<cluster>/flux/kustomization.yaml` |
+| `environments_directory` | tests only: where to read `<environment>/environment.yaml` instead of the repository's `environments/` |
 | `git_branch` | the mise tasks: the checked-out branch, or `FIRMAMENT_GIT_BRANCH` |
 
 State: `$FIRMAMENT_STATE_HOME/environments/<env>/kubernetes-k0s.tfstate`.
@@ -66,4 +67,6 @@ State: `$FIRMAMENT_STATE_HOME/environments/<env>/kubernetes-k0s.tfstate`.
 
 `tests/integration.bats` plans this root against the
 `tests/fixtures/machine-hosts.yaml` contract. `tests/inputs.tftest.hcl`
-checks the branch and environment validations.
+checks the branch and environment validations, and rejects a planted
+value in the machine-hosts and environment contracts (`ssh.port`,
+`ssh.host_keys`, `cluster`, an undeclared field), each naming the field.
