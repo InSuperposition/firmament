@@ -63,6 +63,10 @@ roots/kubernetes-k0s/ k0s on that machine; writes the kubeconfig and the
 roots/bootstrap-flux/ bootstraps Cilium and Flux into the cluster
 contracts/layout/     the layout contract: folders, what each may
                       reference, the review checks (C79)
+contracts/machine-hosts/, cluster-access/, environment/
+                      the data files that cross roots and tasks: closed
+                      schemas, checked offline by contracts:lint and by
+                      the root that reads each file
 clusters/singularity/ the cluster definition: its Flux build (which
                       packages Flux applies) and its cluster suite
 environments/local/   the local environment's data: environment.yaml names
