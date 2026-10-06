@@ -1586,6 +1586,16 @@ run_capture_stall() {
   ! grep -q '^tofu ' "$CALLS" || fail "read tofu state, which a stalled apply has not written: $(cat "$CALLS")"
 }
 
+@test "orb:capture-stall targets <environment>-<cluster> of the selected environment when given no machine" {
+  local tool
+  for tool in arp dscacheutil route lsof; do
+    [ -e "$stubs/$tool" ] || stub "$tool"
+  done
+  run "$root_directory/.mise/tasks/orb/capture-stall.sh" </dev/null
+  [ "$status" -eq 0 ] || fail "$output"
+  grep -qx 'orb -m local-singularity -u root ss -tnp | state= branch=' "$CALLS"
+}
+
 @test "orb:capture-stall keeps capturing after a command fails" {
   printf '#!/usr/bin/env bash\nexit 3\n' >"$stubs/arp"
   chmod +x "$stubs/arp"
@@ -1877,8 +1887,18 @@ expect_planted_value_refused() {
   [ "$status" -eq 0 ] || fail "$output"
 }
 
-@test "contracts:lint keeps ssh.host_keys optional until machines-orbstack writes it" {
-  grep -Eq '^\s+host_keys\?:' "$root_directory/contracts/machine-hosts/schema.cue"
+@test "contracts:lint refuses machine-hosts without ssh.host_keys" {
+  expect_planted_value_refused machine-hosts 'del(.ssh.host_keys)' ssh.host_keys
+}
+
+@test "contracts:lint refuses an empty ssh.host_keys in machine-hosts" {
+  expect_planted_value_refused machine-hosts '.ssh.host_keys = []' ssh.host_keys
+}
+
+@test "contracts:lint accepts an ed25519 and an ecdsa key together in ssh.host_keys" {
+  run "$root_directory/.mise/tasks/contracts/lint.sh"
+  [ "$status" -eq 0 ] || fail "$output"
+  [ "$(yq '.ssh.host_keys | length' "$root_directory/contracts/machine-hosts/machine-hosts.yaml")" -ge 2 ]
 }
 
 @test "contracts:lint refuses an integer runtime_info.api_port in cluster-access" {

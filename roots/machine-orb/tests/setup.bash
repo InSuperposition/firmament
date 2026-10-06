@@ -9,13 +9,22 @@ setup_file() {
 
 setup() {
   export TF_VAR_state_directory="$BATS_TEST_TMPDIR/state"
+  export TF_VAR_environment=local
+  export TF_VAR_environments_directory="$BATS_TEST_DIRNAME/fixtures/environments"
   mkdir -p "$TF_VAR_state_directory"
+}
+
+# Plans the machine root as a host whose home directory is the fixture would,
+# writing the plan to $BATS_TEST_TMPDIR/plan.tfplan.
+plan_machine_root() {
+  HOME="$BATS_TEST_DIRNAME/fixtures/home" tofu -chdir="$machine_root" plan -input=false -no-color \
+    -out="$BATS_TEST_TMPDIR/plan.tfplan" "$@"
 }
 
 # Prints one output the machine root plans, as JSON.
 planned_output() {
-  local name="$1" plan="$BATS_TEST_TMPDIR/plan.tfplan"
+  local name="$1"
   shift
-  tofu -chdir="$machine_root" plan -input=false -out="$plan" "$@" >/dev/null
-  tofu -chdir="$machine_root" show -json "$plan" | jq -r --arg name "$name" '.output_changes[$name].after'
+  plan_machine_root "$@" >/dev/null
+  tofu -chdir="$machine_root" show -json "$BATS_TEST_TMPDIR/plan.tfplan" | jq -c --arg name "$name" '.output_changes[$name].after'
 }

@@ -5,16 +5,21 @@ Abstract: OpenTofu module declaring one OrbStack machine, using the
 
 ## Inputs
 
-`name` (default `firmament`), `image` (default `ubuntu:resolute`), `arch`
-(default `arm64`), `username` (default `tensor`) — see `variables.tf`.
+`name` (required) and `image` (default `ubuntu:resolute`) — see
+`variables.tf`. No architecture or user is pinned: OrbStack picks them for
+the host it runs on.
 
 ## Outputs
 
-`id`, `name`, `ip_address`, `status`, `dns_name`
-(`<name>.orb.local`), `ssh_target` (the ordinary-user `user@name@orb`
-form), `root_ssh` (an object with the `address`/`user`/`port` needed to
-reach the machine as root through OrbStack's SSH multiplexer, for tools
-like k0sctl that need root and can't use the `@orb` alias).
+`id`, `name`, `ip_address`, `status`, `dns_name` (`<name>.orb.local`),
+`ssh_target` (`<name>@orb`, the host's default user through OrbStack's SSH
+alias) and `ssh`: how a tool that needs root, such as k0sctl, reaches the
+machine through OrbStack's multiplexer. `ssh` holds the `address`, `port`,
+`user` (`root@<name>`), OrbStack's client `key_path` and `host_keys`, the
+multiplexer's server keys read from `~/.orbstack/ssh/known_hosts` as
+`<type> <base64 key>` entries. Reading `~/.orbstack` is why only this
+module knows OrbStack. When no key is found for `[127.0.0.1]:32222`, the
+`ssh` output fails and names the file.
 
 ## Constraints
 
@@ -51,7 +56,7 @@ stdout after applying.
 
 ## Testing
 
-Tests run `tofu plan` and inspect the JSON plan output. Plan makes no
+Tests run `tofu plan` with `HOME` set to a fixture directory holding OrbStack's `known_hosts`, and inspect the JSON plan output. Plan makes no
 live OrbStack calls — one test confirms this by removing `orb` from
 `PATH` entirely and still passing.
 

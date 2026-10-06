@@ -241,6 +241,23 @@ cluster_directory() {
   printf '%s\n' "$MISE_PROJECT_ROOT/clusters/$cluster"
 }
 
+# Prints the name of the machine the selected environment runs on:
+# <environment>-<cluster>, the cluster named by the cluster field of its
+# environment.yaml. roots/machine-orb derives the same name; a test pins the
+# two together. It reads only the environment's data, so it works before any
+# state or contract exists, such as during a stalled apply.
+machine_name() {
+  local environment directory cluster
+  environment=$(selected_environment) || return
+  directory=$(environment_directory) || return
+  cluster=$(yq -r '.cluster // ""' "$directory/environment.yaml") || return
+  if [[ -z "$cluster" ]]; then
+    fail "environment '$environment' names no cluster in $directory/environment.yaml"
+    return
+  fi
+  printf '%s-%s\n' "$environment" "$cluster"
+}
+
 # Prints the directory of each package an environment's Flux build lists,
 # one per line, or nothing for an environment without a Flux build. Only
 # directories are packages; a resource file the build lists is not.

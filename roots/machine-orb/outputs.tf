@@ -14,8 +14,3 @@ output "machine_hosts_path" {
   value       = local_file.machine_hosts.filename
   description = "The machine-hosts contract the Kubernetes root reads."
 }
-
-output "ssh_key_path" {
-  value       = local.ssh_key_path
-  description = "The SSH private key the machine-hosts contract names for k0sctl."
-}

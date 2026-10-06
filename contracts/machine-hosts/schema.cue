@@ -22,7 +22,8 @@ import "net"
 		port!:     int & >=1 & <=65535
 		user!:     string & !=""
 		key_path!: string & !=""
-		// Optional until machines-orbstack writes it and makes it required.
-		host_keys?: [...#HostKey]
+		// At least one: k0sctl checks the server key against these, and an
+		// empty list would refuse every connection.
+		host_keys!: [#HostKey, ...#HostKey]
 	})
 })

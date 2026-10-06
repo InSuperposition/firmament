@@ -78,6 +78,26 @@ run "rejects_a_malformed_ssh_host_key_naming_the_field" {
   expect_failures = [terraform_data.machine_hosts_contract]
 }
 
+run "rejects_absent_ssh_host_keys_naming_the_field" {
+  command = plan
+
+  variables {
+    state_directory = "tests/fixtures/no-host-keys"
+  }
+
+  expect_failures = [terraform_data.machine_hosts_contract]
+}
+
+run "rejects_empty_ssh_host_keys_naming_the_field" {
+  command = plan
+
+  variables {
+    state_directory = "tests/fixtures/empty-host-keys"
+  }
+
+  expect_failures = [terraform_data.machine_hosts_contract]
+}
+
 run "rejects_an_uppercase_cluster_naming_the_field" {
   command = plan
 

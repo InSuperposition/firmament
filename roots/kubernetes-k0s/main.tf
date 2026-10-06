@@ -77,11 +77,15 @@ resource "terraform_data" "machine_hosts_contract" {
       error_message = "machine-hosts.yaml: ssh.port must be an integer from 1 to 65535."
     }
     precondition {
-      condition = try(alltrue([
-        for key in try(local.machine.ssh.host_keys, []) :
-        can(regex("^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0-9+/=]+$", key))
-      ]), false)
-      error_message = "machine-hosts.yaml: ssh.host_keys must be a list of known_hosts key strings, '<type> <base64 key>'."
+      condition = try(
+        length(local.machine.ssh.host_keys) >= 1 &&
+        alltrue([
+          for key in local.machine.ssh.host_keys :
+          can(regex("^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0-9+/=]+$", key))
+        ]),
+        false
+      )
+      error_message = "machine-hosts.yaml: ssh.host_keys must be a list of at least one known_hosts key string, '<type> <base64 key>'."
     }
   }
 }
