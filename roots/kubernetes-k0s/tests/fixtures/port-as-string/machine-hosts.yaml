@@ -8,3 +8,6 @@ ssh:
   port: "32222"
   user: root@firmament
   key_path: /keys/id_ed25519
+  host_keys:
+    - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+    - ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBAnZ5i1XGWGQpWqW8vwPRQ6vm5mJf0Qm3pnvQqkb3z8KVoUFIgJ6aG2oEd1jOvB0q1T0qd7WZrQZbU5Qz3o8H5s=

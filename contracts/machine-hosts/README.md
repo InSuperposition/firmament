@@ -17,10 +17,11 @@ at plan time, naming the field that fails.
 | `ssh.port` | integer | 1 to 65535 |
 | `ssh.user` | string | not empty |
 | `ssh.key_path` | string | not empty |
-| `ssh.host_keys` | list of strings | optional; each entry is a `known_hosts` key, `<type> <base64 key>`, with a type of `ssh-ed25519`, `ssh-rsa` or `ecdsa-sha2-nistp256`, `-nistp384` or `-nistp521` |
+| `ssh.host_keys` | list of strings | at least one entry; each entry is a `known_hosts` key, `<type> <base64 key>`, with a type of `ssh-ed25519`, `ssh-rsa` or `ecdsa-sha2-nistp256`, `-nistp384` or `-nistp521` |
 
-`ssh.host_keys` stays optional until `machines-orbstack` writes it, and
-that change makes it required and edits the test that guards this.
+`roots/machine-orb` writes `ssh.host_keys` from OrbStack's own `known_hosts`;
+an absent or empty list is refused, because k0sctl checks the server key
+against it.
 
 See also [cluster-access](../cluster-access/README.md) and
 [environment](../environment/README.md); change a field name in all of
