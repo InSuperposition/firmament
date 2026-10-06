@@ -11,43 +11,57 @@ specifiers = ["0.2.15"]
 checksum = "sha256:fecf5f3ea74d11da2cd5d95a4c016d5d2543cbc4844ce21adf5e727e7ffd9e44"
 url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/chainsaw_linux_arm64.tar.gz"
 url_api = "https://api.github.com/repos/kyverno/chainsaw/releases/assets/413798806"
-provenance = "cosign"
+
+[tools."aqua:kyverno/chainsaw"."platforms.linux-arm64".provenance.slsa]
+url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/multiple.intoto.jsonl"
 
 [tools."aqua:kyverno/chainsaw"."platforms.linux-arm64-musl"]
 checksum = "sha256:fecf5f3ea74d11da2cd5d95a4c016d5d2543cbc4844ce21adf5e727e7ffd9e44"
 url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/chainsaw_linux_arm64.tar.gz"
 url_api = "https://api.github.com/repos/kyverno/chainsaw/releases/assets/413798806"
-provenance = "cosign"
+
+[tools."aqua:kyverno/chainsaw"."platforms.linux-arm64-musl".provenance.slsa]
+url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/multiple.intoto.jsonl"
 
 [tools."aqua:kyverno/chainsaw"."platforms.linux-x64"]
 checksum = "sha256:295d226c89f126c0a97775d364be149f47a810c8a3f9829ee410583d0c1abe3c"
 url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/chainsaw_linux_amd64.tar.gz"
 url_api = "https://api.github.com/repos/kyverno/chainsaw/releases/assets/413798796"
-provenance = "cosign"
+
+[tools."aqua:kyverno/chainsaw"."platforms.linux-x64".provenance.slsa]
+url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/multiple.intoto.jsonl"
 
 [tools."aqua:kyverno/chainsaw"."platforms.linux-x64-musl"]
 checksum = "sha256:295d226c89f126c0a97775d364be149f47a810c8a3f9829ee410583d0c1abe3c"
 url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/chainsaw_linux_amd64.tar.gz"
 url_api = "https://api.github.com/repos/kyverno/chainsaw/releases/assets/413798796"
-provenance = "cosign"
+
+[tools."aqua:kyverno/chainsaw"."platforms.linux-x64-musl".provenance.slsa]
+url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/multiple.intoto.jsonl"
 
 [tools."aqua:kyverno/chainsaw"."platforms.macos-arm64"]
 checksum = "sha256:502bef17dd822217e82590e9ccf01c1e26a56b3fa34a835789b9af73e82a169a"
 url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/chainsaw_darwin_arm64.tar.gz"
 url_api = "https://api.github.com/repos/kyverno/chainsaw/releases/assets/413798810"
-provenance = "cosign"
+
+[tools."aqua:kyverno/chainsaw"."platforms.macos-arm64".provenance.slsa]
+url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/multiple.intoto.jsonl"
 
 [tools."aqua:kyverno/chainsaw"."platforms.macos-x64"]
 checksum = "sha256:ddb56002ff8c6265f55ec40c82eb0ef0dddec5127dd12d4fc5e7953453481f4b"
 url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/chainsaw_darwin_amd64.tar.gz"
 url_api = "https://api.github.com/repos/kyverno/chainsaw/releases/assets/413798790"
-provenance = "cosign"
+
+[tools."aqua:kyverno/chainsaw"."platforms.macos-x64".provenance.slsa]
+url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/multiple.intoto.jsonl"
 
 [tools."aqua:kyverno/chainsaw"."platforms.windows-x64"]
 checksum = "sha256:02e7d519c4e815c89dc8a4b14e2b70474d5301f514e721c0e5b3062f67294229"
 url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/chainsaw_windows_amd64.tar.gz"
 url_api = "https://api.github.com/repos/kyverno/chainsaw/releases/assets/413798771"
-provenance = "cosign"
+
+[tools."aqua:kyverno/chainsaw"."platforms.windows-x64".provenance.slsa]
+url = "https://github.com/kyverno/chainsaw/releases/download/v0.2.15/multiple.intoto.jsonl"
 
 [[tools.bats]]
 version = "1.14.0"
@@ -255,35 +269,56 @@ checksum = "sha256:f3e159af616ec0b9bd0a405c2185cf09d06b74652c1de3c7f377e81668266
 url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_linux_arm64.tar.gz"
 url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282890"
 
+[tools.flux2."platforms.linux-arm64".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
+
 [tools.flux2."platforms.linux-arm64-musl"]
 checksum = "sha256:f3e159af616ec0b9bd0a405c2185cf09d06b74652c1de3c7f377e8166826651a"
 url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_linux_arm64.tar.gz"
 url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282890"
+
+[tools.flux2."platforms.linux-arm64-musl".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
 
 [tools.flux2."platforms.linux-x64"]
 checksum = "sha256:b853df82adfd7736f580692f9f734473d571606307139f8fd20c2a80dd1ff473"
 url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_linux_amd64.tar.gz"
 url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282891"
 
+[tools.flux2."platforms.linux-x64".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
+
 [tools.flux2."platforms.linux-x64-musl"]
 checksum = "sha256:b853df82adfd7736f580692f9f734473d571606307139f8fd20c2a80dd1ff473"
 url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_linux_amd64.tar.gz"
 url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282891"
+
+[tools.flux2."platforms.linux-x64-musl".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
 
 [tools.flux2."platforms.macos-arm64"]
 checksum = "sha256:2869ef7151a6f1b27e6b5d2a6804f3ef23c7bdaa06a74e00d3fe5bfc646547fd"
 url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_darwin_arm64.tar.gz"
 url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282876"
 
+[tools.flux2."platforms.macos-arm64".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
+
 [tools.flux2."platforms.macos-x64"]
 checksum = "sha256:5748583cf5da035ca2d751190d2c15f5f656d305c166ec28a312a2f3b6799e31"
 url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_darwin_amd64.tar.gz"
 url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282892"
 
+[tools.flux2."platforms.macos-x64".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
+
 [tools.flux2."platforms.windows-x64"]
 checksum = "sha256:1a23053bf9abbedbdac07237f5c6ae9b0da0bcb77ddbd103faa99839c6a7f562"
 url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_windows_amd64.zip"
 url_api = "https://api.github.com/repos/fluxcd/flux2/releases/assets/538282898"
+
+[tools.flux2."platforms.windows-x64".provenance.slsa]
+url = "https://github.com/fluxcd/flux2/releases/download/v2.9.5/provenance.intoto.jsonl"
 
 [[tools."github:fluxcd/flux-schema"]]
 version = "0.13.0"
