@@ -17,7 +17,7 @@ deletes both, so a missing file means no cluster.
 ```yaml
 kubeconfig_path: <state directory>/admin.kubeconfig
 runtime_info:
-  api_address: firmament.orb.local
+  api_address: local-singularity.orb.local
   api_port: "6443"
   kube_proxy_replacement: "true"
   cilium_datapath_mode: netkit
