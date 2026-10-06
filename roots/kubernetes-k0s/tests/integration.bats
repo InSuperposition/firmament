@@ -57,3 +57,23 @@ load setup.bash
   [ "$status" -ne 0 ]
   [[ "$output" == *"machine-hosts.yaml"* ]]
 }
+
+@test "the contract schema and the root refuse the same planted ssh.port, naming it" {
+  local sample="$root_directory/contracts/machine-hosts/machine-hosts.yaml"
+  yq -i '.ssh.port = "22"' "$TF_VAR_state_directory/machine-hosts.yaml"
+  run tofu -chdir="$k0s_root" plan -input=false
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"ssh.port"* ]] || {
+    printf 'root: %s\n' "$output" >&2
+    false
+  }
+
+  local data="$BATS_TEST_TMPDIR/machine-hosts.yaml"
+  yq '.ssh.port = "22"' "$sample" >"$data"
+  run cue vet -c -d '#Contract' "$root_directory/contracts/machine-hosts/schema.cue" "$data"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"ssh.port"* ]] || {
+    printf 'schema: %s\n' "$output" >&2
+    false
+  }
+}

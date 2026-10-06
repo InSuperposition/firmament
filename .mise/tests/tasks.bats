@@ -1816,12 +1816,27 @@ STUB
   grep -q '^hk install --mise ' "$CALLS" || fail "hk hooks not installed: $(cat "$CALLS")"
 }
 
-# A stand-in repository holding a copy of the layout contract.
+# A stand-in git repository holding a copy of every contract, added to the
+# index as contracts:lint reads only the files git lists.
 contract_repository() {
   local repository
   repository=$(make_repository)
   cp -R "$root_directory/contracts" "$repository/"
+  git -C "$repository" init -q
+  git -C "$repository" add contracts
   printf '%s\n' "$repository"
+}
+
+# Plants one yq edit in a contract's sample, runs contracts:lint, and
+# expects a failure that names the folder and the field.
+expect_planted_value_refused() {
+  local contract="$1" edit="$2" field="$3"
+  MISE_PROJECT_ROOT=$(contract_repository)
+  yq -i "$edit" "$MISE_PROJECT_ROOT/contracts/$contract/$contract.yaml"
+  run "$root_directory/.mise/tasks/contracts/lint.sh"
+  [ "$status" -ne 0 ] || fail "accepted: $edit"
+  [[ "$output" == *"$field"* ]] || fail "$output"
+  [[ "$output" == *"contracts/$contract: data does not match #Contract"* ]] || fail "$output"
 }
 
 @test "contracts:lint accepts every contract in the repository" {
@@ -1844,6 +1859,59 @@ contract_repository() {
   run "$root_directory/.mise/tasks/contracts/lint.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"folders.clusters"* ]] || fail "$output"
+}
+
+@test "contracts:lint refuses a string ssh.port in machine-hosts" {
+  expect_planted_value_refused machine-hosts '.ssh.port = "22"' ssh.port
+}
+
+@test "contracts:lint refuses a malformed ssh.host_keys entry in machine-hosts" {
+  expect_planted_value_refused machine-hosts '.ssh.host_keys = ["not a key line"]' ssh.host_keys
+}
+
+@test "contracts:lint accepts known_hosts key lines in ssh.host_keys" {
+  MISE_PROJECT_ROOT=$(contract_repository)
+  yq -i '.ssh.host_keys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"]' \
+    "$MISE_PROJECT_ROOT/contracts/machine-hosts/machine-hosts.yaml"
+  run "$root_directory/.mise/tasks/contracts/lint.sh"
+  [ "$status" -eq 0 ] || fail "$output"
+}
+
+@test "contracts:lint keeps ssh.host_keys optional until machines-orbstack writes it" {
+  grep -Eq '^\s+host_keys\?:' "$root_directory/contracts/machine-hosts/schema.cue"
+}
+
+@test "contracts:lint refuses an integer runtime_info.api_port in cluster-access" {
+  expect_planted_value_refused cluster-access '.runtime_info.api_port = 6443' runtime_info.api_port
+}
+
+@test "contracts:lint refuses cluster-access without runtime_info.cilium_datapath_mode" {
+  expect_planted_value_refused cluster-access 'del(.runtime_info.cilium_datapath_mode)' runtime_info.cilium_datapath_mode
+}
+
+@test "contracts:lint refuses an uppercase cluster in environment" {
+  expect_planted_value_refused environment '.cluster = "Singularity"' cluster
+}
+
+@test "contracts:lint refuses a field environment does not declare" {
+  expect_planted_value_refused environment '.facts = {}' facts
+}
+
+@test "contracts:lint checks a modified file as it is on disk, staged or not" {
+  MISE_PROJECT_ROOT=$(contract_repository)
+  git -C "$MISE_PROJECT_ROOT" -c user.name=t -c user.email=t@t commit -qm baseline
+  yq -i '.cluster = "Singularity"' "$MISE_PROJECT_ROOT/contracts/environment/environment.yaml"
+  run "$root_directory/.mise/tasks/contracts/lint.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cluster"* ]] || fail "$output"
+}
+
+@test "contracts:lint names an untracked file and does not check it" {
+  MISE_PROJECT_ROOT=$(contract_repository)
+  printf 'facts: {}\n' >"$MISE_PROJECT_ROOT/contracts/environment/extra.yaml"
+  run "$root_directory/.mise/tasks/contracts/lint.sh"
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"contracts/environment/extra.yaml: untracked, not checked"* ]] || fail "$output"
 }
 
 @test "contracts:lint fails when there is no contract to check" {

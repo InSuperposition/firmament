@@ -1,0 +1,8 @@
+name: firmament
+dns_name: firmament.orb.local
+ip_address: 192.168.139.10
+ssh:
+  address: 127.0.0.1
+  port: 32222
+  user: root@firmament
+  key_path: /keys/id_ed25519

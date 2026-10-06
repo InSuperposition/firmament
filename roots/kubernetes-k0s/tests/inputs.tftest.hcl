@@ -53,3 +53,49 @@ run "rejects_an_environment_name_with_uppercase_or_slashes" {
 
   expect_failures = [var.environment]
 }
+
+run "accepts_the_machine_hosts_and_environment_contracts" {
+  command = plan
+}
+
+run "rejects_a_string_ssh_port_naming_the_field" {
+  command = plan
+
+  variables {
+    state_directory = "tests/fixtures/port-as-string"
+  }
+
+  expect_failures = [terraform_data.machine_hosts_contract]
+}
+
+run "rejects_a_malformed_ssh_host_key_naming_the_field" {
+  command = plan
+
+  variables {
+    state_directory = "tests/fixtures/bad-host-key"
+  }
+
+  expect_failures = [terraform_data.machine_hosts_contract]
+}
+
+run "rejects_an_uppercase_cluster_naming_the_field" {
+  command = plan
+
+  variables {
+    environment            = "uppercase-cluster"
+    environments_directory = "tests/fixtures/environments"
+  }
+
+  expect_failures = [terraform_data.environment_contract]
+}
+
+run "rejects_a_field_the_environment_schema_does_not_declare" {
+  command = plan
+
+  variables {
+    environment            = "extra-field"
+    environments_directory = "tests/fixtures/environments"
+  }
+
+  expect_failures = [terraform_data.environment_contract]
+}

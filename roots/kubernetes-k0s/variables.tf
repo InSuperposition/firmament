@@ -22,3 +22,9 @@ variable "environment" {
     error_message = "environment must be lowercase letters, digits and -, starting with a letter."
   }
 }
+
+variable "environments_directory" {
+  type        = string
+  default     = null
+  description = "Directory holding <environment>/environment.yaml; the repository's environments folder when unset."
+}
