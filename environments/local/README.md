@@ -18,10 +18,11 @@ detached HEAD.
 
 ## Commands
 
-Every task below except `env:test` takes the environment name as an
-optional argument, defaulting to `local` (`mise run env:plan local`), and
-talks to that environment's state or machine. `env:test` takes none: it
-tests every root against fixtures.
+`MISE_ENV` names the environment, `local` when unset
+(`MISE_ENV=staging mise run env:plan`). Every task below except `env:test`
+talks to that environment's state or machine, which `mise.toml` derives
+from `MISE_ENV`; none takes an environment argument. `env:test` tests every
+root against fixtures.
 
 | Command | Behavior |
 | --- | --- |
@@ -44,7 +45,7 @@ tests every root against fixtures.
 | `mise run cilium:restart-agent` | Restart the Cilium agent on every node (`rollout restart` of the `cilium` DaemonSet), then wait for the rollout and for Cilium to be ready. `env:e2e --from-branch` runs it while the traffic runs, so the traffic check always crosses an agent restart |
 | `mise run cilium:traffic-check` | Measure the traffic `cilium:traffic-start` began: fails when a conn-disrupt connection broke, any fortio request failed, or fortio sent under 90% of the requested rate, prints the slowest request, and ends with whether the traffic crossed a Cilium agent restart. Removes the test workloads when it passes; a failed check keeps them for inspection |
 | `mise run env:e2e` | Destroy the cluster, rebuild it from scratch, run `verify` and `cilium:conformance` against it, then destroy it again. Refuses to start unless the working tree is clean (untracked files included) and HEAD is the tip of the branch on origin, since Flux reads the pushed branch; fails if origin moves during the run. Stops at the first failure and leaves the cluster up for inspection. A passing run ends with the time each step took and the change since the last passing run, which it keeps in the environment's state directory; the times are reported, never judged. Asks first |
-| `mise run env:e2e --from-branch <branch>` | Also test an upgrade: build the cluster from `<branch>` in a detached worktree and verify it, record the pods and containers of the workloads in `tests/upgrade-unaffected`, then apply the checked-out branch over it, run the same checks, and fail if those workloads were replaced or restarted. The baseline must already be merged into `origin/main` (its own tasks run on this machine) and must hand Cilium to Flux. Traffic runs through the switch: `cilium:traffic-start` starts it after the baseline verifies `cilium:restart-agent` restarts the Cilium agent once the upgrade verifies and the unaffected workloads are checked, and `cilium:traffic-check` then measures the traffic, so the run's final line says whether the traffic held across the agent restart. Run it before merging a k0s, Cilium, Flux, Flux Operator or k0sctl provider bump |
+| `mise run env:e2e --from-branch <branch>` | Also test an upgrade: build the cluster from `<branch>` in a detached worktree and verify it, record the pods and containers of the workloads in `tests/upgrade-unaffected`, then apply the checked-out branch over it, run the same checks, and fail if those workloads were replaced or restarted. The baseline must already be merged into `origin/main` (its own tasks run on this machine) and must hand Cilium to Flux and derive the state directory from `MISE_ENV` (a `TF_VAR_state_directory` in its `mise.toml`). Traffic runs through the switch: `cilium:traffic-start` starts it after the baseline verifies `cilium:restart-agent` restarts the Cilium agent once the upgrade verifies and the unaffected workloads are checked, and `cilium:traffic-check` then measures the traffic, so the run's final line says whether the traffic held across the agent restart. Run it before merging a k0s, Cilium, Flux, Flux Operator or k0sctl provider bump |
 
 ## Roots and contracts
 
@@ -62,7 +63,7 @@ The state files (`machine-orb.tfstate`, `kubernetes-k0s.tfstate`,
 Git at:
 
 ```text
-$FIRMAMENT_STATE_HOME/environment/local/
+$FIRMAMENT_STATE_HOME/environments/local/
 ```
 
 mise sets `FIRMAMENT_STATE_HOME` to

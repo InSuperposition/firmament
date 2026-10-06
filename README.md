@@ -23,8 +23,10 @@ contract file.
   repo run through it — there is no supported path that bypasses mise.
 - No mutable state or secrets are committed to Git. OpenTofu state and
   the rendered kubeconfig live under
-  `$FIRMAMENT_STATE_HOME/environment/<env>/`, which defaults to
-  `${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environment/<env>/`.
+  `$FIRMAMENT_STATE_HOME/environments/<env>/`, which defaults to
+  `${XDG_STATE_HOME:-$HOME/.local/state}/firmament/environments/<env>/`.
+  `MISE_ENV` names the environment (`local` when unset); `mise.toml` derives
+  `TF_VAR_state_directory` and `KUBECONFIG` from it, once.
 
 ## Setup
 
@@ -81,8 +83,8 @@ Each module and package has its own README with its contract.
 `mise run env:apply` applies the three roots in order (the machine and its
 readiness check, then k0s, then the bootstrap that installs Cilium and
 Flux), and `mise run env:destroy` destroys the Kubernetes root, then the
-machine root; the bootstrap's objects go with the machine. Both take an
-environment name, defaulting to `local`. Narrower tasks act on one root:
+machine root; the bootstrap's objects go with the machine. Both act on the
+environment `MISE_ENV` names, `local` when unset. Narrower tasks act on one root:
 `orb:*` and `ubuntu:verify` on the machine root, `k0s:*` on the Kubernetes
 root. See `environments/local/README.md` for the full task list.
 
@@ -94,9 +96,9 @@ that verb for every noun. The verb also says how far a task reaches:
 | --- | --- | --- |
 | `lint`, `format` | files in the repository | `lint`, `format` run every `*:lint` or `*:format` |
 | `test` | offline; never touches infrastructure | `test` runs every `*:test` |
-| `verify` | reads a live cluster | `verify [environment]` runs every `*:verify`, one at a time, `env:verify` first; `--only <packages>` keeps the environment's own checks and the chosen packages', and `--changed` chooses the packages the branch changed |
+| `verify` | reads a live cluster | `verify` runs every `*:verify`, one at a time, `env:verify` first; `--only <packages>` keeps the environment's own checks and the chosen packages', and `--changed` chooses the packages the branch changed |
 | `ui`, `observe` | read a live cluster through a foreground port-forward that Ctrl-C stops; `ui` opens the browser and takes `--port` | none |
-| `conformance` | deploys test workloads into a live cluster | `conformance [environment]` runs every `*:conformance`, one at a time; `--only <packages>` or `--changed` runs the tests each package lists in `tests/conformance` |
+| `conformance` | deploys test workloads into a live cluster | `conformance` runs every `*:conformance`, one at a time; `--only <packages>` or `--changed` runs the tests each package lists in `tests/conformance` |
 | `e2e` | destroys and rebuilds a live cluster; asks first (`--yes` skips) | none |
 | `plan`, `apply`, `destroy` | drive OpenTofu; `destroy` asks first (`-y` skips) | none |
 

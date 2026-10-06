@@ -31,6 +31,7 @@ setup_stubs() {
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
   export MISE_PROJECT_ROOT="$root_directory"
   export FIRMAMENT_STATE_HOME="$BATS_TEST_TMPDIR/state"
+  unset MISE_ENV TF_VAR_state_directory
   export CALLS="$BATS_TEST_TMPDIR/calls"
   export FORTIO_REPLIES="$root_directory/.mise/tests/fortio"
   export FIRMAMENT_GIT_BRANCH=feature/test
@@ -50,7 +51,7 @@ setup_stubs() {
 # cluster-access.yaml for a cluster whose kubeconfig is at $1 (default
 # /state/admin.kubeconfig). Tasks read these instead of running tofu.
 record_contracts() {
-  local state="$FIRMAMENT_STATE_HOME/environment/local" kubeconfig="${1:-/state/admin.kubeconfig}"
+  local state="$FIRMAMENT_STATE_HOME/environments/local" kubeconfig="${1:-/state/admin.kubeconfig}"
   mkdir -p "$state"
   printf 'name: firmament\ndns_name: firmament.orb.local\nip_address: 192.168.139.10\nssh: {address: 127.0.0.1, port: 32222, user: root@firmament, key_path: /keys/id_ed25519}\n' \
     >"$state/machine-hosts.yaml"
@@ -61,7 +62,7 @@ record_contracts() {
 # Removes one contract file of the local environment, as destroying the
 # root that wrote it does: machine-hosts.yaml or cluster-access.yaml.
 forget_contract() {
-  rm -f "$FIRMAMENT_STATE_HOME/environment/local/$1"
+  rm -f "$FIRMAMENT_STATE_HOME/environments/local/$1"
 }
 
 # Confines git to the stand-in repositories a test builds. It clears the

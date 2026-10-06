@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 #MISE description="Explain why an environment task would fail, without changing anything: one line per boundary, and the next command for each failure"
-#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
-# shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
-environment="$usage_environment"
+environment=$(require_environment)
 
 # The doctor reads state files and asks the host, the machine and the API
 # server; it never initializes OpenTofu, claims the environment or starts
@@ -45,8 +43,7 @@ reaches_api_by_address() {
     get --raw /readyz >/dev/null 2>&1
 }
 
-environment_directory "$environment" >/dev/null
-state=$(state_directory "$environment")
+state="$TF_VAR_state_directory"
 passed environment "$environment"
 
 owner=$(cat "$state/owner" 2>/dev/null) || owner=""
@@ -77,11 +74,11 @@ fi
 # when it is destroyed.
 machine="" kubeconfig="" cluster=""
 if [[ -z "$state_problem" ]]; then
-  if ! machine=$(contract_field_or_empty "$environment" machine-hosts.yaml .name 2>&1); then
-    failed state "cannot read $state/machine-hosts.yaml: $(head -n 1 <<<"$machine")" "mise run orb:apply $environment, which writes it again"
+  if ! machine=$(contract_field_or_empty machine-hosts.yaml .name 2>&1); then
+    failed state "cannot read $state/machine-hosts.yaml: $(head -n 1 <<<"$machine")" "mise run orb:apply, which writes it again"
     machine=""
   fi
-  if ! kubeconfig=$(contract_field_or_empty "$environment" cluster-access.yaml .kubeconfig_path 2>&1); then
+  if ! kubeconfig=$(contract_field_or_empty cluster-access.yaml .kubeconfig_path 2>&1); then
     failed state "cannot read $state/cluster-access.yaml: $(head -n 1 <<<"$kubeconfig")" "mise run k0s:apply $environment, which writes it again"
     kubeconfig=""
   fi
@@ -103,7 +100,7 @@ else
   elif [[ -n "$machine_state" ]]; then
     failed machine "$machine is $machine_state" "orb start $machine"
   else
-    failed machine "the state records $machine, but OrbStack has no such machine" "mise run env:apply $environment"
+    failed machine "the state records $machine, but OrbStack has no such machine" "mise run env:apply"
   fi
 
   if probe dscacheutil -q host -a name "$machine.orb.local" | grep -q address; then

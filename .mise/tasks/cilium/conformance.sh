@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Run the Cilium connectivity suite against the cluster, with Hubble flow logs for failed actions, checking only logs written during the tests, then remove its test workloads (slow; deploys test workloads)"
-#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 #USAGE flag "--hubble-port <port>" help="Local port the Hubble Relay port-forward listens on (default 4245)"
 #USAGE flag "--test-concurrency <count>" help="Namespaces the suite splits its tests across, run in parallel (default 3)"
 #USAGE flag "--only <packages>" help="Comma-separated packages, such as cilium; runs only the tests their tests/conformance files list (default: the whole suite)"
@@ -9,19 +8,19 @@ set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
-environment="$usage_environment"
+require_environment >/dev/null
 hubble_port="${usage_hubble_port:-4245}"
 concurrency="${usage_test_concurrency:-3}"
 if [[ ! "$concurrency" =~ ^[1-9][0-9]*$ ]]; then
   fail "--test-concurrency must be a whole number of 1 or more, not '$concurrency'"
 fi
-only=$(package_selection "$environment" "${usage_only:-}" "${usage_changed:-false}")
+only=$(package_selection "${usage_only:-}" "${usage_changed:-false}")
 
 # With --only, each chosen package's tests/conformance file lists the tests it
 # needs. When none of them lists any, there is nothing to run.
 tests=()
 if [[ -n "$only" ]]; then
-  patterns=$(conformance_patterns "$environment" "$only")
+  patterns=$(conformance_patterns "$only")
   if [[ -z "$patterns" ]]; then
     printf 'No conformance tests apply to: %s\n' "$only"
     exit 0
@@ -31,8 +30,8 @@ if [[ -n "$only" ]]; then
   done <<<"$patterns"
 fi
 
-claim_environment "$environment"
-kubeconfig=$(environment_kubeconfig "$environment")
+claim_environment
+kubeconfig=$(environment_kubeconfig)
 # The suite reaches Hubble Relay only on a local address and opens no
 # port-forward itself, so the forward must listen before the suite starts.
 # With Relay reachable the suite records every action's flows and prints

@@ -20,11 +20,25 @@ fail() {
   return 1
 }
 
-# Prints the data directory of an environment, environments/<name>, or fails
-# when the environment does not exist.
+# Prints the name of the environment MISE_ENV selects, local when it is
+# unset, or fails when the name is not lowercase letters, digits and -,
+# starting with a letter. mise also reads MISE_ENV as a list of profile
+# names, so a comma list fails here.
+selected_environment() {
+  local environment="${MISE_ENV:-local}"
+  if [[ ! "$environment" =~ ^[a-z][a-z0-9-]*$ ]]; then
+    fail "invalid environment name '$environment' in MISE_ENV: use lowercase letters, digits and -, starting with a letter"
+    return
+  fi
+  printf '%s\n' "$environment"
+}
+
+# Prints the data directory of the selected environment, environments/<name>,
+# or fails when the environment does not exist.
 environment_directory() {
-  local environment="$1"
-  local directory="${MISE_PROJECT_ROOT:?run this through mise}/environments/$environment"
+  local environment directory
+  environment=$(selected_environment) || return
+  directory="${MISE_PROJECT_ROOT:?run this through mise}/environments/$environment"
   if [[ ! -d "$directory" ]]; then
     fail "unknown environment '$environment': $directory does not exist"
     return
@@ -32,10 +46,21 @@ environment_directory() {
   printf '%s\n' "$directory"
 }
 
-# Prints where an environment keeps its state and kubeconfig. mise sets
-# FIRMAMENT_STATE_HOME from mise.toml [env].
-state_directory() {
-  printf '%s/environment/%s\n' "${FIRMAMENT_STATE_HOME:?FIRMAMENT_STATE_HOME is unset; run this through mise}" "$1"
+# Prints the selected environment's name after checking it is usable: the
+# name is well formed, environments/<name>/ exists, and the state directory
+# mise derived from MISE_ENV (TF_VAR_state_directory) belongs to the same
+# name. Every task that touches an environment runs it first, before any
+# tool.
+require_environment() {
+  local environment state
+  environment=$(selected_environment) || return
+  environment_directory >/dev/null || return
+  state="${TF_VAR_state_directory:?TF_VAR_state_directory is unset; run this through mise}"
+  if [[ "${state##*/}" != "$environment" ]]; then
+    fail "the state directory $state does not belong to environment '$environment'; run this through mise, which derives it from MISE_ENV"
+    return
+  fi
+  printf '%s\n' "$environment"
 }
 
 # Fails unless a branch name is one Git accepts and uses only letters,
@@ -80,18 +105,18 @@ tofu_root_directory() {
   printf '%s/roots/%s\n' "${MISE_PROJECT_ROOT:?run this through mise}" "$1"
 }
 
-# Runs tofu in one root for an environment, telling it the environment's
-# name, its state directory and the branch Flux follows. Every other input
-# belongs to the root's own configuration or to the contract files an
-# earlier root wrote into the state directory.
+# Runs tofu in one root for the selected environment, telling it the
+# environment's name, its state directory (TF_VAR_state_directory, from mise)
+# and the branch Flux follows. Every other input belongs to the root's own
+# configuration or to the contract files an earlier root wrote into the
+# state directory.
 tofu_in_root() {
-  local environment="$1" root="$2"
-  shift 2
-  local state branch
-  environment_directory "$environment" >/dev/null || return
-  state=$(state_directory "$environment") || return
+  local root="$1"
+  shift
+  local environment branch
+  environment=$(require_environment) || return
   branch=$(git_branch) || return
-  TF_VAR_environment="$environment" TF_VAR_state_directory="$state" TF_VAR_git_branch="$branch" \
+  TF_VAR_environment="$environment" TF_VAR_git_branch="$branch" \
     tofu -chdir="$(tofu_root_directory "$root")" "$@"
 }
 
@@ -110,13 +135,13 @@ refuse_empty_state() {
 # environment's state directory, <root>.tfstate. Providers install only as
 # the committed lock file records them.
 init_root() {
-  local environment="$1" root="$2"
+  local root="$1"
   local state
-  environment_directory "$environment" >/dev/null || return
-  state=$(state_directory "$environment") || return
+  require_environment >/dev/null || return
+  state="$TF_VAR_state_directory"
   refuse_empty_state "$state/$root.tfstate" || return
   mkdir -p "$state"
-  tofu_in_root "$environment" "$root" init -input=false -reconfigure -lockfile=readonly \
+  tofu_in_root "$root" init -input=false -reconfigure -lockfile=readonly \
     -backend-config="path=$state/$root.tfstate" >/dev/null
 }
 
@@ -134,9 +159,10 @@ current_worktree() {
 # that no longer exists does not count. FIRMAMENT_TAKE_OVER=1 claims it
 # anyway.
 claim_environment() {
-  local environment="$1" worktree owner_file owner
+  local environment worktree owner_file owner
+  environment=$(require_environment) || return
   worktree=$(current_worktree) || return
-  owner_file="$(state_directory "$environment")/owner"
+  owner_file="${TF_VAR_state_directory}/owner"
   owner=$(cat "$owner_file" 2>/dev/null) || owner=""
   if [[ -n "$owner" && "$owner" != "$worktree" && -d "$owner" && "${FIRMAMENT_TAKE_OVER:-}" != 1 ]]; then
     fail "environment '$environment' belongs to the worktree $owner; run this there, or set FIRMAMENT_TAKE_OVER=1 to take it over"
@@ -148,7 +174,8 @@ claim_environment() {
 
 # Forgets the owner of an environment whose cluster was destroyed.
 release_environment() {
-  rm -f "$(state_directory "$1")/owner"
+  require_environment >/dev/null || return
+  rm -f "${TF_VAR_state_directory}/owner"
 }
 
 # Initializes an OpenTofu root or module without a backend, for checks that
@@ -175,9 +202,9 @@ tofu_test_directories() {
 # it is destroyed, so a missing file means nothing is recorded. The field is
 # a yq path; objects print as JSON.
 contract_field_or_empty() {
-  local environment="$1" contract="$2" field="$3" file
-  environment_directory "$environment" >/dev/null || return
-  file="$(state_directory "$environment")/$contract" || return
+  local contract="$1" field="$2" file
+  require_environment >/dev/null || return
+  file="${TF_VAR_state_directory}/$contract"
   [[ -f "$file" ]] || return 0
   yq -o=json -I=0 "$field // \"\"" "$file" | jq -r 'if type == "string" then . else tojson end'
 }
@@ -186,9 +213,9 @@ contract_field_or_empty() {
 # not been applied that far.
 contract_field() {
   local value
-  value=$(contract_field_or_empty "$1" "$2" "$3") || return
+  value=$(contract_field_or_empty "$1" "$2") || return
   if [[ -z "$value" ]]; then
-    fail "environment '$1' has no $3 in $2; apply it first"
+    fail "environment '$(selected_environment)' has no $2 in $1; apply it first"
     return
   fi
   printf '%s\n' "$value"
@@ -196,15 +223,16 @@ contract_field() {
 
 # Prints the kubeconfig path the Kubernetes root recorded.
 environment_kubeconfig() {
-  contract_field "$1" cluster-access.yaml .kubeconfig_path
+  contract_field cluster-access.yaml .kubeconfig_path
 }
 
 # Prints the directory of the cluster definition an environment runs:
 # clusters/<name>, named by the cluster field of its environment.yaml.
 # Fails when the field is missing or names no cluster directory.
 cluster_directory() {
-  local environment="$1" directory cluster
-  directory=$(environment_directory "$environment") || return
+  local environment directory cluster
+  environment=$(selected_environment) || return
+  directory=$(environment_directory) || return
   cluster=$(yq -r '.cluster // ""' "$directory/environment.yaml") || return
   if [[ -z "$cluster" || ! -d "$MISE_PROJECT_ROOT/clusters/$cluster" ]]; then
     fail "environment '$environment' names cluster '$cluster' in $directory/environment.yaml, but clusters/$cluster does not exist"
@@ -218,7 +246,7 @@ cluster_directory() {
 # directories are packages; a resource file the build lists is not.
 deployed_packages() {
   local directory resources resource
-  directory=$(cluster_directory "$1") || return
+  directory=$(cluster_directory) || return
   [[ -f "$directory/flux/kustomization.yaml" ]] || return 0
   resources=$(yq -r '.resources[]' "$directory/flux/kustomization.yaml") || return
   while IFS= read -r resource; do
@@ -232,9 +260,10 @@ deployed_packages() {
 # environment deploys, naming the packages it does deploy. An empty list
 # selects every package, and "none" selects no package.
 check_packages() {
-  local environment="$1" only="$2" packages deployed="" package name
+  local only="$1" environment packages deployed="" package name
   local -a names
-  packages=$(deployed_packages "$environment") || return
+  environment=$(selected_environment) || return
+  packages=$(deployed_packages) || return
   while IFS= read -r package; do
     [[ -n "$package" ]] && deployed+="${package##*/} "
   done <<<"$packages"
@@ -263,7 +292,7 @@ package_selected() {
 # are counted from where the branch left origin/main, uncommitted and
 # untracked files included, since the suites run from the checkout.
 changed_packages() {
-  local environment="$1" root="${MISE_PROJECT_ROOT:?}" base paths packages package path
+  local root="${MISE_PROJECT_ROOT:?}" base paths packages package path
   local deployed="" selected=""
   base=$(git -C "$root" merge-base origin/main HEAD) ||
     fail "cannot find where this branch left origin/main; fetch origin first" || return
@@ -271,7 +300,7 @@ changed_packages() {
     git -C "$root" diff --name-only "$base" &&
       git -C "$root" ls-files --others --exclude-standard
   ) || return
-  packages=$(deployed_packages "$environment") || return
+  packages=$(deployed_packages) || return
   while IFS= read -r package; do
     [[ -n "$package" ]] && deployed+=" ${package##*/}"
   done <<<"$packages"
@@ -297,16 +326,16 @@ changed_packages() {
 # the --only list as given, the packages --changed finds, or an empty list
 # (every package) when neither is set. The two flags cannot be combined.
 package_selection() {
-  local environment="$1" only="$2" changed="$3"
+  local only="$1" changed="$2"
   if [[ -n "$only" && "$changed" == true ]]; then
     fail "--only and --changed cannot be combined"
     return
   fi
   if [[ "$changed" == true ]]; then
-    changed_packages "$environment"
+    changed_packages
     return
   fi
-  check_packages "$environment" "$only" || return
+  check_packages "$only" || return
   printf '%s\n' "$only"
 }
 
@@ -316,10 +345,10 @@ package_selection() {
 # comma-separated package list keeps only those packages' suites; the
 # environment's own suite always runs.
 cluster_suites() {
-  local environment="$1" only="${2:-}" directory packages package
-  directory=$(cluster_directory "$environment") || return
-  check_packages "$environment" "$only" || return
-  packages=$(deployed_packages "$environment") || return
+  local only="${1:-}" directory packages package
+  directory=$(cluster_directory) || return
+  check_packages "$only" || return
+  packages=$(deployed_packages) || return
   printf '%s\n' "$directory/tests/cluster"
   while IFS= read -r package; do
     if [[ -n "$package" && -d "$package/tests/cluster" ]] &&
@@ -333,9 +362,9 @@ cluster_suites() {
 # in tests/conformance, one --test regular expression per line, without
 # blank lines and # comments. An empty package list chooses every package.
 conformance_patterns() {
-  local environment="$1" only="${2:-}" packages package
-  check_packages "$environment" "$only" || return
-  packages=$(deployed_packages "$environment") || return
+  local only="${1:-}" packages package
+  check_packages "$only" || return
+  packages=$(deployed_packages) || return
   while IFS= read -r package; do
     if [[ -n "$package" && -f "$package/tests/conformance" ]] &&
       package_selected "${package##*/}" "$only"; then
@@ -384,10 +413,8 @@ step_time_report() {
 # Runs chainsaw against an environment's cluster. chainsaw has no kubeconfig
 # flag; it reads KUBECONFIG, set here from the path recorded in state.
 chainsaw_in_environment() {
-  local environment="$1"
-  shift
   local kubeconfig
-  kubeconfig=$(environment_kubeconfig "$environment") || return
+  kubeconfig=$(environment_kubeconfig) || return
   KUBECONFIG="$kubeconfig" chainsaw "$@"
 }
 
@@ -396,7 +423,7 @@ chainsaw_in_environment() {
 # them.
 platform_versions() {
   local machine
-  machine=$(contract_field "$1" machine-hosts.yaml .name) || return
+  machine=$(contract_field machine-hosts.yaml .name) || return
   printf 'OrbStack: %s\n' "$(orb version | head -n 1)"
   printf 'kernel: %s\n' "$(orb -m "$machine" uname -r)"
 }
@@ -449,8 +476,8 @@ render_flux_build() {
 # recorded cluster cannot answer, since that says nothing about its charts.
 refuse_k0s_charts() {
   local kubeconfig machine charts errors error_text
-  kubeconfig=$(contract_field_or_empty "$1" cluster-access.yaml .kubeconfig_path) || return
-  machine=$(contract_field_or_empty "$1" machine-hosts.yaml .name) || return
+  kubeconfig=$(contract_field_or_empty cluster-access.yaml .kubeconfig_path) || return
+  machine=$(contract_field_or_empty machine-hosts.yaml .name) || return
   if [[ -z "$kubeconfig" || -z "$machine" ]]; then
     return 0
   fi
@@ -458,12 +485,12 @@ refuse_k0s_charts() {
   if ! charts=$(kubectl --kubeconfig "$kubeconfig" get charts.helm.k0sproject.io -A -o name --request-timeout=10s 2>"$errors"); then
     error_text=$(cat "$errors")
     rm -f "$errors"
-    fail "cannot tell whether k0s installs Helm charts on this cluster:"$'\n'"$error_text"$'\n'"Start the machine, or rebuild it: mise run --yes env:destroy $1, then mise run env:apply $1"
+    fail "cannot tell whether k0s installs Helm charts on this cluster:"$'\n'"$error_text"$'\n'"Start the machine, or rebuild it: mise run --yes env:destroy, then mise run env:apply"
     return
   fi
   rm -f "$errors"
   if [[ -n "$charts" ]]; then
-    fail "k0s still installs Helm charts on this cluster, and applying would uninstall them:"$'\n'"$charts"$'\n'"Rebuild it instead: mise run --yes env:destroy $1, then mise run env:apply $1"
+    fail "k0s still installs Helm charts on this cluster, and applying would uninstall them:"$'\n'"$charts"$'\n'"Rebuild it instead: mise run --yes env:destroy, then mise run env:apply"
   fi
 }
 
@@ -485,9 +512,8 @@ wait_for_node() {
 # Prints where cilium:traffic-start keeps what cilium:traffic-check reads:
 # the fortio run, the conn-disrupt restart counts and the Cilium agent pods.
 traffic_directory() {
-  local state
-  state=$(state_directory "$1") || return
-  printf '%s/traffic\n' "$state"
+  require_environment >/dev/null || return
+  printf '%s/traffic\n' "$TF_VAR_state_directory"
 }
 
 # Sends one request to the fortio REST API in the traffic-probe client pod
@@ -565,7 +591,7 @@ wait_for_cilium_values() {
 # env:verify does, and cilium:verify then checks the release it deploys.
 wait_for_cluster() {
   local kubeconfig
-  kubeconfig=$(environment_kubeconfig "$1") || return
+  kubeconfig=$(environment_kubeconfig) || return
   cilium --kubeconfig "$kubeconfig" status --wait --wait-duration=10m --interactive=false
   kubectl --kubeconfig "$kubeconfig" -n flux-system wait --for=condition=Ready fluxinstance/flux --timeout=10m
   kubectl --kubeconfig "$kubeconfig" -n flux-system wait --for=condition=Ready helmrelease/cilium --timeout=10m
