@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 #MISE description="Start traffic that a Cilium agent restart must not break, for cilium:traffic-check to measure: cilium-cli conn-disrupt connections held open, and fortio opening 100 new connections a second through a ClusterIP Service (deploys test workloads)"
-#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
-# shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
-environment="$usage_environment"
+environment=$(require_environment)
 
 # How long, in whole seconds, a new fortio run may take to start sending.
 readonly run_start_timeout="${FIRMAMENT_FORTIO_START_TIMEOUT:-30}"
@@ -15,9 +13,9 @@ if [[ ! "$run_start_timeout" =~ ^(0|[1-9][0-9]{0,5})$ ]]; then
   fail "FIRMAMENT_FORTIO_START_TIMEOUT must be whole seconds, at most 6 digits and without a leading zero, not '$run_start_timeout'"
 fi
 
-claim_environment "$environment"
-kubeconfig=$(environment_kubeconfig "$environment")
-traffic=$(traffic_directory "$environment")
+claim_environment
+kubeconfig=$(environment_kubeconfig)
+traffic=$(traffic_directory)
 # A run that stopped before cilium:traffic-check leaves its state behind;
 # this run replaces it.
 rm -rf "$traffic"
@@ -76,4 +74,4 @@ cilium_agent_identities "$kubeconfig" >"$traffic/agent-before"
 # started run only from this file.
 printf '%s\n' "$run_id" >"$traffic/fortio-run.partial"
 mv "$traffic/fortio-run.partial" "$traffic/fortio-run"
-printf 'Traffic is running (fortio run %s). Measure it with: mise run cilium:traffic-check %s\n' "$run_id" "$environment"
+printf 'Traffic is running (fortio run %s). Measure it with: mise run cilium:traffic-check\n' "$run_id"

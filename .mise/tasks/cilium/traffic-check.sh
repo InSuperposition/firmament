@@ -1,25 +1,23 @@
 #!/usr/bin/env bash
 #MISE description="Measure the traffic cilium:traffic-start began: fails when a conn-disrupt connection broke, any fortio request failed or fortio sent under 90% of the requested rate, prints the slowest request, and ends with whether the traffic crossed a Cilium agent restart; removes the test workloads when it passes"
-#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
-# shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
-environment="$usage_environment"
+environment=$(require_environment)
 
 # The share of the requested rate a run must reach to count as having run
 # throughout.
 readonly minimum_percent=90
 
-claim_environment "$environment"
-kubeconfig=$(environment_kubeconfig "$environment")
-traffic=$(traffic_directory "$environment")
+claim_environment
+kubeconfig=$(environment_kubeconfig)
+traffic=$(traffic_directory)
 if [[ ! -f "$traffic/fortio-run" ]]; then
-  fail "no traffic run started for environment '$environment'; start one with: mise run cilium:traffic-start $environment"
+  fail "no traffic run started for environment '$environment'; start one with: mise run cilium:traffic-start"
 fi
 run_id=$(<"$traffic/fortio-run")
 if [[ ! "$run_id" =~ ^[1-9][0-9]*$ ]]; then
-  fail "$traffic/fortio-run holds '$run_id', not a fortio run id; start a new run with: mise run cilium:traffic-start $environment"
+  fail "$traffic/fortio-run holds '$run_id', not a fortio run id; start a new run with: mise run cilium:traffic-start"
 fi
 problems=()
 
@@ -37,7 +35,7 @@ fail_with_problems() {
 # stopped, or state left from a destroyed cluster, has nothing to measure.
 state=$(fortio_run_state "$kubeconfig" "$run_id")
 if [[ "$state" != running ]]; then
-  fail "fortio run $run_id is not running (state '${state:-none}'), so there is nothing to measure; start a new run with: mise run cilium:traffic-start $environment"
+  fail "fortio run $run_id is not running (state '${state:-none}'), so there is nothing to measure; start a new run with: mise run cilium:traffic-start"
 fi
 
 if ! cilium --kubeconfig "$kubeconfig" connectivity test --include-conn-disrupt-test \

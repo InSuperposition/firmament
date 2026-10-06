@@ -23,6 +23,11 @@ local fast = new Mapping<String, Step> {
     glob = List("contracts/**")
     check = "mise run contracts:lint"
   }
+  // Task code names no environment: MISE_ENV selects it.
+  ["environments"] {
+    glob = List(".mise/tasks/**", "environments/*")
+    check = "mise run environments:lint"
+  }
   // Renders and schema-validates each cluster's Flux build.
   ["flux"] {
     glob = List("packages/**", "clusters/*/flux/**", ".mise/flux-test-values.env", ".mise/flux-schemas/**")

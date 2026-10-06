@@ -34,7 +34,7 @@ refresh finds them gone and plans them again.
 | `state_directory` | the mise tasks (`TF_VAR_state_directory`) |
 | `cluster-access.yaml` | the Kubernetes root, in the state directory |
 
-State: `$FIRMAMENT_STATE_HOME/environment/<env>/bootstrap-flux.tfstate`.
+State: `$FIRMAMENT_STATE_HOME/environments/<env>/bootstrap-flux.tfstate`.
 
 ## Tests
 

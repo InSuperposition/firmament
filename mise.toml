@@ -11,9 +11,12 @@ FIRMAMENT_STATE_HOME = "{% if env.FIRMAMENT_STATE_HOME %}{{ env.FIRMAMENT_STATE_
 # Every OpenTofu run, task or test shares one provider cache, so init makes
 # no registry call once a provider is cached.
 TF_PLUGIN_CACHE_DIR = "{% if env.XDG_CACHE_HOME %}{{ env.XDG_CACHE_HOME }}{% else %}{{ env.HOME }}/.cache{% endif %}/firmament/tofu-plugins"
-# Default cluster at the repository root; each environments/<env>/mise.toml
-# points KUBECONFIG at its own cluster.
-KUBECONFIG = "{{ env.FIRMAMENT_STATE_HOME }}/environment/local/admin.kubeconfig"
+# MISE_ENV names the environment (local when unset). Everything an
+# environment owns on this machine is derived from it here, once: the state
+# folder, which every OpenTofu root reads as var.state_directory, and the
+# cluster's kubeconfig inside it.
+TF_VAR_state_directory = "{{ env.FIRMAMENT_STATE_HOME }}/environments/{{ get_env(name='MISE_ENV', default='local') }}"
+KUBECONFIG = "{{ env.TF_VAR_state_directory }}/admin.kubeconfig"
 
 [tools]
 "aqua:kyverno/chainsaw" = { version = "0.2.15", slsa_signer_identity = "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0", slsa_signer_issuer = "https://token.actions.githubusercontent.com" }

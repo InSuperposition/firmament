@@ -56,11 +56,11 @@ k0s goes with the machine, so a reset over SSH would be redundant.
 | Variable | Set by |
 | --- | --- |
 | `state_directory` | the mise tasks (`TF_VAR_state_directory`) |
-| `environment` | the mise tasks (`TF_VAR_environment`), the task's environment argument |
+| `environment` | the mise tasks (`TF_VAR_environment`), from `MISE_ENV` |
 | `environments/<environment>/environment.yaml` | read from the repository: `cluster` names the cluster definition, which must have `clusters/<cluster>/flux/kustomization.yaml` |
 | `git_branch` | the mise tasks: the checked-out branch, or `FIRMAMENT_GIT_BRANCH` |
 
-State: `$FIRMAMENT_STATE_HOME/environment/<env>/kubernetes-k0s.tfstate`.
+State: `$FIRMAMENT_STATE_HOME/environments/<env>/kubernetes-k0s.tfstate`.
 
 ## Tests
 

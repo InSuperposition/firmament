@@ -14,13 +14,14 @@ environment_scripts() {
   task_scripts | xargs grep -l '^#USAGE arg "\[environment\]"'
 }
 
-# Runs a task script the way mise does, with the environment argument set.
+# Runs a task script the way mise does, with MISE_ENV naming the environment
+# and the state directory mise derives from it.
 # cilium:conformance and the UI tasks forward to a random high port, so a
 # real forward on a default port does not collide with the tests.
 run_task() {
   local script="$1" environment="$2"
-  usage_environment="$environment" usage_hubble_port=$((20000 + RANDOM % 20000)) \
-    usage_port=$((20000 + RANDOM % 20000)) run "$script"
+  MISE_ENV="$environment" TF_VAR_state_directory="$FIRMAMENT_STATE_HOME/environments/$environment" \
+    usage_hubble_port=$((20000 + RANDOM % 20000)) usage_port=$((20000 + RANDOM % 20000)) run "$script"
 }
 
 @test "every task script is executable, described and strict" {
@@ -74,13 +75,13 @@ run_task() {
   local script
   for script in "$root_directory"/.mise/tasks/*/apply.sh "$root_directory"/.mise/tasks/*/destroy.sh \
     "$root_directory/.mise/tasks/env/e2e.sh" "$root_directory"/.mise/tasks/cilium/{conformance,restart-agent,traffic-start,traffic-check}.sh; do
-    grep -q '^claim_environment "\$environment"$' "$script" || fail "$script changes the environment without claiming it"
+    grep -qx 'claim_environment' "$script" || fail "$script changes the environment without claiming it"
   done
 }
 
 @test "env:apply refuses an environment another worktree owns, before applying" {
-  mkdir -p "$BATS_TEST_TMPDIR/other-worktree" "$FIRMAMENT_STATE_HOME/environment/local"
-  printf '%s\n' "$BATS_TEST_TMPDIR/other-worktree" >"$FIRMAMENT_STATE_HOME/environment/local/owner"
+  mkdir -p "$BATS_TEST_TMPDIR/other-worktree" "$FIRMAMENT_STATE_HOME/environments/local"
+  printf '%s\n' "$BATS_TEST_TMPDIR/other-worktree" >"$FIRMAMENT_STATE_HOME/environments/local/owner"
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"belongs to the worktree $BATS_TEST_TMPDIR/other-worktree"* ]]
@@ -90,14 +91,14 @@ run_task() {
 # Gives the local environment's machine and Kubernetes roots a state file,
 # as any applied environment has.
 local_state() {
-  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environment/local/machine-orb.tfstate"
-  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environment/local/kubernetes-k0s.tfstate"
+  mkdir -p "$FIRMAMENT_STATE_HOME/environments/local"
+  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environments/local/machine-orb.tfstate"
+  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environments/local/kubernetes-k0s.tfstate"
 }
 
 @test "orb:destroy refuses an empty state file instead of destroying nothing" {
-  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  : >"$FIRMAMENT_STATE_HOME/environment/local/machine-orb.tfstate"
+  mkdir -p "$FIRMAMENT_STATE_HOME/environments/local"
+  : >"$FIRMAMENT_STATE_HOME/environments/local/machine-orb.tfstate"
   run_task "$root_directory/.mise/tasks/orb/destroy.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"machine-orb.tfstate is empty"* ]]
@@ -148,7 +149,7 @@ local_state() {
 @test "env:apply applies the machine root, then the Kubernetes root, then the bootstrap root, then waits" {
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ] || fail "$output"
-  local state="$FIRMAMENT_STATE_HOME/environment/local" root i=0
+  local state="$FIRMAMENT_STATE_HOME/environments/local" root i=0
   run grep -E '^(tofu -chdir=.* (init|apply) |cilium )' "$CALLS"
   for root in machine-orb kubernetes-k0s bootstrap-flux; do
     [[ "${lines[i]}" == "tofu -chdir=$root_directory/roots/$root init "*"-backend-config=path=$state/$root.tfstate "* ]] || fail "line $i: ${lines[i]}"
@@ -194,7 +195,7 @@ local_state() {
 }
 
 @test "env:apply refuses a contract file it cannot read" {
-  printf 'kubeconfig_path: [unclosed\n' >"$FIRMAMENT_STATE_HOME/environment/local/cluster-access.yaml"
+  printf 'kubeconfig_path: [unclosed\n' >"$FIRMAMENT_STATE_HOME/environments/local/cluster-access.yaml"
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
   ! grep -q ' apply -input=false' "$CALLS"
@@ -248,9 +249,9 @@ local_state() {
   [ "$status" -eq 0 ]
   run grep '^mise run' "$CALLS"
   [ "${#lines[@]}" -eq 3 ]
-  [ "${lines[0]%% |*}" = "mise run env:verify local" ]
-  [ "${lines[1]%% |*}" = "mise run a:verify local" ]
-  [ "${lines[2]%% |*}" = "mise run k0s:verify local" ]
+  [ "${lines[0]%% |*}" = "mise run env:verify" ]
+  [ "${lines[1]%% |*}" = "mise run a:verify" ]
+  [ "${lines[2]%% |*}" = "mise run k0s:verify" ]
 }
 
 @test "verify --only runs the environment's own tasks and the chosen packages' tasks" {
@@ -258,9 +259,9 @@ local_state() {
   [ "$status" -eq 0 ]
   run grep '^mise run' "$CALLS"
   [ "${#lines[@]}" -eq 3 ]
-  [ "${lines[0]%% |*}" = "mise run env:verify local --only cilium" ]
-  [ "${lines[1]%% |*}" = "mise run cilium:verify local" ]
-  [ "${lines[2]%% |*}" = "mise run k0s:verify local" ]
+  [ "${lines[0]%% |*}" = "mise run env:verify --only cilium" ]
+  [ "${lines[1]%% |*}" = "mise run cilium:verify" ]
+  [ "${lines[2]%% |*}" = "mise run k0s:verify" ]
 }
 
 @test "verify --changed checks the packages the branch changed, plus the environment" {
@@ -268,9 +269,9 @@ local_state() {
   [ "$status" -eq 0 ]
   run grep '^mise run' "$CALLS"
   [ "${#lines[@]}" -eq 3 ]
-  [ "${lines[0]%% |*}" = "mise run env:verify local --only flux" ]
-  [ "${lines[1]%% |*}" = "mise run flux:verify local" ]
-  [ "${lines[2]%% |*}" = "mise run k0s:verify local" ]
+  [ "${lines[0]%% |*}" = "mise run env:verify --only flux" ]
+  [ "${lines[1]%% |*}" = "mise run flux:verify" ]
+  [ "${lines[2]%% |*}" = "mise run k0s:verify" ]
 }
 
 @test "conformance --changed runs nothing when no package changed" {
@@ -379,13 +380,13 @@ local_state() {
 }
 
 @test "cilium:ui opens the Hubble UI through a port-forward on the given port" {
-  usage_environment=local usage_port=23456 run "$root_directory/.mise/tasks/cilium/ui.sh"
+  TF_VAR_state_directory="$FIRMAMENT_STATE_HOME/environments/local" usage_port=23456 run "$root_directory/.mise/tasks/cilium/ui.sh"
   [ "$status" -eq 0 ]
   [ "$(grep '^cilium ' "$CALLS" | cut -d'|' -f1)" = "cilium --kubeconfig /state/admin.kubeconfig hubble ui --port-forward 23456 " ]
 }
 
 @test "flux:ui forwards the Flux Operator web port, then opens the browser on it" {
-  usage_environment=local usage_port=23457 run "$root_directory/.mise/tasks/flux/ui.sh"
+  TF_VAR_state_directory="$FIRMAMENT_STATE_HOME/environments/local" usage_port=23457 run "$root_directory/.mise/tasks/flux/ui.sh"
   [ "$status" -eq 0 ]
   run grep -E '^(kubectl|open) ' "$CALLS"
   [ "${lines[0]%% |*}" = "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system port-forward svc/flux-operator 23457:9080" ]
@@ -394,7 +395,7 @@ local_state() {
 
 @test "flux:ui opens no browser when the port-forward exits" {
   printf '#!/usr/bin/env bash\nprintf "kubectl %%s\\n" "$*" >>"$CALLS"\nexit 1\n' >"$stubs/kubectl"
-  usage_environment=local usage_port=23458 run "$root_directory/.mise/tasks/flux/ui.sh"
+  TF_VAR_state_directory="$FIRMAMENT_STATE_HOME/environments/local" usage_port=23458 run "$root_directory/.mise/tasks/flux/ui.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"the process that should listen on local port 23458 exited"* ]]
   ! grep -q '^open ' "$CALLS"
@@ -409,7 +410,7 @@ local_state() {
   wait_for_local_port "$listener" "$port" 5
   for script in cilium/ui.sh flux/ui.sh; do
     rm -f "$CALLS"
-    usage_environment=local usage_port=$port run "$root_directory/.mise/tasks/$script"
+    TF_VAR_state_directory="$FIRMAMENT_STATE_HOME/environments/local" usage_port=$port run "$root_directory/.mise/tasks/$script"
     [ "$status" -ne 0 ] || fail "$script accepted a busy port"
     [[ "$output" == *"local port $port is already in use; pick another with --port"* ]] || fail "$script: $output"
     ! grep -Eq '^(cilium|kubectl|open) ' "$CALLS" || fail "$script called $(cat "$CALLS")"
@@ -443,8 +444,8 @@ local_state() {
   [ "$status" -eq 0 ]
   run grep '^mise run' "$CALLS"
   [ "${#lines[@]}" -eq 2 ]
-  [ "${lines[0]%% |*}" = "mise run cilium:conformance local --only flux" ]
-  [ "${lines[1]%% |*}" = "mise run other:conformance local --only flux" ]
+  [ "${lines[0]%% |*}" = "mise run cilium:conformance --only flux" ]
+  [ "${lines[1]%% |*}" = "mise run other:conformance --only flux" ]
 }
 
 @test "conformance refuses an unknown package before running any task" {
@@ -479,7 +480,7 @@ local_state() {
 }
 
 traffic_directory_of_local() {
-  printf '%s\n' "$FIRMAMENT_STATE_HOME/environment/local/traffic"
+  printf '%s\n' "$FIRMAMENT_STATE_HOME/environments/local/traffic"
 }
 
 @test "cilium:traffic-start deploys fortio in a new namespace, sets up conn-disrupt, starts the fortio run, then snapshots the agent" {
@@ -489,7 +490,7 @@ traffic_directory_of_local() {
   [ "$status" -eq 0 ]
   local traffic
   traffic=$(traffic_directory_of_local)
-  [[ "$output" == *"Traffic is running (fortio run 3). Measure it with: mise run cilium:traffic-check local"* ]]
+  [[ "$output" == *"Traffic is running (fortio run 3). Measure it with: mise run cilium:traffic-check"* ]]
   run grep -E '^(kubectl|cilium) ' "$CALLS"
   [ "${#lines[@]}" -eq 7 ]
   [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig delete namespace traffic-probe --ignore-not-found --timeout=2m "* ]]
@@ -592,7 +593,7 @@ fortio_result() {
 @test "cilium:traffic-check fails when no traffic run started, before measuring anything" {
   run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"no traffic run started for environment 'local'; start one with: mise run cilium:traffic-start local"* ]]
+  [[ "$output" == *"no traffic run started for environment 'local'; start one with: mise run cilium:traffic-start"* ]]
   ! grep -Eq '^(cilium|kubectl) ' "$CALLS"
 }
 
@@ -602,7 +603,7 @@ fortio_result() {
   printf '{"Statuses":null}\n' >"$FORTIO_STATUS"
   run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"fortio run 3 is not running (state 'none'), so there is nothing to measure; start a new run with: mise run cilium:traffic-start local"* ]]
+  [[ "$output" == *"fortio run 3 is not running (state 'none'), so there is nothing to measure; start a new run with: mise run cilium:traffic-start"* ]]
   ! grep -q '^cilium ' "$CALLS"
   ! grep -q '/fortio/rest/stop' "$CALLS"
 }
@@ -923,7 +924,7 @@ e2e_mise_stub() {
   cat >"$stubs/mise" <<'STUB'
 #!/usr/bin/env bash
 printf 'mise %s | branch=%s\n' "$*" "${FIRMAMENT_GIT_BRANCH:-}" >>"$CALLS"
-if [[ "$*" == "run cilium:traffic-check "* ]]; then
+if [[ "$*" == "run cilium:traffic-check"* ]]; then
   printf 'traffic held across the Cilium agent restart\n'
 fi
 if [[ "$*" == "${ON_CALL:-}" ]]; then
@@ -950,6 +951,7 @@ record_chainsaw_kubeconfig() {
 upgrade_repository() {
   e2e_repository packages/cilium/helmrelease.yaml environments/local/tests/upgrade-unaffected
   printf 'kube-system k8s-app=kube-dns\n' >"$MISE_PROJECT_ROOT/environments/local/tests/upgrade-unaffected"
+  printf 'TF_VAR_state_directory = "derived"\n' >"$MISE_PROJECT_ROOT/mise.toml"
   commit_and_push "$MISE_PROJECT_ROOT" feature/test unaffected
   commit_and_push "$MISE_PROJECT_ROOT" main baseline
   git -C "$MISE_PROJECT_ROOT" reset -q --hard origin/feature/test
@@ -975,7 +977,7 @@ mise_calls() {
   [[ "$output" == *"Step times (change since the last passing run):"* ]]
   [[ "$output" == *"env:destroy "*"(new)"*"env:destroy (2) "*"(new)"* ]]
   [[ "${lines[-1]}" == "env:e2e passed for local at "* ]]
-  kept="$FIRMAMENT_STATE_HOME/environment/local/e2e-step-times"
+  kept="$FIRMAMENT_STATE_HOME/environments/local/e2e-step-times"
   [ "$(cut -f1 "$kept" | paste -sd, -)" = "env:destroy,env:apply,platform_versions,verify,cilium:conformance,remote_tip_unchanged,env:destroy (2)" ]
   run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -eq 0 ]
@@ -985,10 +987,10 @@ mise_calls() {
 @test "env:e2e keeps no step times from a failing run" {
   e2e_mise_stub
   e2e_repository
-  export FAIL_CALL="run verify local"
+  export FAIL_CALL="run verify"
   run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
-  [ ! -e "$FIRMAMENT_STATE_HOME/environment/local/e2e-step-times" ]
+  [ ! -e "$FIRMAMENT_STATE_HOME/environments/local/e2e-step-times" ]
 }
 
 @test "env:e2e rebuilds the cluster from scratch, runs every live check, and destroys it" {
@@ -1001,21 +1003,21 @@ mise_calls() {
   [[ "$output" == *"OrbStack: "* && "$output" == *"kernel: "* ]]
   grep -q '^orb -m firmament uname -r ' "$CALLS"
   run mise_calls
-  [ "$output" = "mise run --yes env:destroy local
-mise run env:apply local
-mise run verify local
-mise run cilium:conformance local
-mise run --yes env:destroy local" ]
+  [ "$output" = "mise run --yes env:destroy
+mise run env:apply
+mise run verify
+mise run cilium:conformance
+mise run --yes env:destroy" ]
 }
 
 @test "env:e2e stops at the first failing step and leaves the cluster for inspection" {
   e2e_mise_stub
   e2e_repository
-  FAIL_CALL="run verify local" run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  FAIL_CALL="run verify" run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"env:e2e stopped at: mise run verify local"* ]]
-  [[ "$output" == *"Remove it with: mise run --yes env:destroy local"* ]]
-  [ "$(mise_calls | tail -1)" = "mise run verify local" ]
+  [[ "$output" == *"env:e2e stopped at: mise run verify"* ]]
+  [[ "$output" == *"Remove it with: mise run --yes env:destroy"* ]]
+  [ "$(mise_calls | tail -1)" = "mise run verify" ]
   [ "$(mise_calls | wc -l)" -eq 3 ]
 }
 
@@ -1060,12 +1062,12 @@ mise run --yes env:destroy local" ]
 @test "env:e2e fails when origin moves while it runs, and keeps the cluster" {
   e2e_mise_stub
   e2e_repository
-  export ON_CALL="run cilium:conformance local"
+  export ON_CALL="run cilium:conformance"
   export ON_CALL_RUN='git -C "$MISE_PROJECT_ROOT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m moved && git -C "$MISE_PROJECT_ROOT" push -q origin HEAD:refs/heads/feature/test'
   run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"origin/feature/test moved from"*"during the run"* ]]
-  [ "$(mise_calls | tail -1)" = "mise run cilium:conformance local" ]
+  [ "$(mise_calls | tail -1)" = "mise run cilium:conformance" ]
 }
 
 @test "env:e2e --from-branch applies the baseline branch, verifies it, then applies the checkout over it" {
@@ -1077,58 +1079,58 @@ mise run --yes env:destroy local" ]
   [[ "${lines[-1]}" == "env:e2e passed for local at $(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD): traffic held across the Cilium agent restart; the cluster is destroyed." ]]
   run grep '^mise ' "$CALLS"
   [ "${#lines[@]}" -eq 10 ]
-  [ "${lines[0]}" = "mise run --yes env:destroy local | branch=feature/test" ]
-  [[ "${lines[1]}" == "mise --cd "*"/baseline run env:apply local | branch=main" ]]
-  [[ "${lines[2]}" == "mise --cd "*"/baseline run env:verify local | branch=main" ]]
-  [ "${lines[3]}" = "mise run cilium:traffic-start local | branch=feature/test" ]
-  [ "${lines[4]}" = "mise run env:apply local | branch=feature/test" ]
-  [ "${lines[5]}" = "mise run verify local | branch=feature/test" ]
-  [ "${lines[6]}" = "mise run cilium:restart-agent local | branch=feature/test" ]
-  [ "${lines[7]}" = "mise run cilium:traffic-check local | branch=feature/test" ]
-  [ "${lines[8]}" = "mise run cilium:conformance local | branch=feature/test" ]
-  [ "${lines[9]}" = "mise run --yes env:destroy local | branch=feature/test" ]
+  [ "${lines[0]}" = "mise run --yes env:destroy | branch=feature/test" ]
+  [[ "${lines[1]}" == "mise --cd "*"/baseline run env:apply | branch=main" ]]
+  [[ "${lines[2]}" == "mise --cd "*"/baseline run env:verify | branch=main" ]]
+  [ "${lines[3]}" = "mise run cilium:traffic-start | branch=feature/test" ]
+  [ "${lines[4]}" = "mise run env:apply | branch=feature/test" ]
+  [ "${lines[5]}" = "mise run verify | branch=feature/test" ]
+  [ "${lines[6]}" = "mise run cilium:restart-agent | branch=feature/test" ]
+  [ "${lines[7]}" = "mise run cilium:traffic-check | branch=feature/test" ]
+  [ "${lines[8]}" = "mise run cilium:conformance | branch=feature/test" ]
+  [ "${lines[9]}" = "mise run --yes env:destroy | branch=feature/test" ]
   ! git -C "$MISE_PROJECT_ROOT" worktree list | grep -q /baseline
 }
 
 @test "env:e2e --from-branch stops when traffic does not survive the switch, and keeps the cluster" {
   e2e_mise_stub
   upgrade_repository
-  FAIL_CALL="run cilium:traffic-check local" usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  FAIL_CALL="run cilium:traffic-check" usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"env:e2e stopped at: check_traffic"* ]]
-  [ "$(mise_calls | tail -1)" = "mise run cilium:traffic-check local" ]
+  [ "$(mise_calls | tail -1)" = "mise run cilium:traffic-check" ]
 }
 
 @test "env:e2e --from-branch stops when the agent does not restart, before measuring traffic" {
   e2e_mise_stub
   upgrade_repository
-  FAIL_CALL="run cilium:restart-agent local" usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  FAIL_CALL="run cilium:restart-agent" usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"env:e2e stopped at: mise run cilium:restart-agent local"* ]]
-  [ "$(mise_calls | tail -1)" = "mise run cilium:restart-agent local" ]
+  [[ "$output" == *"env:e2e stopped at: mise run cilium:restart-agent"* ]]
+  [ "$(mise_calls | tail -1)" = "mise run cilium:restart-agent" ]
 }
 
 @test "env:e2e --from-branch stops before the switch when traffic does not start" {
   e2e_mise_stub
   upgrade_repository
-  FAIL_CALL="run cilium:traffic-start local" usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  FAIL_CALL="run cilium:traffic-start" usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"env:e2e stopped at: mise run cilium:traffic-start local"* ]]
-  [ "$(mise_calls | tail -1)" = "mise run cilium:traffic-start local" ]
+  [[ "$output" == *"env:e2e stopped at: mise run cilium:traffic-start"* ]]
+  [ "$(mise_calls | tail -1)" = "mise run cilium:traffic-start" ]
 }
 
 @test "env:e2e --from-branch fails when the switch replaces a workload it should not touch" {
   e2e_mise_stub
   upgrade_repository
   pods uid-before >"$PODS"
-  export ON_CALL="run env:apply local"
+  export ON_CALL="run env:apply"
   export ON_CALL_RUN='pods uid-after >"$PODS"'
   export -f pods
   usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"the upgrade replaced or restarted workloads it should not touch"* ]]
   [[ "$output" == *"uid-before"*"uid-after"* ]]
-  [ "$(mise_calls | tail -1)" = "mise run verify local" ]
+  [ "$(mise_calls | tail -1)" = "mise run verify" ]
 }
 
 @test "env:e2e --from-branch fails when a listed workload selects no pod" {
@@ -1162,12 +1164,12 @@ mise run --yes env:destroy local" ]
 @test "env:e2e fails when it cannot fetch origin at the end, and keeps the cluster" {
   e2e_mise_stub
   e2e_repository
-  export ON_CALL="run cilium:conformance local"
+  export ON_CALL="run cilium:conformance"
   export ON_CALL_RUN='git -C "$MISE_PROJECT_ROOT" remote set-url origin "$BATS_TEST_TMPDIR/missing.git"'
   run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"env:e2e stopped at: remote_tip_unchanged feature/test"* ]]
-  [ "$(mise_calls | tail -1)" = "mise run cilium:conformance local" ]
+  [ "$(mise_calls | tail -1)" = "mise run cilium:conformance" ]
 }
 
 @test "env:e2e --from-branch refuses a baseline that is not merged into main" {
@@ -1193,6 +1195,17 @@ mise run --yes env:destroy local" ]
   [ -z "$(grep '^mise ' "$CALLS" 2>/dev/null)" ]
 }
 
+@test "env:e2e --from-branch refuses a baseline that does not derive the state directory from MISE_ENV" {
+  e2e_mise_stub
+  e2e_repository packages/cilium/helmrelease.yaml environments/local/tests/upgrade-unaffected
+  commit_and_push "$MISE_PROJECT_ROOT" main old-state-layout
+  git -C "$MISE_PROJECT_ROOT" reset -q --hard origin/feature/test
+  usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"origin/main at "*" does not derive the state directory from MISE_ENV"* ]]
+  [ -z "$(grep '^mise ' "$CALLS" 2>/dev/null)" ]
+}
+
 @test "env:e2e --from-branch refuses a baseline name the bootstrap shell would misread" {
   e2e_mise_stub
   e2e_repository
@@ -1214,12 +1227,12 @@ mise run --yes env:destroy local" ]
 @test "env:e2e --from-branch fails when the baseline branch moves while it runs" {
   e2e_mise_stub
   upgrade_repository
-  export ON_CALL="run cilium:conformance local"
+  export ON_CALL="run cilium:conformance"
   export ON_CALL_RUN='git -C "$MISE_PROJECT_ROOT" push -q --force origin HEAD:refs/heads/main'
   usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"origin/main moved from"*"during the run"* ]]
-  [ "$(mise_calls | tail -1)" = "mise run cilium:conformance local" ]
+  [ "$(mise_calls | tail -1)" = "mise run cilium:conformance" ]
   ! git -C "$MISE_PROJECT_ROOT" worktree list | grep -q /baseline
 }
 
@@ -1296,7 +1309,7 @@ STUB
 @test "env:verify runs no suite when the state records no runtime values" {
   record_chainsaw_kubeconfig
   verify_repository
-  printf 'kubeconfig_path: /state/admin.kubeconfig\n' >"$FIRMAMENT_STATE_HOME/environment/local/cluster-access.yaml"
+  printf 'kubeconfig_path: /state/admin.kubeconfig\n' >"$FIRMAMENT_STATE_HOME/environments/local/cluster-access.yaml"
   run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"environment 'local' has no .runtime_info in cluster-access.yaml; apply it first"* ]]
@@ -1629,7 +1642,7 @@ STUB
 # kubeconfig file that exists unless DOCTOR_KUBECONFIG names another path.
 # A test removes a contract first to record less.
 run_doctor() {
-  local contract="$FIRMAMENT_STATE_HOME/environment/local/cluster-access.yaml"
+  local contract="$FIRMAMENT_STATE_HOME/environments/local/cluster-access.yaml"
   local kubeconfig="$BATS_TEST_TMPDIR/admin.kubeconfig"
   : >"$kubeconfig"
   if [[ -f "$contract" ]]; then
@@ -1647,7 +1660,7 @@ run_doctor() {
   [[ "$output" == *"ok    api: the API server is ready"* ]]
   [[ "$output" != *FAIL* ]]
   ! grep -Eq '^tofu .* (init|apply|destroy|state (mv|rm))( |$)' "$CALLS" || fail "changed state: $(cat "$CALLS")"
-  [ ! -e "$FIRMAMENT_STATE_HOME/environment/local/owner" ] || fail "claimed the environment"
+  [ ! -e "$FIRMAMENT_STATE_HOME/environments/local/owner" ] || fail "claimed the environment"
 }
 
 @test "env:doctor treats an environment with no state as ready for env:apply" {
@@ -1663,7 +1676,7 @@ run_doctor() {
   local_state
   local other="$BATS_TEST_TMPDIR/other-worktree"
   mkdir -p "$other"
-  printf '%s\n' "$other" >"$FIRMAMENT_STATE_HOME/environment/local/owner"
+  printf '%s\n' "$other" >"$FIRMAMENT_STATE_HOME/environments/local/owner"
   run_doctor
   [ "$status" -eq 1 ]
   [[ "$output" == *"FAIL  owner: the worktree $other owns this environment"* ]]
@@ -1671,8 +1684,8 @@ run_doctor() {
 }
 
 @test "env:doctor reports an empty state file with the backup to restore" {
-  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  : >"$FIRMAMENT_STATE_HOME/environment/local/machine-orb.tfstate"
+  mkdir -p "$FIRMAMENT_STATE_HOME/environments/local"
+  : >"$FIRMAMENT_STATE_HOME/environments/local/machine-orb.tfstate"
   run_doctor
   [ "$status" -eq 1 ]
   [[ "$output" == *"FAIL  state: "*"machine-orb.tfstate is empty"* ]]
@@ -1680,11 +1693,11 @@ run_doctor() {
 
 @test "env:doctor reports a contract file it cannot read, and what writes it again" {
   local_state
-  printf 'name: [unclosed\n' >"$FIRMAMENT_STATE_HOME/environment/local/machine-hosts.yaml"
+  printf 'name: [unclosed\n' >"$FIRMAMENT_STATE_HOME/environments/local/machine-hosts.yaml"
   run_doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *"FAIL  state: cannot read $FIRMAMENT_STATE_HOME/environment/local/machine-hosts.yaml"* ]]
-  [[ "$output" == *"next: mise run orb:apply local, which writes it again"* ]]
+  [[ "$output" == *"FAIL  state: cannot read $FIRMAMENT_STATE_HOME/environments/local/machine-hosts.yaml"* ]]
+  [[ "$output" == *"next: mise run orb:apply, which writes it again"* ]]
 }
 
 @test "env:doctor stops at a stopped OrbStack and skips what depends on it" {
@@ -1734,7 +1747,7 @@ run_doctor() {
   READYZ_ERROR='the server is currently unable to handle the request' run_doctor
   [ "$status" -eq 1 ]
   [[ "$output" == *"FAIL  api: the server is currently unable to handle the request"* ]]
-  [[ "$output" == *"next: mise run k0s:verify local"* ]]
+  [[ "$output" == *"next: mise run k0s:verify"* ]]
 }
 
 @test "env:doctor tells a dead .orb.local name from a dead machine" {
@@ -1760,7 +1773,7 @@ STUB
   chmod +x "$stubs/orb"
   record_contracts "$BATS_TEST_TMPDIR/admin.kubeconfig"
   : >"$BATS_TEST_TMPDIR/admin.kubeconfig"
-  run script -q /dev/null env usage_environment=local \
+  run script -q /dev/null env TF_VAR_state_directory="$FIRMAMENT_STATE_HOME/environments/local" \
     "$root_directory/.mise/tasks/env/doctor.sh" </dev/null
   output=${output//$'\r'/}
   [[ "$output" == *"ok    machine dns: firmament resolves host.orb.internal"* ]] || fail "$output"
@@ -1790,7 +1803,7 @@ STUB
   DOCTOR_KUBECONFIG="$BATS_TEST_TMPDIR/missing.kubeconfig" run_doctor
   [ "$status" -eq 1 ]
   [[ "$output" == *"FAIL  api: the kubeconfig file $BATS_TEST_TMPDIR/missing.kubeconfig is missing"* ]]
-  [[ "$output" == *"next: mise run k0s:apply local"* ]]
+  [[ "$output" == *"next: mise run k0s:apply"* ]]
   ! grep -q 'readyz' "$CALLS"
 }
 
@@ -1850,4 +1863,36 @@ contract_repository() {
   run bash -c "cd '$repository' && hk check --all --step betterleaks"
   [ "$status" -ne 0 ] || fail "accepted a private key: $output"
   [[ "$output" == *"keys/id_ed25519"* ]] || fail "$output"
+}
+
+# A repository whose task scripts are real files, one environment named local.
+environment_lint_repository() {
+  local repository="$BATS_TEST_TMPDIR/lint-repository"
+  mkdir -p "$repository/environments/local" "$repository/.mise/tasks/x"
+  printf '%s\n' "$repository"
+}
+
+@test "environments:lint accepts every task script in the repository" {
+  run "$root_directory/.mise/tasks/environments/lint.sh"
+  [ "$status" -eq 0 ] || fail "$output"
+}
+
+@test "environments:lint refuses an environment named as a string, a path or an assignment" {
+  MISE_PROJECT_ROOT=$(environment_lint_repository)
+  local line
+  for line in 'environment="local"' "x='local'" 'dir=$root/environments/local/tests' 'MISE_ENV=local mise run y'; do
+    printf '%s\n' "$line" >"$MISE_PROJECT_ROOT/.mise/tasks/x/bad.sh"
+    run "$root_directory/.mise/tasks/environments/lint.sh"
+    [ "$status" -ne 0 ] || fail "accepted: $line"
+    [[ "$output" == *".mise/tasks/x/bad.sh: names environment local"* ]] || fail "$output"
+    [[ "$output" == *"1:$line"* ]] || fail "$output"
+  done
+}
+
+@test "environments:lint ignores comments, the local keyword and longer names" {
+  MISE_PROJECT_ROOT=$(environment_lint_repository)
+  printf '%s\n' '# the local environment is "local"' 'f() { local x=1; }' 'cluster="local-cluster"' 'path=environments/localhost/x' \
+    >"$MISE_PROJECT_ROOT/.mise/tasks/x/ok.sh"
+  run "$root_directory/.mise/tasks/environments/lint.sh"
+  [ "$status" -eq 0 ] || fail "$output"
 }

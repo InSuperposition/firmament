@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
 #MISE description="Run every *:verify task against an environment, one at a time; --only keeps the environment's own checks and the chosen packages'"
-#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 #USAGE flag "--only <packages>" help="Comma-separated packages to check, such as cilium,flux; tasks that check the environment itself always run (default: every package)"
 #USAGE flag "--changed" help="Choose the packages this branch changed since it left origin/main, instead of --only"
 set -euo pipefail
 # shellcheck source=../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
-environment="$usage_environment"
+require_environment >/dev/null
 
 # One at a time: each task runs tofu init in the same environment directory.
 # env:verify goes first: it waits for Flux to apply origin's tip, so the
 # other tasks check what that commit deploys, not what ran before it.
-environment_directory "$environment" >/dev/null
-only=$(package_selection "$environment" "${usage_only:-}" "${usage_changed:-false}")
-packages=$(deployed_packages "$environment")
+only=$(package_selection "${usage_only:-}" "${usage_changed:-false}")
+packages=$(deployed_packages)
 deployed_names=" "
 while IFS= read -r package; do
   [[ -n "$package" ]] && deployed_names+="${package##*/} "
@@ -32,8 +30,8 @@ for task in "${tasks[@]}"; do
     continue
   fi
   if [[ "$task" == env:verify && -n "$only" ]]; then
-    mise run "$task" "$environment" --only "$only"
+    mise run "$task" --only "$only"
   else
-    mise run "$task" "$environment"
+    mise run "$task"
   fi
 done

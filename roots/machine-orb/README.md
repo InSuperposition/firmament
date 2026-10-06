@@ -42,7 +42,7 @@ another key, set `TF_VAR_orbstack_ssh_key_path` to its absolute path.
 | `state_directory` | the mise tasks (`TF_VAR_state_directory`) |
 | `orbstack_ssh_key_path` | optional; defaults to OrbStack's key |
 
-State: `$FIRMAMENT_STATE_HOME/environment/<env>/machine-orb.tfstate`.
+State: `$FIRMAMENT_STATE_HOME/environments/<env>/machine-orb.tfstate`.
 
 ## Tests
 
