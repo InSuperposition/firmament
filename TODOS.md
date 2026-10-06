@@ -2,6 +2,18 @@
 
 ## Infrastructure
 
+### Exclude two runs from one checkout around the k0sctl edge
+
+**What:** Add a lock around the environment apply and destroy tasks so two runs from the same checkout cannot interleave.
+
+**Why:** `claim_environment` refuses only a different worktree, and OpenTofu's state lock covers one command, not the render, `k0sctl apply` and publish sequence. An apply racing a destroy can remove the machine while `k0sctl` is mid-run.
+
+**Context:** `claim_environment` in `.mise/lib.sh` writes the owning worktree to `$state/owner`. The repo has no lock pattern; macOS has no `flock`, so the work is a lock directory with stale-lock handling, taken by `env:apply`, `k0s:apply` and both destroy tasks.
+
+**Effort:** M
+**Priority:** P2
+**Depends on:** orchestrator-k0sctl implementation
+
 ### Verify OrbStack writes known_hosts on a fresh install
 
 **What:** On a clean OrbStack profile, check that `~/.orbstack/ssh/known_hosts` holds `[127.0.0.1]:32222` keys before any machine exists.
