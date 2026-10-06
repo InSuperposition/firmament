@@ -1,0 +1,6 @@
+kind: platform
+quota:
+  cpu: "4"
+  memory: 8Gi
+administrators:
+  - platform-admins

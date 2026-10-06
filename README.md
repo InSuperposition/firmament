@@ -67,6 +67,9 @@ contracts/machine-hosts/, cluster-access/, environment/
                       the data files that cross roots and tasks: closed
                       schemas, checked offline by contracts:lint and by
                       the root that reads each file
+contracts/package-spec/, cluster-spec/, bindings-spec/, tenant-spec/, delta-spec/
+                      the formats of the files authors write; the Timoni
+                      modules that read them check them again
 clusters/singularity/ the cluster definition: its Flux build (which
                       packages Flux applies) and its cluster suite
 environments/local/   the local environment's data: environment.yaml names
@@ -120,6 +123,11 @@ run by `tofu:test`. Suites that run shell or check OpenTofu's own error
 output stay on bats (`tests/*.bats`). Read-only checks of a live cluster
 are chainsaw suites in `tests/cluster/`: each environment has one for the
 cluster itself, and each package has one for its own workloads.
+
+`timoni` renders the cluster and environment artifacts and is still before
+version 1.0, so `mise.toml` pins it exactly. Upgrade it only by rerunning
+the render and refusal checks against the new version, and regenerate the
+core schemas each module vendors in the same change.
 `env:verify` runs the environment's suite, then the suite of every
 package the environment's Flux build lists. A package's name is its
 folder name (`packages/cilium` is `cilium`), which is also the noun of

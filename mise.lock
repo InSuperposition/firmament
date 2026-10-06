@@ -638,6 +638,46 @@ checksum = "sha256:13629ce28442ca80b6b5a819f7574ab39e1c28c6e26734ca816c9714e0485
 url = "https://github.com/mvdan/sh/releases/download/v3.14.1/shfmt_v3.14.1_windows_amd64.exe"
 url_api = "https://api.github.com/repos/mvdan/sh/releases/assets/547320827"
 
+[[tools.timoni]]
+version = "0.35.0"
+backend = "packslip:github.com/stefanprodan/timoni"
+specifiers = ["0.35.0"]
+
+[tools.timoni."platforms.linux-arm64"]
+checksum = "sha256:8df20f8f455c78357cf8365c36bccb19201c10e70d758adc3b2ddcbd8928d833"
+url = "https://github.com/stefanprodan/timoni/releases/download/v0.35.0/timoni_0.35.0_linux_arm64.tar.gz"
+signer = "sigstore-oidc:https://github.com/stefanprodan/timoni/.github/workflows/release.yaml"
+
+[tools.timoni."platforms.linux-arm64-musl"]
+checksum = "sha256:8df20f8f455c78357cf8365c36bccb19201c10e70d758adc3b2ddcbd8928d833"
+url = "https://github.com/stefanprodan/timoni/releases/download/v0.35.0/timoni_0.35.0_linux_arm64.tar.gz"
+signer = "sigstore-oidc:https://github.com/stefanprodan/timoni/.github/workflows/release.yaml"
+
+[tools.timoni."platforms.linux-x64"]
+checksum = "sha256:97acb4d8f6d3681c090ed8f048fe47d73c149a6d373974377092edd9cd5a852d"
+url = "https://github.com/stefanprodan/timoni/releases/download/v0.35.0/timoni_0.35.0_linux_amd64.tar.gz"
+signer = "sigstore-oidc:https://github.com/stefanprodan/timoni/.github/workflows/release.yaml"
+
+[tools.timoni."platforms.linux-x64-musl"]
+checksum = "sha256:97acb4d8f6d3681c090ed8f048fe47d73c149a6d373974377092edd9cd5a852d"
+url = "https://github.com/stefanprodan/timoni/releases/download/v0.35.0/timoni_0.35.0_linux_amd64.tar.gz"
+signer = "sigstore-oidc:https://github.com/stefanprodan/timoni/.github/workflows/release.yaml"
+
+[tools.timoni."platforms.macos-arm64"]
+checksum = "sha256:68bd5ae946773cdc5687d2c024776d5f1be9012de9c6e21ed821ea97800b235c"
+url = "https://github.com/stefanprodan/timoni/releases/download/v0.35.0/timoni_0.35.0_darwin_arm64.tar.gz"
+signer = "sigstore-oidc:https://github.com/stefanprodan/timoni/.github/workflows/release.yaml"
+
+[tools.timoni."platforms.macos-x64"]
+checksum = "sha256:42ca36f5b368535fad5ad0932ca2e0457cfd56a6a6141289e5938211962d68be"
+url = "https://github.com/stefanprodan/timoni/releases/download/v0.35.0/timoni_0.35.0_darwin_amd64.tar.gz"
+signer = "sigstore-oidc:https://github.com/stefanprodan/timoni/.github/workflows/release.yaml"
+
+[tools.timoni."platforms.windows-x64"]
+checksum = "sha256:57279e44caf49bf99f9cc8b93baa5eebf8c82e2c935ce27e90f1e00d299c47bb"
+url = "https://github.com/stefanprodan/timoni/releases/download/v0.35.0/timoni_0.35.0_windows_amd64.zip"
+signer = "sigstore-oidc:https://github.com/stefanprodan/timoni/.github/workflows/release.yaml"
+
 [[tools.yq]]
 version = "4.53.6"
 backend = "aqua:mikefarah/yq"

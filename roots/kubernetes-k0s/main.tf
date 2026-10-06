@@ -20,6 +20,9 @@ locals {
   environment_data = yamldecode(file(local.environment_file))
   cluster          = local.environment_data.cluster
 
+  environment_required_fields = ["cluster", "target", "engine", "artifact_source", "clusters"]
+  environment_fields          = concat(local.environment_required_fields, ["credentials"])
+
   # The machine's DNS name resolves on both the host and the guest.
   api_address = local.machine.dns_name
   api_port    = 6443
@@ -83,8 +86,9 @@ resource "terraform_data" "machine_hosts_contract" {
   }
 }
 
-# The environment contract, checked where it is read: only cluster, a
-# lowercase name.
+# The environment contract, checked where it is read: the same top-level
+# fields contracts/environment/schema.cue declares. The mesh allocations in
+# clusters are checked by the OpenTofu allocation rules, not here.
 resource "terraform_data" "environment_contract" {
   input = local.environment_data
 
@@ -94,8 +98,24 @@ resource "terraform_data" "environment_contract" {
       error_message = "environment.yaml: cluster must be lowercase letters, digits and -, starting with a letter."
     }
     precondition {
-      condition     = try(length(setsubtract(keys(local.environment_data), ["cluster"])) == 0, false)
-      error_message = "environment.yaml: only the field cluster is allowed; found ${try(join(", ", sort(setsubtract(keys(local.environment_data), ["cluster"]))), "none")}."
+      condition     = try(local.environment_data.target == "orbstack" && local.environment_data.engine == "flux", false)
+      error_message = "environment.yaml: target must be orbstack and engine must be flux."
+    }
+    precondition {
+      condition     = try(can(regex("^ghcr\\.io/[a-z0-9._/-]+$", local.environment_data.artifact_source)), false)
+      error_message = "environment.yaml: artifact_source must be a ghcr.io repository, lowercase."
+    }
+    precondition {
+      condition     = try(contains(keys(local.environment_data.clusters), local.environment_data.cluster), false)
+      error_message = "environment.yaml: clusters must hold an allocation for the cluster ${try(local.environment_data.cluster, "")}."
+    }
+    precondition {
+      condition = try(
+        length(setsubtract(keys(local.environment_data), local.environment_fields)) == 0 &&
+        length(setsubtract(local.environment_required_fields, keys(local.environment_data))) == 0,
+        false
+      )
+      error_message = "environment.yaml: allowed fields are ${join(", ", local.environment_fields)}; ${join(", ", setsubtract(local.environment_required_fields, try(keys(local.environment_data), [])))} missing; found undeclared ${try(join(", ", sort(setsubtract(keys(local.environment_data), local.environment_fields))), "none")}."
     }
   }
 }
