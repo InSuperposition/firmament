@@ -1,4 +1,4 @@
-# What Flux reconciles in the local environment.
+# What Flux reconciles in every environment that runs this cluster.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

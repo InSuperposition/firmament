@@ -9,7 +9,7 @@ folders:
   packages:
     holds: what Flux applies, one folder per package, named <tool>[-<concern>]
     may_reference: [contracts]
-    must_never: [name a cluster, environment or namespace]
+    must_never: [name a cluster, environment or tenant namespace]
   modules:
     holds: reusable OpenTofu modules, named <layer>-<tool>
     may_reference: [contracts]
@@ -36,7 +36,7 @@ standalone_checks:
   - rule: chainsaw suites only read the cluster
     task: chainsaw:lint
 review_checks:
-  - a package names no cluster, environment or namespace
+  - a package names no cluster, environment or tenant namespace
   - a module references no package, cluster or environment
   - a root hardcodes no environment or cluster name
   - a contract references no other folder
