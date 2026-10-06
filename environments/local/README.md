@@ -18,9 +18,10 @@ detached HEAD.
 
 ## Commands
 
-Every task below takes the environment name as an optional argument,
-defaulting to `local` (`mise run env:plan local`). All except `env:test`
-talk to this environment's state or machine.
+Every task below except `env:test` takes the environment name as an
+optional argument, defaulting to `local` (`mise run env:plan local`), and
+talks to that environment's state or machine. `env:test` takes none: it
+tests every root against fixtures.
 
 | Command | Behavior |
 | --- | --- |
