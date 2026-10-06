@@ -1586,6 +1586,16 @@ run_capture_stall() {
   ! grep -q '^tofu ' "$CALLS" || fail "read tofu state, which a stalled apply has not written: $(cat "$CALLS")"
 }
 
+@test "orb:capture-stall targets <environment>-<cluster> of the selected environment when given no machine" {
+  local tool
+  for tool in arp dscacheutil route lsof; do
+    [ -e "$stubs/$tool" ] || stub "$tool"
+  done
+  run "$root_directory/.mise/tasks/orb/capture-stall.sh" </dev/null
+  [ "$status" -eq 0 ] || fail "$output"
+  grep -qx 'orb -m local-singularity -u root ss -tnp | state= branch=' "$CALLS"
+}
+
 @test "orb:capture-stall keeps capturing after a command fails" {
   printf '#!/usr/bin/env bash\nexit 3\n' >"$stubs/arp"
   chmod +x "$stubs/arp"

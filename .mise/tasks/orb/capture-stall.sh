@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 #MISE description="Capture OrbStack SSH and network state right after a stall, without changing anything"
-#USAGE arg "[machine]" default="firmament" help="OrbStack machine name"
+#USAGE arg "[machine]" help="OrbStack machine name; <environment>-<cluster> of the selected environment when omitted"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
-machine="$usage_machine"
+machine="${usage_machine:-}"
+[[ -n "$machine" ]] || machine=$(machine_name)
 
-# The machine name comes from the argument, not from tofu state: a stall
-# happens mid-apply, before the state records the machine's outputs.
+# The machine name comes from the argument or the environment's data, not
+# from tofu state or the machine-hosts contract: a stall happens mid-apply,
+# before either records the machine.
 capture_directory="${FIRMAMENT_STATE_HOME:?FIRMAMENT_STATE_HOME is unset; run this through mise}/stalls/$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$capture_directory"
 

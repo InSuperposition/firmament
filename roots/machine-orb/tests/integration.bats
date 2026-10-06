@@ -19,3 +19,9 @@ load setup.bash
   [ "$status" -eq 0 ]
   [ "$output" = "$TF_VAR_state_directory/machine-hosts.yaml" ]
 }
+
+@test "the machine-name helper the stall task uses equals the planned machine name" {
+  planned=$(planned_output machine_name | jq -r '.')
+  helper=$(MISE_ENV=local MISE_PROJECT_ROOT="$machine_root/../.." bash -c 'source "$MISE_PROJECT_ROOT/.mise/lib.sh" && machine_name')
+  [ "$helper" = "$planned" ]
+}
