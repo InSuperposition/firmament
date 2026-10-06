@@ -1,0 +1,39 @@
+# Read-only assertions on the local environment's cluster itself: its
+# nodes, and what k0s must leave to Flux. Each component checks its own
+# workloads in packages/<name>/tests/cluster. The namespace is set so
+# chainsaw uses kube-system instead of creating one.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cluster
+spec:
+  namespace: kube-system
+  steps:
+    - name: every node is ready
+      try:
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Node
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+        - error:
+            resource:
+              apiVersion: v1
+              kind: Node
+              status:
+                (conditions[?type == 'Ready'] | [0].status != 'True'): true
+    - name: kube-proxy does not run
+      try:
+        - error:
+            resource:
+              apiVersion: apps/v1
+              kind: DaemonSet
+              metadata:
+                name: kube-proxy
+    - name: k0s installs no Helm charts
+      try:
+        - error:
+            resource:
+              apiVersion: helm.k0sproject.io/v1beta1
+              kind: Chart

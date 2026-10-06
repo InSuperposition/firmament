@@ -1,5 +1,7 @@
 #!/usr/bin/env bats
 
+bats_require_minimum_version 1.5.0
+
 load stubs.bash
 
 setup() {
@@ -8,10 +10,10 @@ setup() {
   source "$root_directory/.mise/lib.sh"
 }
 
-@test "resolves an existing environment to its OpenTofu root" {
+@test "resolves an existing environment to its data directory" {
   run environment_directory local
   [ "$status" -eq 0 ]
-  [ "$output" = "$root_directory/environment/local" ]
+  [ "$output" = "$root_directory/environments/local" ]
 }
 
 @test "rejects an environment without a directory" {
@@ -32,10 +34,16 @@ setup() {
   [[ "$output" == *"FIRMAMENT_STATE_HOME is unset"* ]]
 }
 
-@test "runs tofu in the environment root with its state directory and branch" {
-  tofu_in_environment local plan -input=false
+@test "runs tofu in one root with the environment's state directory and branch" {
+  tofu_in_root local kubernetes-k0s plan -input=false
   run cat "$CALLS"
-  [ "$output" = "tofu -chdir=$root_directory/environment/local plan -input=false | state=$FIRMAMENT_STATE_HOME/environment/local branch=feature/test" ]
+  [ "$output" = "tofu -chdir=$root_directory/roots/kubernetes-k0s plan -input=false | state=$FIRMAMENT_STATE_HOME/environment/local branch=feature/test" ]
+}
+
+@test "tells a root the name of the environment it runs for" {
+  tofu() { printf '%s' "$TF_VAR_environment"; }
+  run tofu_in_root local machine-orb plan
+  [ "$output" = local ]
 }
 
 @test "follows the checked-out branch when the caller names none" {
@@ -53,8 +61,8 @@ setup() {
   git init -q "$MISE_PROJECT_ROOT"
   git -C "$MISE_PROJECT_ROOT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m start
   git -C "$MISE_PROJECT_ROOT" checkout -q --detach
-  mkdir -p "$MISE_PROJECT_ROOT/environment/local"
-  run tofu_in_environment local plan
+  mkdir -p "$MISE_PROJECT_ROOT/environments/local"
+  run tofu_in_root local machine-orb plan
   [ "$status" -ne 0 ]
   [[ "$output" == *"HEAD is detached; set FIRMAMENT_GIT_BRANCH"* ]]
   [ ! -e "$CALLS" ]
@@ -75,69 +83,54 @@ setup() {
 }
 
 @test "refuses a caller-named branch that is not a valid name" {
-  FIRMAMENT_GIT_BRANCH='main;touch x' run tofu_in_environment local plan
+  FIRMAMENT_GIT_BRANCH='main;touch x' run tofu_in_root local machine-orb plan
   [ "$status" -ne 0 ]
   [ ! -e "$CALLS" ]
 }
 
 @test "prints the revision Flux reports for origin's branch tip" {
-  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environment/local/main.tf)
+  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environments/local/environment.yaml)
   run flux_revision feature/test
   [ "$status" -eq 0 ]
   [ "$output" = "refs/heads/feature/test@sha1:$(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD)" ]
 }
 
 @test "fails for a branch that origin does not have" {
-  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environment/local/main.tf)
+  MISE_PROJECT_ROOT=$(make_pushed_repository feature/test environments/local/environment.yaml)
   run flux_revision feature/other
   [ "$status" -ne 0 ]
   [[ "$output" == *"origin/feature/other does not exist; push the branch first"* ]]
 }
 
 @test "creates no state directory for an environment that does not exist" {
-  run init_environment nowhere
+  run init_root nowhere machine-orb
   [ "$status" -ne 0 ]
   [ ! -e "$FIRMAMENT_STATE_HOME/environment/nowhere" ]
   [ ! -e "$CALLS" ]
 }
 
 @test "refuses an empty state file before running tofu" {
-  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  : >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
-  run init_environment local
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate is empty"* ]]
-  [[ "$output" == *"terraform.tfstate.backup"* ]]
+  local root
+  for root in machine-orb kubernetes-k0s bootstrap-flux; do
+    mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
+    : >"$FIRMAMENT_STATE_HOME/environment/local/$root.tfstate"
+    run init_root local "$root"
+    [ "$status" -ne 0 ] || fail "$root accepted an empty state file"
+    [[ "$output" == *"$FIRMAMENT_STATE_HOME/environment/local/$root.tfstate is empty"* ]]
+    [[ "$output" == *"$root.tfstate.backup"* ]]
+    rm "$FIRMAMENT_STATE_HOME/environment/local/$root.tfstate"
+  done
   [ ! -e "$CALLS" ]
 }
 
-@test "points the bootstrap root at its own state file, next to the environment's" {
-  init_bootstrap local
-  run cat "$CALLS"
-  [[ "$output" == *"tofu -chdir=$root_directory/environment/local/bootstrap init -input=false -reconfigure -lockfile=readonly -backend-config=path=$FIRMAMENT_STATE_HOME/environment/local/bootstrap.tfstate"* ]]
-}
-
-@test "refuses an empty bootstrap state file before running tofu" {
-  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  : >"$FIRMAMENT_STATE_HOME/environment/local/bootstrap.tfstate"
-  run init_bootstrap local
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"$FIRMAMENT_STATE_HOME/environment/local/bootstrap.tfstate is empty"* ]]
-  [ ! -e "$CALLS" ]
-}
-
-@test "moves nothing when the environment's state holds no bootstrap" {
-  mkdir -p "$FIRMAMENT_STATE_HOME/environment/local"
-  printf '{"version": 4}\n' >"$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"
-  STATE_LIST=module.vm_orb.orbstack_machine.this init_environment local
-  ! grep -q ' state mv ' "$CALLS"
-}
-
-@test "points the backend at the environment's state file" {
-  init_environment local
+@test "points each root's backend at its own state file in the environment's state directory" {
+  local root
+  for root in machine-orb kubernetes-k0s bootstrap-flux; do
+    init_root local "$root"
+    grep -q "^tofu -chdir=$root_directory/roots/$root init -input=false -reconfigure -lockfile=readonly -backend-config=path=$FIRMAMENT_STATE_HOME/environment/local/$root.tfstate " "$CALLS" ||
+      fail "$root: $(cat "$CALLS")"
+  done
   [ -d "$FIRMAMENT_STATE_HOME/environment/local" ]
-  run cat "$CALLS"
-  [[ "$output" == *"init -input=false -reconfigure -lockfile=readonly -backend-config=path=$FIRMAMENT_STATE_HOME/environment/local/terraform.tfstate"* ]]
 }
 
 @test "waits for Cilium, then Flux and the Cilium release, then Cilium again, then the nodes" {
@@ -181,10 +174,33 @@ setup() {
   [ "$status" -ne 0 ]
 }
 
-@test "fails for an output the state has no value for, instead of printing nothing" {
-  NO_OUTPUTS=1 run environment_output local kubeconfig_path
+@test "reads the kubeconfig path from the cluster-access contract" {
+  record_contracts /some/admin.kubeconfig
+  run environment_kubeconfig local
+  [ "$status" -eq 0 ]
+  [ "$output" = /some/admin.kubeconfig ]
+}
+
+@test "prints a contract object as JSON" {
+  run contract_field local cluster-access.yaml .runtime_info
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .cilium_datapath_mode <<<"$output")" = netkit ]
+}
+
+@test "fails for a contract the environment has no file for, instead of printing nothing" {
+  forget_contract cluster-access.yaml
+  run environment_kubeconfig local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"environment 'local' has no kubeconfig_path in its state; apply it first"* ]]
+  [[ "$output" == *"environment 'local' has no .kubeconfig_path in cluster-access.yaml; apply it first"* ]]
+  run contract_field_or_empty local cluster-access.yaml .kubeconfig_path
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "refuses to read a contract for an environment that does not exist" {
+  run contract_field_or_empty nowhere machine-hosts.yaml .name
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown environment 'nowhere'"* ]]
 }
 
 @test "initializes a directory without a backend" {
@@ -193,14 +209,14 @@ setup() {
   [ "${output%% |*}" = "tofu -chdir=/modules/a init -backend=false -input=false -reconfigure -lockfile=readonly" ]
 }
 
-@test "finds each module and environment holding an OpenTofu test suite, once" {
+@test "finds each module and root holding an OpenTofu test suite, once" {
   MISE_PROJECT_ROOT=$(make_repository modules/a/tests/unit.tftest.hcl modules/a/tests/more.tftest.hcl \
-    modules/b/tests/unit.bats environment/e/tests/wiring.tftest.hcl)
+    modules/b/tests/unit.bats roots/r/tests/wiring.tftest.hcl)
   run tofu_test_directories
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 2 ]
-  [ "${lines[0]}" = "$MISE_PROJECT_ROOT/environment/e" ]
-  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/modules/a" ]
+  [ "${lines[0]}" = "$MISE_PROJECT_ROOT/modules/a" ]
+  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/roots/r" ]
 }
 
 @test "finds no test directories when no suite exists" {
@@ -211,25 +227,26 @@ setup() {
 }
 
 @test "stops before tofu when the environment does not exist" {
-  run tofu_in_environment nowhere plan
+  run tofu_in_root nowhere machine-orb plan
   [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown environment 'nowhere'"* ]]
   [ ! -e "$CALLS" ]
 }
 
 @test "treats an empty XDG_STATE_HOME as unset" {
-  run env -u FIRMAMENT_STATE_HOME XDG_STATE_HOME= "$real_mise" env --json -C "$root_directory"
+  run --separate-stderr env -u FIRMAMENT_STATE_HOME XDG_STATE_HOME= "$real_mise" env --json -C "$root_directory"
   [ "$status" -eq 0 ]
   [ "$(jq -r .FIRMAMENT_STATE_HOME <<<"$output")" = "$HOME/.local/state/firmament" ]
 }
 
 @test "honors a FIRMAMENT_STATE_HOME set by the caller" {
-  run env FIRMAMENT_STATE_HOME=/custom "$real_mise" env --json -C "$root_directory"
+  run --separate-stderr env FIRMAMENT_STATE_HOME=/custom "$real_mise" env --json -C "$root_directory"
   [ "$(jq -r .FIRMAMENT_STATE_HOME <<<"$output")" = /custom ]
 }
 
-@test "points KUBECONFIG at the local cluster from the root and inside environment/local" {
+@test "points KUBECONFIG at the local cluster from the root and inside environments/local" {
   root=$(env -u KUBECONFIG "$real_mise" env --json -C "$root_directory" | jq -r .KUBECONFIG)
-  local_environment=$(env -u KUBECONFIG "$real_mise" env --json -C "$root_directory/environment/local" | jq -r .KUBECONFIG)
+  local_environment=$(env -u KUBECONFIG "$real_mise" env --json -C "$root_directory/environments/local" | jq -r .KUBECONFIG)
   [ "$root" = "$FIRMAMENT_STATE_HOME/environment/local/admin.kubeconfig" ]
   [ "$local_environment" = "$root" ]
 }
@@ -259,49 +276,49 @@ setup() {
   [[ "$output" == *"nothing listens on local port 1 after 1s"* ]]
 }
 
-@test "lists the environment's own suite, then each deployed component's suite" {
+@test "lists the cluster's own suite, then each deployed package's suite" {
   run cluster_suites local
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 3 ]
-  [ "${lines[0]}" = "$root_directory/environment/local/tests/cluster" ]
-  [ "${lines[1]}" = "$root_directory/components/cni-cilium/tests/cluster" ]
-  [ "${lines[2]}" = "$root_directory/components/gitops-flux/tests/cluster" ]
+  [ "${lines[0]}" = "$root_directory/clusters/singularity/tests/cluster" ]
+  [ "${lines[1]}" = "$root_directory/packages/cilium/tests/cluster" ]
+  [ "${lines[2]}" = "$root_directory/packages/flux/tests/cluster" ]
 }
 
-@test "lists only the environment's own suite when it has no Flux build" {
-  MISE_PROJECT_ROOT=$(make_repository environment/bare/tests/cluster/chainsaw-test.yaml)
+@test "lists only the cluster's own suite when it has no Flux build" {
+  MISE_PROJECT_ROOT=$(make_repository environments/bare/environment.yaml clusters/singularity/tests/cluster/chainsaw-test.yaml)
   run cluster_suites bare
   [ "$status" -eq 0 ]
-  [ "$output" = "$MISE_PROJECT_ROOT/environment/bare/tests/cluster" ]
+  [ "$output" = "$MISE_PROJECT_ROOT/clusters/singularity/tests/cluster" ]
 }
 
-@test "skips a deployed component without a suite and a component the environment does not deploy" {
-  MISE_PROJECT_ROOT=$(make_repository environment/x/flux/kustomization.yaml \
-    components/tested/tests/cluster/chainsaw-test.yaml components/untested/kustomization.yaml \
-    components/undeployed/tests/cluster/chainsaw-test.yaml)
-  printf 'resources:\n  - ../../../components/untested\n  - ../../../components/tested\n' \
-    >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
+@test "skips a deployed package without a suite and a package the environment does not deploy" {
+  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/flux/kustomization.yaml \
+    packages/tested/tests/cluster/chainsaw-test.yaml packages/untested/kustomization.yaml \
+    packages/undeployed/tests/cluster/chainsaw-test.yaml)
+  printf 'resources:\n  - ../../../packages/untested\n  - ../../../packages/tested\n' \
+    >"$MISE_PROJECT_ROOT/clusters/singularity/flux/kustomization.yaml"
   run cluster_suites x
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 2 ]
-  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/components/tested/tests/cluster" ]
+  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/packages/tested/tests/cluster" ]
 }
 
-@test "keeps only the chosen modules' suites, and always the environment's own" {
+@test "keeps only the chosen packages' suites, and always the cluster's own" {
   run cluster_suites local flux
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 2 ]
-  [ "${lines[0]}" = "$root_directory/environment/local/tests/cluster" ]
-  [ "${lines[1]}" = "$root_directory/components/gitops-flux/tests/cluster" ]
+  [ "${lines[0]}" = "$root_directory/clusters/singularity/tests/cluster" ]
+  [ "${lines[1]}" = "$root_directory/packages/flux/tests/cluster" ]
 }
 
-@test "refuses a module the environment does not deploy, naming the ones it does" {
-  run cluster_suites local cilium,cni-cilium
+@test "refuses a package the environment does not deploy, naming the ones it does" {
+  run cluster_suites local cilium,kyverno
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown module 'cni-cilium' for environment 'local'; choose from: cilium flux"* ]]
+  [[ "$output" == *"unknown package 'kyverno' for environment 'local'; choose from: cilium flux"* ]]
 }
 
-@test "lists the conformance tests the chosen modules need" {
+@test "lists the conformance tests the chosen packages need" {
   run conformance_patterns local cilium
   [ "$status" -eq 0 ]
   [ "$output" = ".*" ]
@@ -310,22 +327,22 @@ setup() {
   [ -z "$output" ]
 }
 
-@test "reads conformance tests without comments or blank lines, from every module when none is chosen" {
-  MISE_PROJECT_ROOT=$(make_repository environment/x/flux/kustomization.yaml \
-    components/net-a/tests/conformance components/net-b/tests/conformance)
-  printf 'resources:\n  - ../../../components/net-a\n  - ../../../components/net-b\n' \
-    >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
-  printf '# policy tests\n\nclient-egress\n  # indented comment\n' >"$MISE_PROJECT_ROOT/components/net-a/tests/conformance"
-  printf 'to-fqdns\n' >"$MISE_PROJECT_ROOT/components/net-b/tests/conformance"
+@test "reads conformance tests without comments or blank lines, from every package when none is chosen" {
+  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/flux/kustomization.yaml \
+    packages/net-a/tests/conformance packages/net-b/tests/conformance)
+  printf 'resources:\n  - ../../../packages/net-a\n  - ../../../packages/net-b\n' \
+    >"$MISE_PROJECT_ROOT/clusters/singularity/flux/kustomization.yaml"
+  printf '# policy tests\n\nclient-egress\n  # indented comment\n' >"$MISE_PROJECT_ROOT/packages/net-a/tests/conformance"
+  printf 'to-fqdns\n' >"$MISE_PROJECT_ROOT/packages/net-b/tests/conformance"
   run conformance_patterns x
   [ "$status" -eq 0 ]
   [ "$output" = $'client-egress\nto-fqdns' ]
 }
 
-@test "refuses conformance tests for a module the environment does not deploy" {
+@test "refuses conformance tests for a package the environment does not deploy" {
   run conformance_patterns local nope
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown module 'nope'"* ]]
+  [[ "$output" == *"unknown package 'nope'"* ]]
 }
 
 @test "names an env:e2e step after the task it runs, or its first word" {
@@ -352,101 +369,95 @@ setup() {
   [[ "${lines[0]}" == *"379 s  (new)" ]]
 }
 
-# A repository on main, pushed to origin, whose environment x deploys
-# cni-cilium and gitops-flux but not policy-kyverno, then a branch off it.
+# A repository on main, pushed to origin, whose environment x runs a cluster that deploys
+# cilium and flux but not policy-kyverno, then a branch off it.
 branch_repository() {
-  MISE_PROJECT_ROOT=$(make_pushed_repository main environment/x/flux/kustomization.yaml environment/x/main.tf \
-    components/cni-cilium/values.yaml components/gitops-flux/fluxinstance.yaml components/policy-kyverno/policy.yaml README.md)
-  printf 'resources:\n  - ../../../components/cni-cilium\n  - ../../../components/gitops-flux\n' \
-    >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
-  commit_and_push "$MISE_PROJECT_ROOT" main components
+  MISE_PROJECT_ROOT=$(make_pushed_repository main environments/x/environment.yaml clusters/singularity/flux/kustomization.yaml roots/r/main.tf \
+    packages/cilium/values.yaml packages/flux/fluxinstance.yaml packages/policy-kyverno/policy.yaml README.md)
+  printf 'resources:\n  - ../../../packages/cilium\n  - ../../../packages/flux\n' \
+    >"$MISE_PROJECT_ROOT/clusters/singularity/flux/kustomization.yaml"
+  commit_and_push "$MISE_PROJECT_ROOT" main packages
   git -C "$MISE_PROJECT_ROOT" switch -q -c feature
 }
 
-@test "changed modules: a component change selects its module" {
+@test "changed packages: a package change selects its package" {
   branch_repository
-  printf 'x\n' >>"$MISE_PROJECT_ROOT/components/cni-cilium/values.yaml"
-  run changed_modules x
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/packages/cilium/values.yaml"
+  run changed_packages x
   [ "$status" -eq 0 ]
   [ "$output" = cilium ]
 }
 
-@test "changed modules: committed and untracked changes to two components select both, once each" {
+@test "changed packages: committed and untracked changes to two packages select both, once each" {
   branch_repository
-  printf 'x\n' >>"$MISE_PROJECT_ROOT/components/gitops-flux/fluxinstance.yaml"
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/packages/flux/fluxinstance.yaml"
   git -C "$MISE_PROJECT_ROOT" -c user.name=t -c user.email=t@example.test commit -qam flux
-  mkdir -p "$MISE_PROJECT_ROOT/components/cni-cilium/tests"
-  : >"$MISE_PROJECT_ROOT/components/cni-cilium/tests/conformance"
-  printf 'y\n' >>"$MISE_PROJECT_ROOT/components/gitops-flux/fluxinstance.yaml"
-  run changed_modules x
+  mkdir -p "$MISE_PROJECT_ROOT/packages/cilium/tests"
+  : >"$MISE_PROJECT_ROOT/packages/cilium/tests/conformance"
+  printf 'y\n' >>"$MISE_PROJECT_ROOT/packages/flux/fluxinstance.yaml"
+  run changed_packages x
   [ "$status" -eq 0 ]
   [ "$output" = flux,cilium ]
 }
 
-@test "changed modules: Markdown and components the environment does not deploy select none" {
+@test "changed packages: Markdown and packages the environment does not deploy select none" {
   branch_repository
   printf 'x\n' >>"$MISE_PROJECT_ROOT/README.md"
-  printf 'x\n' >>"$MISE_PROJECT_ROOT/components/policy-kyverno/policy.yaml"
-  run changed_modules x
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/packages/policy-kyverno/policy.yaml"
+  run changed_packages x
   [ "$status" -eq 0 ]
   [ "$output" = none ]
 }
 
-@test "changed modules: a change outside components selects every module" {
+@test "changed packages: a change outside packages selects every package" {
   branch_repository
-  printf 'x\n' >>"$MISE_PROJECT_ROOT/components/cni-cilium/values.yaml"
-  printf 'x\n' >>"$MISE_PROJECT_ROOT/environment/x/main.tf"
-  run changed_modules x
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/packages/cilium/values.yaml"
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/roots/r/main.tf"
+  run changed_packages x
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
-@test "changed modules: fails without origin/main" {
-  MISE_PROJECT_ROOT=$(make_repository environment/x/main.tf)
+@test "changed packages: fails without origin/main" {
+  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml)
   git -C "$MISE_PROJECT_ROOT" init -q
-  run changed_modules x
+  run changed_packages x
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot find where this branch left origin/main; fetch origin first"* ]]
 }
 
-@test "module selection refuses --only together with --changed" {
-  run module_selection local cilium true
+@test "package selection refuses --only together with --changed" {
+  run package_selection local cilium true
   [ "$status" -ne 0 ]
   [[ "$output" == *"--only and --changed cannot be combined"* ]]
 }
 
-@test "module selection passes --only on, and selects every module without flags" {
-  [ "$(module_selection local flux false)" = flux ]
-  [ -z "$(module_selection local "" false)" ]
+@test "package selection passes --only on, and selects every package without flags" {
+  [ "$(package_selection local flux false)" = flux ]
+  [ -z "$(package_selection local "" false)" ]
 }
 
-@test "none selects no module and passes the module check" {
-  run check_modules local none
+@test "none selects no package and passes the package check" {
+  run check_packages local none
   [ "$status" -eq 0 ]
-  ! module_selected cilium none
+  ! package_selected cilium none
   run cluster_suites local none
-  [ "$output" = "$root_directory/environment/local/tests/cluster" ]
+  [ "$output" = "$root_directory/clusters/singularity/tests/cluster" ]
 }
 
-@test "names a component's module after its folder without the role prefix" {
-  [ "$(module_name /x/components/cni-cilium)" = cilium ]
-  [ "$(module_name components/gitops-flux)" = flux ]
-  [ "$(module_name components/policy-kyverno-audit)" = kyverno-audit ]
-}
-
-@test "counts only directories the Flux build lists as components" {
-  MISE_PROJECT_ROOT=$(make_repository environment/x/flux/kustomization.yaml environment/x/flux/namespace.yaml \
-    components/cni-cilium/kustomization.yaml)
-  printf 'resources:\n  - namespace.yaml\n  - ../../../components/cni-cilium\n' \
-    >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
-  run deployed_components x
+@test "counts only directories the Flux build lists as packages" {
+  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/flux/kustomization.yaml clusters/singularity/flux/namespace.yaml \
+    packages/cilium/kustomization.yaml)
+  printf 'resources:\n  - namespace.yaml\n  - ../../../packages/cilium\n' \
+    >"$MISE_PROJECT_ROOT/clusters/singularity/flux/kustomization.yaml"
+  run deployed_packages x
   [ "$status" -eq 0 ]
-  [ "$output" = "$MISE_PROJECT_ROOT/components/cni-cilium" ]
+  [ "$output" = "$MISE_PROJECT_ROOT/packages/cilium" ]
 }
 
-@test "fails when the environment's Flux build cannot be read" {
-  MISE_PROJECT_ROOT=$(make_repository environment/x/flux/kustomization.yaml)
-  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/environment/x/flux/kustomization.yaml"
+@test "fails when the cluster's Flux build cannot be read" {
+  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/flux/kustomization.yaml)
+  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/clusters/singularity/flux/kustomization.yaml"
   run cluster_suites x
   [ "$status" -ne 0 ]
 }

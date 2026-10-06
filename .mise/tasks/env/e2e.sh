@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Rebuild the environment's cluster from scratch from the pushed branch and run every live check against it; with --from-branch, also checks that traffic survives the switch; destroys the cluster and leaves it destroyed"
 #MISE confirm="Destroy environment {{usage.environment}}, rebuild it for the end-to-end run, and leave it destroyed?"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 #USAGE flag "--from-branch <branch>" help="Also test an upgrade: build the cluster from this branch, already merged into origin/main, then apply the checked-out branch over it"
 set -euo pipefail
 # shellcheck source=../../lib.sh
@@ -114,8 +114,8 @@ if [[ -n "$from_branch" ]]; then
   fi
   # k0s uninstalls a Cilium it installed once Flux takes it over, so the
   # baseline must already hand Cilium to Flux.
-  if ! git -C "$MISE_PROJECT_ROOT" cat-file -e "$baseline:components/cni-cilium/helmrelease.yaml" 2>/dev/null; then
-    fail "origin/$from_branch at $baseline does not hand Cilium to Flux (no components/cni-cilium/helmrelease.yaml); --from-branch needs a baseline where Flux owns Cilium"
+  if ! git -C "$MISE_PROJECT_ROOT" cat-file -e "$baseline:packages/cilium/helmrelease.yaml" 2>/dev/null; then
+    fail "origin/$from_branch at $baseline does not hand Cilium to Flux (no packages/cilium/helmrelease.yaml); --from-branch needs a baseline where Flux owns Cilium"
     exit 1
   fi
   unaffected="$(environment_directory "$environment")/tests/upgrade-unaffected"

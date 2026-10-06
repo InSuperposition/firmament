@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-#MISE description="Destroy a whole environment"
+#MISE description="Destroy an environment: the Kubernetes root, then the machine root"
 #MISE confirm="Destroy environment {{usage.environment}} and everything in it?"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
@@ -13,9 +13,18 @@ environment="$usage_environment"
 FIRMAMENT_GIT_BRANCH=$(git_branch 2>/dev/null) || FIRMAMENT_GIT_BRANCH=main
 export FIRMAMENT_GIT_BRANCH
 
-init_environment "$environment"
+environment_directory "$environment" >/dev/null
 claim_environment "$environment"
-# The bootstrap root is left alone: its objects live in the cluster and go
-# with the machine, and the next apply's refresh drops them from its state.
-tofu_in_environment "$environment" destroy -input=false -auto-approve
+state=$(state_directory "$environment")
+# The Kubernetes root goes first: it reads the machine-hosts contract, which
+# the machine root deletes. Destroying it resets nothing over SSH (k0s goes
+# with the machine) and deletes the kubeconfig and the cluster-access
+# contract. The bootstrap root is left alone: its objects live in the
+# cluster and go with the machine, and the next apply's refresh drops them
+# from its state. A root with no state file has nothing to destroy.
+for root in kubernetes-k0s machine-orb; do
+  [[ -f "$state/$root.tfstate" ]] || continue
+  init_root "$environment" "$root"
+  tofu_in_root "$environment" "$root" destroy -input=false -auto-approve
+done
 release_environment "$environment"

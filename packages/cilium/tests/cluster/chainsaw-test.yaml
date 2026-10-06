@@ -1,0 +1,24 @@
+# Read-only assertions on a running cluster that Cilium networks. The
+# environment's runtime values, which env:verify passes as $values, say
+# whether Cilium replaces kube-proxy and on which datapath. The namespace is
+# set so chainsaw uses kube-system instead of creating one.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cilium
+  labels:
+    component: cilium
+spec:
+  namespace: kube-system
+  steps:
+    - name: Cilium runs the kube-proxy mode and datapath the environment sets
+      try:
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: cilium-config
+              data:
+                kube-proxy-replacement: ($values.kube_proxy_replacement)
+                datapath-mode: ($values.cilium_datapath_mode)

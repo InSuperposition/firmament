@@ -20,8 +20,8 @@ rendered as the provider's `skip_destroy = !reset_on_destroy`. A destroy
 then runs `k0sctl reset` over SSH to remove k0s from a host that stays.
 Callers that delete the host along with the cluster set `false`: the reset
 is redundant there, and fails when the host is stopped).
-In this repo, [`environment/local`](../../environment/local/README.md)
-supplies all of these by deriving them from `module.vm_orb`'s outputs;
+In this repo, [`roots/kubernetes-k0s`](../../roots/kubernetes-k0s/README.md)
+supplies all of these from the `machine-hosts` contract the machine root writes;
 against a non-OrbStack Ubuntu host, supply its real SSH endpoint and a
 reachable API address instead.
 
@@ -70,7 +70,7 @@ exposed API.
 ## Commands
 
 Run from the repo root — this module has no state or backend of its
-own; see [`environment/local`](../../environment/local/README.md) for
+own; see [`environments/local`](../../environments/local/README.md) for
 the full task list:
 
 | Command | Behavior |

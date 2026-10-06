@@ -2,17 +2,19 @@
 
 Abstract: Declarative bootstrap for a dedicated Kubernetes host — one
 OrbStack VM, verified Ubuntu-ready, running k0s with Cilium and Hubble.
-`environment/local` composes three real OpenTofu modules under `modules/`
-into one applied environment, then a second root with its own state
-bootstraps Flux, which runs Cilium and itself from `components/`.
+Three OpenTofu roots under `roots/` compose the modules under `modules/`,
+one concern each: the machine, k0s on it, then the bootstrap of Flux,
+which runs Cilium and itself from `packages/`. Each root hands the next a
+contract file.
 
 ## Goals
 
 - Reproducible, idempotent bootstrap of one `firmament` target.
-- Real OpenTofu modules, composed from one root config — not standalone
-  scripts wired together by task ordering.
+- Real OpenTofu modules, composed by roots that each declare one concern
+  and hand the next root a contract file — not standalone scripts wired
+  together by task ordering.
 - Each module stays generic (host-agnostic where the underlying tool
-  allows it); OrbStack-specific wiring lives in `environment/local`, not
+  allows it); OrbStack-specific wiring lives in `roots/machine-orb`, not
   inside the modules themselves.
 
 ## Constraints
@@ -34,13 +36,13 @@ MISE_LOCKED_SCOPES=project mise install --locked
 ```
 
 `mise install` then runs `mise run repo:setup`, which installs the Git
-hooks and trusts each `environment/<env>/mise.toml`. Run it again after
+hooks and trusts each `environments/<env>/mise.toml`. Run it again after
 adding an environment.
 
 Make the pinned tools and project environment (including `KUBECONFIG`)
 available in your shell. `KUBECONFIG` points at the `local` cluster at the
 repository root, and at each environment's own cluster inside
-`environment/<env>/`. Either activate mise persistently in your shell
+`environments/<env>/`. Either activate mise persistently in your shell
 profile — see mise's
 [shell activation docs](https://mise.jdx.dev/getting-started.html#activate-mise) —
 or, for a one-off shell session:
@@ -52,18 +54,22 @@ eval "$(mise env)"
 ## Structure
 
 ```text
-environment/local/    root config: composes the three modules below,
-                      owns the environment's state and the kubeconfig
-                      file and the runtime values
-environment/local/bootstrap/
-                      root config applied after it, with its own state:
-                      bootstraps Cilium and Flux into the cluster
+roots/machine-orb/    the OrbStack machine and its readiness check;
+                      writes the machine-hosts contract
+roots/kubernetes-k0s/ k0s on that machine; writes the kubeconfig and the
+                      cluster-access contract with the runtime values
+roots/bootstrap-flux/ bootstraps Cilium and Flux into the cluster
+contracts/layout/     the layout contract: folders, what each may
+                      reference, the review checks (C79)
+clusters/singularity/ the cluster definition: its Flux build (which
+                      packages Flux applies) and its cluster suite
+environments/local/   the local environment's data: environment.yaml names
+                      its cluster; its upgrade checks and mise.toml
 modules/vm-orb/       the OrbStack VM
 modules/os-ubuntu/    Ubuntu readiness check (SSH probe + postconditions)
 modules/orch-k0s/     the k0s controller+worker node; installs no charts
-components/           packages Flux reconciles in the cluster (plain
-                      Kustomize): cni-cilium (Cilium and Hubble) and
-                      gitops-flux (Flux itself)
+packages/cilium/      Cilium and Hubble, as Flux reconciles them (plain Kustomize)
+packages/flux/        Flux itself (Flux Operator and the FluxInstance)
 .mise/tasks/          one executable script per mise task, named
                       <noun>/<verb>.sh and run as `mise run <noun>:<verb>`
 .mise/lib.sh          helpers the task scripts share (environment lookup,
@@ -71,17 +77,14 @@ components/           packages Flux reconciles in the cluster (plain
                       rendering, post-apply waits), tested in .mise/tests
 ```
 
-Each module and component has its own README with its contract.
-`mise run env:apply` applies the whole environment in dependency order
-(VM, then the readiness check, then k0s, then the bootstrap root that
-installs Cilium and Flux), and `mise run env:destroy` destroys the
-environment root; the bootstrap's objects go with the machine. Both take an
-environment name, defaulting to `local`. Narrower tasks
-(`orb:apply`, `ubuntu:verify`, `k0s:apply`, and their counterparts) target
-one module via `tofu -target` against the same shared state (`k0s:*` also
-targets the kubeconfig file) —
-see `environment/local/README.md` for the full task list and what
-`-target` does and doesn't isolate.
+Each module and package has its own README with its contract.
+`mise run env:apply` applies the three roots in order (the machine and its
+readiness check, then k0s, then the bootstrap that installs Cilium and
+Flux), and `mise run env:destroy` destroys the Kubernetes root, then the
+machine root; the bootstrap's objects go with the machine. Both take an
+environment name, defaulting to `local`. Narrower tasks act on one root:
+`orb:*` and `ubuntu:verify` on the machine root, `k0s:*` on the Kubernetes
+root. See `environments/local/README.md` for the full task list.
 
 Task names follow `<noun>:<verb>` for a task that acts on one thing
 (`shell:lint`, `k0s:apply`). A bare `<verb>` is an aggregate that runs
@@ -91,9 +94,9 @@ that verb for every noun. The verb also says how far a task reaches:
 | --- | --- | --- |
 | `lint`, `format` | files in the repository | `lint`, `format` run every `*:lint` or `*:format` |
 | `test` | offline; never touches infrastructure | `test` runs every `*:test` |
-| `verify` | reads a live cluster | `verify [environment]` runs every `*:verify`, one at a time, `env:verify` first; `--only <modules>` keeps the environment's own checks and the chosen modules', and `--changed` chooses the modules the branch changed |
+| `verify` | reads a live cluster | `verify [environment]` runs every `*:verify`, one at a time, `env:verify` first; `--only <packages>` keeps the environment's own checks and the chosen packages', and `--changed` chooses the packages the branch changed |
 | `ui`, `observe` | read a live cluster through a foreground port-forward that Ctrl-C stops; `ui` opens the browser and takes `--port` | none |
-| `conformance` | deploys test workloads into a live cluster | `conformance [environment]` runs every `*:conformance`, one at a time; `--only <modules>` or `--changed` runs the tests each module lists in `tests/conformance` |
+| `conformance` | deploys test workloads into a live cluster | `conformance [environment]` runs every `*:conformance`, one at a time; `--only <packages>` or `--changed` runs the tests each package lists in `tests/conformance` |
 | `e2e` | destroys and rebuilds a live cluster; asks first (`--yes` skips) | none |
 | `plan`, `apply`, `destroy` | drive OpenTofu; `destroy` asks first (`-y` skips) | none |
 
@@ -110,16 +113,16 @@ values, variable validation, preconditions) are `tests/*.tftest.hcl`,
 run by `tofu:test`. Suites that run shell or check OpenTofu's own error
 output stay on bats (`tests/*.bats`). Read-only checks of a live cluster
 are chainsaw suites in `tests/cluster/`: each environment has one for the
-cluster itself, and each component has one for its own workloads.
+cluster itself, and each package has one for its own workloads.
 `env:verify` runs the environment's suite, then the suite of every
-component the environment's Flux build lists. A component's module name is
-its folder name without the role prefix (`components/cni-cilium` is
-`cilium`), which is also the noun of its tasks (`cilium:verify`).
-`verify --only cilium,flux` checks only those modules, plus the
-environment itself. `verify --changed` chooses the modules from what the
+package the environment's Flux build lists. A package's name is its
+folder name (`packages/cilium` is `cilium`), which is also the noun of
+its tasks (`cilium:verify`).
+`verify --only cilium,flux` checks only those packages, plus the
+environment itself. `verify --changed` chooses the packages from what the
 branch changed since it left `origin/main`: a change under
-`components/<name>/` selects that module, Markdown selects nothing, and any
-other change selects every module. `mise run format` fixes what the
+`packages/<name>/` selects that package, Markdown selects nothing, and any
+other change selects every package. `mise run format` fixes what the
 formatters can. hk defines the lint and format rules; the `*:lint` and
 `*:format` tasks each run one group of its steps.
 

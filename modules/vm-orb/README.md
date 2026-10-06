@@ -34,8 +34,9 @@ like k0sctl that need root and can't use the `@orb` alias).
 ## Commands
 
 Run from the repo root — this module has no state or backend of its own;
-see [`environment/local`](../../environment/local/README.md) for the
-full task list and how `-target` scopes these to just this module:
+see [`environments/local`](../../environments/local/README.md) for the
+full task list; these tasks run the machine root, which composes this
+module:
 
 | Command | Behavior |
 | --- | --- |

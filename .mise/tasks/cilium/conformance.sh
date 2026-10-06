@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #MISE description="Run the Cilium connectivity suite against the cluster, with Hubble flow logs for failed actions, checking only logs written during the tests, then remove its test workloads (slow; deploys test workloads)"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 #USAGE flag "--hubble-port <port>" help="Local port the Hubble Relay port-forward listens on (default 4245)"
 #USAGE flag "--test-concurrency <count>" help="Namespaces the suite splits its tests across, run in parallel (default 3)"
-#USAGE flag "--only <modules>" help="Comma-separated modules, such as cilium; runs only the tests their tests/conformance files list (default: the whole suite)"
-#USAGE flag "--changed" help="Choose the modules this branch changed since it left origin/main, instead of --only"
+#USAGE flag "--only <packages>" help="Comma-separated packages, such as cilium; runs only the tests their tests/conformance files list (default: the whole suite)"
+#USAGE flag "--changed" help="Choose the packages this branch changed since it left origin/main, instead of --only"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
@@ -15,9 +15,9 @@ concurrency="${usage_test_concurrency:-3}"
 if [[ ! "$concurrency" =~ ^[1-9][0-9]*$ ]]; then
   fail "--test-concurrency must be a whole number of 1 or more, not '$concurrency'"
 fi
-only=$(module_selection "$environment" "${usage_only:-}" "${usage_changed:-false}")
+only=$(package_selection "$environment" "${usage_only:-}" "${usage_changed:-false}")
 
-# With --only, each chosen module's tests/conformance file lists the tests it
+# With --only, each chosen package's tests/conformance file lists the tests it
 # needs. When none of them lists any, there is nothing to run.
 tests=()
 if [[ -n "$only" ]]; then
@@ -31,7 +31,6 @@ if [[ -n "$only" ]]; then
   done <<<"$patterns"
 fi
 
-init_environment "$environment"
 claim_environment "$environment"
 kubeconfig=$(environment_kubeconfig "$environment")
 # The suite reaches Hubble Relay only on a local address and opens no

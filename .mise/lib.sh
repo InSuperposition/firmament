@@ -20,11 +20,11 @@ fail() {
   return 1
 }
 
-# Prints the OpenTofu root directory of an environment, or fails when the
-# environment does not exist.
+# Prints the data directory of an environment, environments/<name>, or fails
+# when the environment does not exist.
 environment_directory() {
   local environment="$1"
-  local directory="${MISE_PROJECT_ROOT:?run this through mise}/environment/$environment"
+  local directory="${MISE_PROJECT_ROOT:?run this through mise}/environments/$environment"
   if [[ ! -d "$directory" ]]; then
     fail "unknown environment '$environment': $directory does not exist"
     return
@@ -74,36 +74,25 @@ flux_revision() {
   printf 'refs/heads/%s@sha1:%s\n' "$1" "$sha"
 }
 
-# Runs tofu in an OpenTofu directory of an environment, telling it where the
-# environment's state directory is and which branch Flux follows. Every other
-# input belongs to the directory's own configuration.
-tofu_in_directory() {
-  local environment="$1" directory="$2"
+# Prints the directory of an OpenTofu root: machine-orb, kubernetes-k0s or
+# bootstrap-flux.
+tofu_root_directory() {
+  printf '%s/roots/%s\n' "${MISE_PROJECT_ROOT:?run this through mise}" "$1"
+}
+
+# Runs tofu in one root for an environment, telling it the environment's
+# name, its state directory and the branch Flux follows. Every other input
+# belongs to the root's own configuration or to the contract files an
+# earlier root wrote into the state directory.
+tofu_in_root() {
+  local environment="$1" root="$2"
   shift 2
   local state branch
+  environment_directory "$environment" >/dev/null || return
   state=$(state_directory "$environment") || return
   branch=$(git_branch) || return
-  TF_VAR_state_directory="$state" TF_VAR_git_branch="$branch" tofu -chdir="$directory" "$@"
-}
-
-# Runs tofu in an environment's root, which owns the machine, its OS and
-# k0s, and writes the kubeconfig and the runtime values.
-tofu_in_environment() {
-  local environment="$1" directory
-  shift
-  directory=$(environment_directory "$environment") || return
-  tofu_in_directory "$environment" "$directory" "$@"
-}
-
-# Runs tofu in an environment's bootstrap root, which installs Cilium and
-# Flux into the cluster the environment root created. Its state lives next
-# to the environment's and outlives a destroy: the objects it records die
-# with the machine, and the next apply's refresh drops them.
-tofu_in_bootstrap() {
-  local environment="$1" directory
-  shift
-  directory=$(environment_directory "$environment") || return
-  tofu_in_directory "$environment" "$directory/bootstrap" "$@"
+  TF_VAR_environment="$environment" TF_VAR_state_directory="$state" TF_VAR_git_branch="$branch" \
+    tofu -chdir="$(tofu_root_directory "$root")" "$@"
 }
 
 # Fails on an empty state file: tofu never writes one, but an interrupted
@@ -117,45 +106,18 @@ refuse_empty_state() {
   fi
 }
 
-# Moves the Flux bootstrap out of an environment's state into the bootstrap
-# root's state, for environments applied while the environment root still
-# held it. It runs before the environment root is initialized: that root no
-# longer requires the helm and kubernetes providers, so it cannot read a
-# state that still holds their resources. Does nothing without a state file
-# or without a bootstrap in it. The pre-move state is kept next to it.
-move_bootstrap_state() {
-  local state="$1" resources
-  [[ -s "$state/terraform.tfstate" ]] || return 0
-  resources=$(tofu state list -state="$state/terraform.tfstate") || return
-  grep -q '^module\.bootstrap_flux\.' <<<"$resources" || return 0
-  tofu state mv -state="$state/terraform.tfstate" -state-out="$state/bootstrap.tfstate" \
-    -backup="$state/terraform.tfstate.before-bootstrap-root" -backup-out=- \
-    module.bootstrap_flux module.bootstrap_flux >/dev/null
-}
-
-# Points an environment's OpenTofu backend at its state file. Providers
-# install only as the committed lock file records them.
-init_environment() {
-  local environment="$1"
+# Points one root's OpenTofu backend at its own state file in the
+# environment's state directory, <root>.tfstate. Providers install only as
+# the committed lock file records them.
+init_root() {
+  local environment="$1" root="$2"
   local state
   environment_directory "$environment" >/dev/null || return
   state=$(state_directory "$environment") || return
-  refuse_empty_state "$state/terraform.tfstate" || return
+  refuse_empty_state "$state/$root.tfstate" || return
   mkdir -p "$state"
-  move_bootstrap_state "$state" || return
-  tofu_in_environment "$environment" init -input=false -reconfigure -lockfile=readonly \
-    -backend-config="path=$state/terraform.tfstate" >/dev/null
-}
-
-# Points an environment's bootstrap root at its own state file, next to the
-# environment's.
-init_bootstrap() {
-  local environment="$1"
-  local state
-  state=$(state_directory "$environment") || return
-  refuse_empty_state "$state/bootstrap.tfstate" || return
-  tofu_in_bootstrap "$environment" init -input=false -reconfigure -lockfile=readonly \
-    -backend-config="path=$state/bootstrap.tfstate" >/dev/null
+  tofu_in_root "$environment" "$root" init -input=false -reconfigure -lockfile=readonly \
+    -backend-config="path=$state/$root.tfstate" >/dev/null
 }
 
 # Prints the checkout this run belongs to. Every worktree of the repository
@@ -196,51 +158,67 @@ init_offline() {
   tofu -chdir="$1" init -backend=false -input=false -reconfigure -lockfile=readonly >/dev/null
 }
 
-# Prints each module or environment directory that holds an OpenTofu test
+# Prints each module or root directory that holds an OpenTofu test
 # suite (tests/*.tftest.hcl), once, in sorted order.
 tofu_test_directories() {
   local suite
-  for suite in "${MISE_PROJECT_ROOT:?run this through mise}"/{modules,environment}/*/tests/*.tftest.hcl; do
+  for suite in "${MISE_PROJECT_ROOT:?run this through mise}"/{modules,roots}/*/tests/*.tftest.hcl; do
     if [[ -e "$suite" ]]; then
       dirname -- "$(dirname -- "$suite")"
     fi
   done | sort -u
 }
 
-# Prints one output from an environment's state, or nothing when the state
-# has no value for it, as after a destroy. Fails only when the state cannot
-# be read. It reads the JSON form: with no outputs, `tofu output -raw` prints
-# a warning to stdout and still exits 0, while the JSON form prints an empty
-# object.
-environment_output_or_empty() {
-  local outputs
-  outputs=$(tofu_in_environment "$1" output -json) || return
-  jq -r --arg name "$2" '.[$name].value // empty' <<<"$outputs"
+# Prints one field of a contract file an earlier root wrote into an
+# environment's state directory (machine-hosts.yaml, cluster-access.yaml),
+# or nothing when the file does not exist: a root deletes its contract when
+# it is destroyed, so a missing file means nothing is recorded. The field is
+# a yq path; objects print as JSON.
+contract_field_or_empty() {
+  local environment="$1" contract="$2" field="$3" file
+  environment_directory "$environment" >/dev/null || return
+  file="$(state_directory "$environment")/$contract" || return
+  [[ -f "$file" ]] || return 0
+  yq -o=json -I=0 "$field // \"\"" "$file" | jq -r 'if type == "string" then . else tojson end'
 }
 
-# Prints one output from an environment's state. Fails when the state has no
-# value for it, as after a destroy, or cannot be read.
-environment_output() {
+# Prints one field of a contract file, or fails when the environment has
+# not been applied that far.
+contract_field() {
   local value
-  value=$(environment_output_or_empty "$1" "$2") || return
+  value=$(contract_field_or_empty "$1" "$2" "$3") || return
   if [[ -z "$value" ]]; then
-    fail "environment '$1' has no $2 in its state; apply it first"
+    fail "environment '$1' has no $3 in $2; apply it first"
     return
   fi
-  printf '%s' "$value"
+  printf '%s\n' "$value"
 }
 
-# Prints the kubeconfig path recorded in an environment's state.
+# Prints the kubeconfig path the Kubernetes root recorded.
 environment_kubeconfig() {
-  environment_output "$1" kubeconfig_path
+  contract_field "$1" cluster-access.yaml .kubeconfig_path
 }
 
-# Prints the directory of each component an environment's Flux build lists,
+# Prints the directory of the cluster definition an environment runs:
+# clusters/<name>, named by the cluster field of its environment.yaml.
+# Fails when the field is missing or names no cluster directory.
+cluster_directory() {
+  local environment="$1" directory cluster
+  directory=$(environment_directory "$environment") || return
+  cluster=$(yq -r '.cluster // ""' "$directory/environment.yaml") || return
+  if [[ -z "$cluster" || ! -d "$MISE_PROJECT_ROOT/clusters/$cluster" ]]; then
+    fail "environment '$environment' names cluster '$cluster' in $directory/environment.yaml, but clusters/$cluster does not exist"
+    return
+  fi
+  printf '%s\n' "$MISE_PROJECT_ROOT/clusters/$cluster"
+}
+
+# Prints the directory of each package an environment's Flux build lists,
 # one per line, or nothing for an environment without a Flux build. Only
-# directories are components; a resource file the build lists is not.
-deployed_components() {
+# directories are packages; a resource file the build lists is not.
+deployed_packages() {
   local directory resources resource
-  directory=$(environment_directory "$1") || return
+  directory=$(cluster_directory "$1") || return
   [[ -f "$directory/flux/kustomization.yaml" ]] || return 0
   resources=$(yq -r '.resources[]' "$directory/flux/kustomization.yaml") || return
   while IFS= read -r resource; do
@@ -250,50 +228,42 @@ deployed_components() {
   done <<<"$resources"
 }
 
-# Prints the module name of a component directory: its name without the
-# role prefix, so components/cni-cilium is the module cilium. The module
-# name is also the noun of the component's tasks (cilium:verify).
-module_name() {
-  local component="${1##*/}"
-  printf '%s\n' "${component#*-}"
-}
-
-# Fails unless every name in a comma-separated module list is a module the
-# environment deploys, naming the modules it does deploy. An empty list
-# selects every module, and "none" selects no module.
-check_modules() {
-  local environment="$1" only="$2" components deployed="" component name
+# Fails unless every name in a comma-separated package list is a package the
+# environment deploys, naming the packages it does deploy. An empty list
+# selects every package, and "none" selects no package.
+check_packages() {
+  local environment="$1" only="$2" packages deployed="" package name
   local -a names
-  components=$(deployed_components "$environment") || return
-  while IFS= read -r component; do
-    [[ -n "$component" ]] && deployed+="$(module_name "$component") "
-  done <<<"$components"
+  packages=$(deployed_packages "$environment") || return
+  while IFS= read -r package; do
+    [[ -n "$package" ]] && deployed+="${package##*/} "
+  done <<<"$packages"
   [[ "$only" == none ]] && return 0
   IFS=, read -ra names <<<"$only"
   for name in "${names[@]}"; do
     if [[ " $deployed" != *" $name "* ]]; then
-      fail "unknown module '$name' for environment '$environment'; choose from: ${deployed% }"
+      fail "unknown package '$name' for environment '$environment'; choose from: ${deployed% }"
       return
     fi
   done
 }
 
-# Succeeds when a module is selected by a comma-separated list; an empty
-# list selects every module, and "none" selects no module.
-module_selected() {
+# Succeeds when a package is selected by a comma-separated list; an empty
+# list selects every package, and "none" selects no package.
+package_selected() {
   local name="$1" only="$2"
   [[ -z "$only" || ",$only," == *",$name,"* ]]
 }
 
-# Prints the modules a branch changed, as a module list for --only: a path
-# under components/<name>/ selects that module when the environment deploys
-# it, and a component it does not deploy changes nothing here. A change to
-# any other file, except Markdown, can affect every module, so it prints an
-# empty list (every module). With no such change it prints "none". Changes
+# Prints the packages a branch changed, as a package list for --only: a path
+# under packages/<name>/ selects that package when the environment deploys
+# it, and a package it does not deploy changes nothing here. A change to
+# any other file, except Markdown, can affect every package, so it prints an
+# empty list (every package). With no such change it prints "none". Changes
 # are counted from where the branch left origin/main, uncommitted and
 # untracked files included, since the suites run from the checkout.
-changed_modules() {
-  local environment="$1" root="${MISE_PROJECT_ROOT:?}" base paths components component path
+changed_packages() {
+  local environment="$1" root="${MISE_PROJECT_ROOT:?}" base paths packages package path
   local deployed="" selected=""
   base=$(git -C "$root" merge-base origin/main HEAD) ||
     fail "cannot find where this branch left origin/main; fetch origin first" || return
@@ -301,18 +271,18 @@ changed_modules() {
     git -C "$root" diff --name-only "$base" &&
       git -C "$root" ls-files --others --exclude-standard
   ) || return
-  components=$(deployed_components "$environment") || return
-  while IFS= read -r component; do
-    [[ -n "$component" ]] && deployed+=" ${component##*/}"
-  done <<<"$components"
+  packages=$(deployed_packages "$environment") || return
+  while IFS= read -r package; do
+    [[ -n "$package" ]] && deployed+=" ${package##*/}"
+  done <<<"$packages"
   while IFS= read -r path; do
     case "$path" in
     "" | *.md) ;;
-    components/*/*)
-      component="${path#components/}"
-      component="${component%%/*}"
-      if [[ " $deployed " == *" $component "* && ",$selected," != *",$(module_name "$component"),"* ]]; then
-        selected+="${selected:+,}$(module_name "$component")"
+    packages/*/*)
+      package="${path#packages/}"
+      package="${package%%/*}"
+      if [[ " $deployed " == *" $package "* && ",$selected," != *",${package##*/},"* ]]; then
+        selected+="${selected:+,}${package##*/}"
       fi
       ;;
     *)
@@ -323,55 +293,55 @@ changed_modules() {
   printf '%s\n' "${selected:-none}"
 }
 
-# Prints the module list a task runs from its --only and --changed flags:
-# the --only list as given, the modules --changed finds, or an empty list
-# (every module) when neither is set. The two flags cannot be combined.
-module_selection() {
+# Prints the package list a task runs from its --only and --changed flags:
+# the --only list as given, the packages --changed finds, or an empty list
+# (every package) when neither is set. The two flags cannot be combined.
+package_selection() {
   local environment="$1" only="$2" changed="$3"
   if [[ -n "$only" && "$changed" == true ]]; then
     fail "--only and --changed cannot be combined"
     return
   fi
   if [[ "$changed" == true ]]; then
-    changed_modules "$environment"
+    changed_packages "$environment"
     return
   fi
-  check_modules "$environment" "$only" || return
+  check_packages "$environment" "$only" || return
   printf '%s\n' "$only"
 }
 
 # Prints the chainsaw suite directories an environment's cluster must pass,
-# one per line: the environment's own tests/cluster first, then tests/cluster
-# of each component its Flux build lists, for components that have one. A
-# comma-separated module list keeps only those components' suites; the
+# one per line: the cluster definition's own tests/cluster first, then tests/cluster
+# of each package its Flux build lists, for packages that have one. A
+# comma-separated package list keeps only those packages' suites; the
 # environment's own suite always runs.
 cluster_suites() {
-  local environment="$1" only="${2:-}" directory components component
-  directory=$(environment_directory "$environment") || return
-  check_modules "$environment" "$only" || return
-  components=$(deployed_components "$environment") || return
+  local environment="$1" only="${2:-}" directory packages package
+  directory=$(cluster_directory "$environment") || return
+  check_packages "$environment" "$only" || return
+  packages=$(deployed_packages "$environment") || return
   printf '%s\n' "$directory/tests/cluster"
-  while IFS= read -r component; do
-    if [[ -n "$component" && -d "$component/tests/cluster" ]] &&
-      module_selected "$(module_name "$component")" "$only"; then
-      printf '%s\n' "$component/tests/cluster"
+  while IFS= read -r package; do
+    if [[ -n "$package" && -d "$package/tests/cluster" ]] &&
+      package_selected "${package##*/}" "$only"; then
+      printf '%s\n' "$package/tests/cluster"
     fi
-  done <<<"$components"
+  done <<<"$packages"
 }
 
-# Prints the Cilium connectivity test patterns that the chosen modules list
+# Prints the Cilium connectivity test patterns that the chosen packages list
 # in tests/conformance, one --test regular expression per line, without
-# blank lines and # comments. An empty module list chooses every module.
+# blank lines and # comments. An empty package list chooses every package.
 conformance_patterns() {
-  local environment="$1" only="${2:-}" components component
-  check_modules "$environment" "$only" || return
-  components=$(deployed_components "$environment") || return
-  while IFS= read -r component; do
-    if [[ -n "$component" && -f "$component/tests/conformance" ]] &&
-      module_selected "$(module_name "$component")" "$only"; then
-      grep -Ev '^[[:space:]]*(#|$)' "$component/tests/conformance" || true
+  local environment="$1" only="${2:-}" packages package
+  check_packages "$environment" "$only" || return
+  packages=$(deployed_packages "$environment") || return
+  while IFS= read -r package; do
+    if [[ -n "$package" && -f "$package/tests/conformance" ]] &&
+      package_selected "${package##*/}" "$only"; then
+      grep -Ev '^[[:space:]]*(#|$)' "$package/tests/conformance" || true
     fi
-  done <<<"$components"
+  done <<<"$packages"
 }
 
 # Prints a short name for an env:e2e step from its command: the task a
@@ -426,7 +396,7 @@ chainsaw_in_environment() {
 # them.
 platform_versions() {
   local machine
-  machine=$(environment_output "$1" machine_name) || return
+  machine=$(contract_field "$1" machine-hosts.yaml .name) || return
   printf 'OrbStack: %s\n' "$(orb version | head -n 1)"
   printf 'kernel: %s\n' "$(orb -m "$machine" uname -r)"
 }
@@ -473,19 +443,15 @@ render_flux_build() {
 # Fails when the environment's cluster has Helm charts that k0s installs.
 # k0s uninstalls a chart once it leaves its configuration, and this
 # configuration installs none, so applying over such a cluster would remove
-# its Cilium. Passes when the state records no cluster; fails when the
-# state cannot be read or a recorded cluster cannot answer, since either
-# says nothing about its charts. Whether a cluster is recorded comes from
-# the state's resources, not its outputs: a targeted destroy such as
-# orb:destroy removes the cluster but leaves the outputs as they were.
+# its Cilium. Passes when no cluster is recorded: each root deletes its
+# contract file when it is destroyed, so the cluster exists only while both
+# the machine-hosts and the cluster-access contracts do. Fails when a
+# recorded cluster cannot answer, since that says nothing about its charts.
 refuse_k0s_charts() {
-  local kubeconfig resources charts errors error_text
-  kubeconfig=$(environment_output_or_empty "$1" kubeconfig_path) || return
-  if [[ -z "$kubeconfig" ]]; then
-    return 0
-  fi
-  resources=$(tofu_in_environment "$1" state list) || return
-  if ! grep -qx 'module\.orch_k0s\.k0sctl_config\.this' <<<"$resources"; then
+  local kubeconfig machine charts errors error_text
+  kubeconfig=$(contract_field_or_empty "$1" cluster-access.yaml .kubeconfig_path) || return
+  machine=$(contract_field_or_empty "$1" machine-hosts.yaml .name) || return
+  if [[ -z "$kubeconfig" || -z "$machine" ]]; then
     return 0
   fi
   errors=$(mktemp)

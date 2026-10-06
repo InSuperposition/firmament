@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Start traffic that a Cilium agent restart must not break, for cilium:traffic-check to measure: cilium-cli conn-disrupt connections held open, and fortio opening 100 new connections a second through a ClusterIP Service (deploys test workloads)"
-#USAGE arg "[environment]" default="local" help="Directory name under environment/"
+#USAGE arg "[environment]" default="local" help="Directory name under environments/"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
@@ -15,7 +15,6 @@ if [[ ! "$run_start_timeout" =~ ^(0|[1-9][0-9]{0,5})$ ]]; then
   fail "FIRMAMENT_FORTIO_START_TIMEOUT must be whole seconds, at most 6 digits and without a leading zero, not '$run_start_timeout'"
 fi
 
-init_environment "$environment"
 claim_environment "$environment"
 kubeconfig=$(environment_kubeconfig "$environment")
 traffic=$(traffic_directory "$environment")
