@@ -1967,6 +1967,11 @@ expect_planted_value_refused() {
   grep -q '^\[\[tools.timoni\]\]' "$root_directory/mise.lock"
 }
 
+@test "k0sctl is pinned to one version and locked" {
+  grep -Eq '^k0sctl = "[0-9]+\.[0-9]+\.[0-9]+"$' "$root_directory/mise.toml"
+  grep -q '^\[\[tools.k0sctl\]\]' "$root_directory/mise.lock"
+}
+
 @test "contracts:lint fails when there is no contract to check" {
   MISE_PROJECT_ROOT=$(make_repository)
   run "$root_directory/.mise/tasks/contracts/lint.sh"
