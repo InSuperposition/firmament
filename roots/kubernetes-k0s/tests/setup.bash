@@ -44,12 +44,28 @@ planned_output() {
     jq --arg name "$name" '.output_changes[$name] | (.after_unknown // {}) + (.after // {})'
 }
 
-k0sctl_config() {
-  planned module.orch_k0s.k0sctl_config.this "$@"
+# Prints the planned attributes of the rendered k0sctl configuration file.
+k0sctl_file() {
+  planned local_file.k0sctl "$@"
 }
 
+# Prints the k0s ClusterConfig inside the rendered k0sctl configuration, as YAML.
 cluster_config() {
-  k0sctl_config "$@" | jq -r '.spec.k0s.config'
+  k0sctl_file "$@" | jq -r '.content' | yq -r '.spec.k0s.config' -o yaml
+}
+
+# Applies the root against a fixture environment, keeping its state in
+# $BATS_TEST_TMPDIR/allocations.tfstate, so a later plan against another
+# fixture sees the allocation records this one wrote.
+apply_environment() {
+  TF_VAR_environment="$1" TF_VAR_environments_directory="$k0s_root/tests/fixtures/environments" \
+    tofu -chdir="$k0s_root" apply -input=false -auto-approve -no-color -state="$BATS_TEST_TMPDIR/allocations.tfstate" >/dev/null
+}
+
+# Plans the root against a fixture environment and the state apply_environment kept.
+plan_environment() {
+  TF_VAR_environment="$1" TF_VAR_environments_directory="$k0s_root/tests/fixtures/environments" \
+    tofu -chdir="$k0s_root" plan -input=false -no-color -state="$BATS_TEST_TMPDIR/allocations.tfstate"
 }
 
 # Writes the cluster-access contract the Kubernetes root writes when it is

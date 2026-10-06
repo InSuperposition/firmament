@@ -38,10 +38,52 @@ variable "ssh_key_path" {
   }
 }
 
+variable "known_hosts_path" {
+  type        = string
+  description = "Absolute path to the known_hosts file that holds the host's server keys. k0sctl trusts only that file."
+
+  validation {
+    condition     = can(regex("^/", var.known_hosts_path)) && !can(regex("\n", var.known_hosts_path))
+    error_message = "invalid known_hosts path."
+  }
+}
+
 variable "cluster_name" {
   type        = string
   default     = "firmament"
   description = "k0s cluster name."
+}
+
+variable "k0s_version" {
+  type        = string
+  default     = "1.36.4+k0s.1"
+  description = "k0s release k0sctl installs on the host. The one place the version is set; bump it by changing this default and running the renderer's tests. The host runs no k0s binary of its own."
+
+  validation {
+    condition     = can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+\\+k0s\\.[0-9]+$", var.k0s_version))
+    error_message = "k0s_version must look like 1.36.4+k0s.1."
+  }
+}
+
+variable "pod_cidr" {
+  type        = string
+  description = "Pod network of the cluster, from its mesh allocation. Fixed at cluster creation."
+
+  validation {
+    condition     = can(cidrhost(var.pod_cidr, 0))
+    error_message = "pod_cidr must be a CIDR."
+  }
+}
+
+variable "service_cidr" {
+  type        = string
+  default     = "10.96.0.0/12"
+  description = "Service network of the cluster."
+
+  validation {
+    condition     = can(cidrhost(var.service_cidr, 0))
+    error_message = "service_cidr must be a CIDR."
+  }
 }
 
 variable "api_address" {
@@ -69,16 +111,4 @@ variable "kube_proxy_replacement" {
   type        = bool
   default     = true
   description = "Whether the CNI replaces kube-proxy, so k0s does not run it. Fixed at cluster creation."
-}
-
-variable "drain_before_upgrade" {
-  type        = bool
-  default     = true
-  description = "Whether k0sctl drains each node before upgrading it. On a single node a drain evicts every pod with nowhere to go, so single-node clusters set false."
-}
-
-variable "reset_on_destroy" {
-  type        = bool
-  default     = true
-  description = "Whether destroying the cluster runs k0sctl reset over SSH, removing k0s from a host that stays. Callers that delete the host along with the cluster set false: the reset is redundant there and fails when the host is stopped."
 }

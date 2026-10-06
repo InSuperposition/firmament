@@ -11,8 +11,7 @@ refuse_k0s_charts
 # Each root reads the contract file the one before it wrote, so they apply
 # in order: the machine, then k0s on it, then the bootstrap into the cluster.
 tofu_in_root machine-orb apply -input=false -auto-approve
-init_root kubernetes-k0s
-tofu_in_root kubernetes-k0s apply -input=false -auto-approve
+apply_kubernetes_root
 init_root bootstrap-flux
 tofu_in_root bootstrap-flux apply -input=false -auto-approve
 wait_for_cluster

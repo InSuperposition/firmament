@@ -1,55 +1,43 @@
 # orch-k0s
 
-Abstract: OpenTofu module declaring one `controller+worker` k0s node,
-using the `Mirantis/k0sctl` provider's `k0sctl_config` resource. Generic
-over the target host — this module has no OrbStack-specific knowledge.
+Abstract: OpenTofu module that renders the k0sctl configuration for one
+`controller+worker` k0s node, as YAML text. It is a pure renderer: it takes
+generic SSH, network and version inputs, outputs the text, and writes no
+file and runs no program. The caller (`roots/kubernetes-k0s`) writes the
+file and runs the pinned `k0sctl` CLI as a listed imperative edge. Generic
+over the target host: this module has no OrbStack-specific knowledge.
 
 ## Inputs
 
-`ssh_address`, `ssh_user`, `ssh_port`, `ssh_key_path`, `api_address`
-(required, validated — see `variables.tf`), `cluster_name` (optional,
-default `firmament`), `api_port` (optional, default `6443`; rendered as
-`spec.api.port`), `kube_proxy_replacement` (optional, default `true`;
-fixed at cluster creation: the module records it in
+`ssh_address`, `ssh_user`, `ssh_port`, `ssh_key_path`, `known_hosts_path`,
+`api_address`, `pod_cidr` (required, validated; see `variables.tf`),
+`cluster_name` (default `firmament`), `api_port` (default `6443`),
+`service_cidr` (default `10.96.0.0/12`), `k0s_version` (default
+`1.36.4+k0s.1`) and `kube_proxy_replacement` (default `true`; fixed at
+cluster creation: the module records it in
 `terraform_data.kube_proxy_replacement_at_creation`, and a plan with a
-different value fails), `drain_before_upgrade` (optional, default
-`true`; rendered as the provider's `no_drain = !drain_before_upgrade`.
-On one node a drain evicts every pod with nowhere to go, so single-node
-clusters set `false`), `reset_on_destroy` (optional, default `true`;
-rendered as the provider's `skip_destroy = !reset_on_destroy`. A destroy
-then runs `k0sctl reset` over SSH to remove k0s from a host that stays.
-Callers that delete the host along with the cluster set `false`: the reset
-is redundant there, and fails when the host is stopped).
-In this repo, [`roots/kubernetes-k0s`](../../roots/kubernetes-k0s/README.md)
-supplies all of these from the `machine-hosts` contract the machine root writes;
-against a non-OrbStack Ubuntu host, supply its real SSH endpoint and a
-reachable API address instead.
+different value fails at the `k0sctl_yaml` output).
 
 ## Outputs
 
-`k0s_yaml` (the rendered k0sctl contract, for inspection) and `kube_yaml`
-(the kubeconfig content, sensitive — the caller decides where to write
-it; this module doesn't write files itself).
+`k0sctl_yaml`: the complete k0sctl configuration as YAML text.
 
 ## Contract
 
-`cluster.tf` is the source of truth for the cluster: k0s version,
-single-node role, custom CNI, kube-proxy setting, and Pod/Service CIDRs.
-There is no separate render step — `plan` is the preview; the rendered
-`k0sctl.yaml` equivalent is only known after `apply` (the `k0s_yaml`
-output) since the provider builds it internally during `Create`, not
-during `Plan`.
-
-k0s is pinned to `1.36.4+k0s.0` in `cluster.tf`. The provider is pinned to
-`Mirantis/k0sctl` `0.0.3` in `main.tf` — the newest version actually
-published to the Terraform Registry (the GitHub repo's `v0.0.4` tag
-exists but was never released there).
-
-The apply owns k0s and its managed containerd. The cluster config has no
+`cluster.tf` is the source of truth for the cluster: single-node role,
+custom CNI, kube-proxy setting, and the Pod and Service CIDRs. The host
+trusts only `known_hosts_path` (`StrictHostKeyChecking: "yes"`,
+`ignoreSSHConfig: true`): a wrong or missing server key refuses the
+connection, and k0sctl never writes to that file. The cluster config has no
 `extensions` key: k0s installs no Helm charts, since in-cluster add-ons,
-the CNI included, belong to Flux. The node stays NotReady until a CNI
-runs; k0sctl waits only for the API server on a `controller+worker`
-host, so the apply finishes without one.
+the CNI included, belong to Flux. The node stays NotReady until a CNI runs;
+k0sctl waits only for the API server on a `controller+worker` host.
+
+The k0s version is the `k0s_version` default in `variables.tf`, the one
+place it is set. k0sctl downloads it onto the machine, so the host runs no
+k0s binary and `mise` pins only `k0sctl`. To upgrade, check the newest
+stable release of `k0sproject/k0s`, change the default, and run the
+module's tests; a live check is `mise run env:e2e`.
 
 ## Reading the cluster
 
@@ -75,8 +63,8 @@ the full task list:
 
 | Command | Behavior |
 | --- | --- |
-| `mise run k0s:apply` | Apply only the cluster and kubeconfig, then wait for the node to register; Cilium and Flux come from `env:apply` |
+| `mise run k0s:apply` | Render the configuration, run `k0sctl apply` and `k0sctl kubeconfig`, check the API answers, then write the cluster-access contract; Cilium and Flux come from `env:apply` |
 | `mise run k0s:plan` | Plan without applying |
 | `mise run k0s:verify` | Wait for every node to be Ready, using the rendered kubeconfig |
-| `mise run tofu:test` | Run `tests/unit.tftest.hcl` and `tests/creation.tftest.hcl` (and every other OpenTofu suite) against rendered plans, no live host |
+| `mise run tofu:test` | Run `tests/unit.tftest.hcl` and `tests/creation.tftest.hcl` (and every other OpenTofu suite) against rendered text, no live host |
 | `mise run k0s:test` | Run `tests/inputs.bats`, which checks that OpenTofu refuses a plan without the required inputs |

@@ -58,8 +58,9 @@ eval "$(mise env)"
 ```text
 roots/machine-orb/    the OrbStack machine and its readiness check;
                       writes the machine-hosts contract
-roots/kubernetes-k0s/ k0s on that machine; writes the kubeconfig and the
-                      cluster-access contract with the runtime values
+roots/kubernetes-k0s/ renders k0sctl.yaml for that machine; a mise task
+                      runs k0sctl; writes the cluster-access contract
+                      with the runtime values
 roots/bootstrap-flux/ bootstraps Cilium and Flux into the cluster
 contracts/layout/     the layout contract: folders, what each may
                       reference, the review checks (C79)

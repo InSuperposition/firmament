@@ -221,6 +221,118 @@ contract_field() {
   printf '%s\n' "$value"
 }
 
+# Waits until the API server answers /readyz through a kubeconfig. k0sctl
+# returns once the API is up, but a rebuilt machine can take a moment to
+# serve it at the address the kubeconfig names.
+wait_for_api() {
+  local kubeconfig="$1" timeout="${FIRMAMENT_API_SECONDS:-300}" interval=5
+  if ((timeout < interval)); then
+    interval=1
+  fi
+  local deadline=$((SECONDS + timeout))
+  until kubectl --kubeconfig "$kubeconfig" get --raw /readyz --request-timeout=10s >/dev/null 2>&1; do
+    if ((SECONDS >= deadline)); then
+      fail "the API server did not answer /readyz within ${timeout}s through $kubeconfig"
+      return 1
+    fi
+    sleep "$interval"
+  done
+}
+
+# Runs the k0sctl edge, a listed imperative step (C58): installs or
+# reconciles k0s on the machine from the configuration the Kubernetes root
+# rendered, then writes the kubeconfig. It runs every time: k0sctl apply is
+# idempotent, and a rerun repairs a lost kubeconfig or a drifted machine.
+# The kubeconfig is written whole or not at all: k0sctl writes a temp file
+# in the state directory under umask 077, and only a complete one is moved
+# over admin.kubeconfig. FIRMAMENT_K0SCTL_SECONDS (default 900) bounds the
+# apply, so a hung SSH connection cannot hang the task.
+run_k0sctl_edge() {
+  local state config kubeconfig seconds temporary
+  require_environment >/dev/null || return
+  state="${TF_VAR_state_directory}"
+  config="$state/k0sctl.yaml"
+  kubeconfig="$state/admin.kubeconfig"
+  seconds="${FIRMAMENT_K0SCTL_SECONDS:-900}"
+  if [[ ! "$seconds" =~ ^[0-9]+$ ]] || ((seconds < 1)); then
+    fail "FIRMAMENT_K0SCTL_SECONDS must be a whole number of seconds, not '$seconds'"
+    return
+  fi
+  if [[ ! -f "$config" ]]; then
+    fail "$config does not exist; the render pass of the Kubernetes root writes it"
+    return
+  fi
+  # --no-drain: on one node a drain before an upgrade would evict every pod
+  # with nowhere to go.
+  if ! timeout --foreground -k 30 "$seconds" k0sctl apply --config "$config" --no-drain --timeout "${seconds}s"; then
+    fail "k0sctl apply failed or ran over ${seconds}s; the cluster-access contract stays withdrawn, and rerunning is safe"
+    return 1
+  fi
+  temporary=$(umask 077 && mktemp "$state/.admin.kubeconfig.XXXXXX") || return
+  # shellcheck disable=SC2064 # the path is fixed now, on purpose
+  trap "rm -f '$temporary'" EXIT
+  if ! (umask 077 && k0sctl kubeconfig --config "$config" >"$temporary"); then
+    rm -f "$temporary"
+    trap - EXIT
+    fail "k0sctl kubeconfig failed; the cluster-access contract stays withdrawn, and rerunning is safe"
+    return 1
+  fi
+  chmod 600 "$temporary"
+  mv -f "$temporary" "$kubeconfig"
+  trap - EXIT
+  wait_for_api "$kubeconfig" || return
+}
+
+# Applies the Kubernetes root and installs k0s on the machine, in passes: a
+# render pass that withdraws the cluster-access contract, the k0sctl edge,
+# and a publish pass that writes the contract once the API answers, so the
+# contract never says a cluster exists that does not.
+apply_kubernetes_root() {
+  refuse_k0s_charts || return
+  init_root kubernetes-k0s || return
+  tofu_in_root kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=false || return
+  run_k0sctl_edge || return
+  tofu_in_root kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=true
+}
+
+# Plans the Kubernetes root as it stands: with the cluster-access contract
+# published when one is recorded, so the plan does not show a removal the
+# next apply would not make.
+plan_kubernetes_root() {
+  local published=false
+  init_root kubernetes-k0s || return
+  if [[ -n "$(contract_field_or_empty cluster-access.yaml .kubeconfig_path)" ]]; then
+    published=true
+  fi
+  tofu_in_root kubernetes-k0s plan -input=false -var="publish_cluster_access=$published"
+}
+
+# Destroys what an environment's roots created: the Kubernetes root first,
+# since it reads the machine-hosts contract the machine root deletes, then
+# the machine root. A root with no state file has nothing to destroy. The
+# Kubernetes root keeps append-only allocation records that refuse to be
+# destroyed; tearing the whole environment down is the one time its history
+# is meant to reset, so they are forgotten first. Destroying resets nothing
+# over SSH (k0s goes with the machine). What the k0sctl edge wrote outside
+# OpenTofu is removed whether or not a state file exists.
+destroy_environment_roots() {
+  local state root record
+  require_environment >/dev/null || return
+  state="${TF_VAR_state_directory}"
+  for root in kubernetes-k0s machine-orb; do
+    [[ -f "$state/$root.tfstate" ]] || continue
+    init_root "$root"
+    if [[ "$root" == kubernetes-k0s ]]; then
+      while IFS= read -r record; do
+        [[ -n "$record" ]] || continue
+        tofu_in_root "$root" state rm "$record"
+      done < <(tofu_in_root "$root" state list | grep '^terraform_data\.allocation\[' || true)
+    fi
+    tofu_in_root "$root" destroy -input=false -auto-approve
+  done
+  rm -f "$state/admin.kubeconfig" "$state/k0sctl.yaml" "$state/known_hosts"
+}
+
 # Prints the kubeconfig path the Kubernetes root recorded.
 environment_kubeconfig() {
   contract_field cluster-access.yaml .kubeconfig_path
@@ -487,15 +599,18 @@ render_flux_build() {
 # Fails when the environment's cluster has Helm charts that k0s installs.
 # k0s uninstalls a chart once it leaves its configuration, and this
 # configuration installs none, so applying over such a cluster would remove
-# its Cilium. Passes when no cluster is recorded: each root deletes its
-# contract file when it is destroyed, so the cluster exists only while both
-# the machine-hosts and the cluster-access contracts do. Fails when a
-# recorded cluster cannot answer, since that says nothing about its charts.
+# its Cilium. Passes when no cluster is recorded: destroying the environment
+# deletes the machine-hosts contract and the kubeconfig, so a cluster exists
+# only while both do. The kubeconfig is the evidence, not cluster-access.yaml:
+# a failed apply withdraws that contract while the cluster is still there.
+# Fails when a recorded cluster cannot answer, since that says nothing about
+# its charts.
 refuse_k0s_charts() {
   local kubeconfig machine charts errors error_text
-  kubeconfig=$(contract_field_or_empty cluster-access.yaml .kubeconfig_path) || return
+  require_environment >/dev/null || return
+  kubeconfig="${TF_VAR_state_directory}/admin.kubeconfig"
   machine=$(contract_field_or_empty machine-hosts.yaml .name) || return
-  if [[ -z "$kubeconfig" || -z "$machine" ]]; then
+  if [[ ! -f "$kubeconfig" || -z "$machine" ]]; then
     return 0
   fi
   errors=$(mktemp)

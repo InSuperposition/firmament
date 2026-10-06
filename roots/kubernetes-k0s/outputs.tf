@@ -1,10 +1,16 @@
-output "k0s_yaml" {
-  value       = module.orch_k0s.k0s_yaml
-  description = "Rendered k0sctl contract, for inspection."
+output "k0sctl_config_path" {
+  value       = local_file.k0sctl.filename
+  description = "The rendered k0sctl configuration the k0sctl edge applies."
+}
+
+output "known_hosts_path" {
+  value       = local_file.known_hosts.filename
+  description = "The trust file the rendered configuration names."
 }
 
 output "kubeconfig_path" {
-  value = local_sensitive_file.kubeconfig.filename
+  value       = "${var.state_directory}/admin.kubeconfig"
+  description = "Where the k0sctl edge writes the kubeconfig."
 }
 
 output "runtime_info" {
@@ -13,6 +19,6 @@ output "runtime_info" {
 }
 
 output "cluster_access_path" {
-  value       = local_file.cluster_access.filename
+  value       = "${var.state_directory}/cluster-access.yaml"
   description = "The cluster-access contract the bootstrap root reads."
 }

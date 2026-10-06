@@ -12,11 +12,43 @@ locals {
       }
       network = {
         provider    = "custom"
-        podCIDR     = "10.244.0.0/16"
-        serviceCIDR = "10.96.0.0/12"
+        podCIDR     = var.pod_cidr
+        serviceCIDR = var.service_cidr
         kubeProxy = {
           disabled = var.kube_proxy_replacement
         }
+      }
+    }
+  }
+
+  # The k0sctl configuration for one controller+worker host. Host trust is
+  # strict and read from one file: k0sctl refuses a server key that file
+  # does not hold, and never writes to it.
+  k0sctl_cluster = {
+    apiVersion = "k0sctl.k0sproject.io/v1beta1"
+    kind       = "Cluster"
+    metadata = {
+      name = var.cluster_name
+    }
+    spec = {
+      hosts = [{
+        role     = "controller+worker"
+        noTaints = true
+        ssh = {
+          address         = var.ssh_address
+          user            = var.ssh_user
+          port            = var.ssh_port
+          keyPath         = var.ssh_key_path
+          ignoreSSHConfig = true
+          options = {
+            UserKnownHostsFile    = var.known_hosts_path
+            StrictHostKeyChecking = "yes"
+          }
+        }
+      }]
+      k0s = {
+        version = var.k0s_version
+        config  = local.k0s_cluster_config
       }
     }
   }
@@ -29,40 +61,5 @@ resource "terraform_data" "kube_proxy_replacement_at_creation" {
 
   lifecycle {
     ignore_changes = [input]
-  }
-}
-
-resource "k0sctl_config" "this" {
-  no_drain     = !var.drain_before_upgrade
-  skip_destroy = !var.reset_on_destroy
-
-  metadata {
-    name = var.cluster_name
-  }
-
-  lifecycle {
-    precondition {
-      condition     = terraform_data.kube_proxy_replacement_at_creation.output == var.kube_proxy_replacement
-      error_message = "kube_proxy_replacement is fixed at cluster creation; switching it in place breaks the pod network. Run teardown, then bootstrap with the new value."
-    }
-  }
-
-  spec {
-    k0s {
-      version = "1.36.4+k0s.0"
-      config  = yamlencode(local.k0s_cluster_config)
-    }
-
-    host {
-      role      = "controller+worker"
-      no_taints = true
-
-      ssh {
-        address  = var.ssh_address
-        user     = var.ssh_user
-        port     = var.ssh_port
-        key_path = var.ssh_key_path
-      }
-    }
   }
 }
