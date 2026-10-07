@@ -16,3 +16,6 @@ generatorOptions:
   # A change to the values triggers a HelmRelease upgrade.
   labels:
     reconcile.fluxcd.io/watch: Enabled
+  annotations:
+    # Moving the packages to another source never prunes the values.
+    kustomize.toolkit.fluxcd.io/prune: disabled

@@ -5,6 +5,9 @@ kind: OCIRepository
 metadata:
   name: cilium
   namespace: flux-system
+  annotations:
+    # Moving the packages to another source never prunes the chart source.
+    kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
   interval: 1h
   url: oci://quay.io/cilium/charts/cilium
