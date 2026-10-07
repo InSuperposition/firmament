@@ -38,8 +38,7 @@ MISE_LOCKED_SCOPES=project mise install --locked
 ```
 
 `mise install` then runs `mise run repo:setup`, which installs the Git
-hooks and trusts each `environments/<env>/mise.toml`. Run it again after
-adding an environment.
+hooks and creates the shared OpenTofu provider cache.
 
 Make the pinned tools and project environment (including `KUBECONFIG`)
 available in your shell. `KUBECONFIG` points at the `local` cluster at the

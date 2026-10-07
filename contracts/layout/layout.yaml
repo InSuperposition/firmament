@@ -31,7 +31,6 @@ cluster_name_places:
   - the cluster field of environments/<env>/environment.yaml
 reference_notes:
   - roots/bootstrap-flux reads the packages it bootstraps (packages/cilium, packages/flux) so the bootstrap and Flux install the same bytes
-  - environments/<env>/mise.toml is configuration, not data; it goes when the state layout moves (C81)
 standalone_checks:
   - rule: chainsaw suites only read the cluster
     task: chainsaw:lint
