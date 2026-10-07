@@ -20,11 +20,20 @@ locals {
   environment_data = yamldecode(file(local.environment_file))
   cluster          = local.environment_data.cluster
 
+  # Each cluster's mesh allocation reduced to the values that never change:
+  # the retired flag is data about the allocation, not part of the record.
+  allocations = {
+    for name, allocation in local.environment_data.clusters :
+    name => { mesh_id = allocation.mesh_id, pod_cidr = allocation.pod_cidr }
+  }
+  service_cidr = "10.96.0.0/12"
+
   environment_required_fields = ["cluster", "target", "engine", "artifact_source", "clusters"]
   environment_fields          = concat(local.environment_required_fields, ["credentials"])
 
-  # The machine's DNS name resolves on both the host and the guest.
-  api_address = local.machine.dns_name
+  # The machine's recorded IP: an .orb.local name goes stale after a rebuild,
+  # and the IP is what the machine-hosts contract holds.
+  api_address = local.machine.ip_address
   api_port    = 6443
 
   # Cilium replaces kube-proxy, on the netkit datapath. k0s and the Cilium
@@ -114,6 +123,30 @@ resource "terraform_data" "environment_contract" {
       error_message = "environment.yaml: clusters must hold an allocation for the cluster ${try(local.environment_data.cluster, "")}."
     }
     precondition {
+      condition     = try(!lookup(local.environment_data.clusters[local.environment_data.cluster], "retired", false), false)
+      error_message = "environment.yaml: the cluster ${try(local.environment_data.cluster, "")} is retired, so it cannot run."
+    }
+    precondition {
+      condition     = try(length(distinct([for allocation in values(local.allocations) : allocation.mesh_id])) == length(local.allocations), false)
+      error_message = "environment.yaml: every cluster needs its own mesh_id; retired clusters keep theirs."
+    }
+    precondition {
+      condition = try(length(flatten([
+        for a, allocation_a in local.allocations : [
+          for b, allocation_b in local.allocations : "${a}/${b}"
+          if a != b && (cidrcontains(allocation_a.pod_cidr, allocation_b.pod_cidr) || cidrcontains(allocation_b.pod_cidr, allocation_a.pod_cidr))
+        ]
+      ])) == 0, false)
+      error_message = "environment.yaml: pod_cidr ranges must not overlap; retired clusters keep theirs."
+    }
+    precondition {
+      condition = try(length([
+        for allocation in values(local.allocations) : allocation.pod_cidr
+        if cidrcontains(local.service_cidr, allocation.pod_cidr) || cidrcontains(allocation.pod_cidr, local.service_cidr)
+      ]) == 0, false)
+      error_message = "environment.yaml: a pod_cidr must stay outside the service CIDR ${local.service_cidr}."
+    }
+    precondition {
       condition = try(
         length(setsubtract(keys(local.environment_data), local.environment_fields)) == 0 &&
         length(setsubtract(local.environment_required_fields, keys(local.environment_data))) == 0,
@@ -139,38 +172,81 @@ resource "terraform_data" "cluster_definition" {
   depends_on = [terraform_data.environment_contract]
 }
 
+# The k0sctl trust file: the machine's server keys, one "[address]:port <type>
+# <key>" line each, the form known_hosts holds for a host on a port that is
+# not 22. k0sctl trusts this file and no other.
+resource "local_file" "known_hosts" {
+  filename        = "${var.state_directory}/known_hosts"
+  file_permission = "0600"
+  content = join("\n", concat(
+    [for key in local.machine.ssh.host_keys : "[${local.machine.ssh.address}]:${local.machine.ssh.port} ${key}"],
+    [""]
+  ))
+
+  depends_on = [terraform_data.machine_hosts_contract]
+}
+
 module "orch_k0s" {
   source = "../../modules/orch-k0s"
 
-  ssh_address  = local.machine.ssh.address
-  ssh_user     = local.machine.ssh.user
-  ssh_port     = local.machine.ssh.port
-  ssh_key_path = local.machine.ssh.key_path
-  api_address  = local.api_address
-  api_port     = local.api_port
-  cluster_name = local.machine.name
+  ssh_address      = local.machine.ssh.address
+  ssh_user         = local.machine.ssh.user
+  ssh_port         = local.machine.ssh.port
+  ssh_key_path     = local.machine.ssh.key_path
+  known_hosts_path = abspath(local_file.known_hosts.filename)
+  api_address      = local.api_address
+  api_port         = local.api_port
+  cluster_name     = local.machine.name
+  pod_cidr         = local.allocations[local.cluster].pod_cidr
+  service_cidr     = local.service_cidr
 
   kube_proxy_replacement = local.kube_proxy_replacement
-  # One node: a drain would evict every pod with nowhere to go.
-  drain_before_upgrade = false
-  # Every destroy deletes the machine, which removes k0s with it. A reset
-  # over SSH first would be redundant, and fails when the machine is stopped.
-  reset_on_destroy = false
+
+  depends_on = [terraform_data.environment_contract]
 }
 
-resource "local_sensitive_file" "kubeconfig" {
-  content         = module.orch_k0s.kube_yaml
-  filename        = "${var.state_directory}/admin.kubeconfig"
+# The configuration the k0sctl edge applies. The task that runs k0sctl reads
+# this file; this root runs nothing.
+resource "local_file" "k0sctl" {
+  filename        = "${var.state_directory}/k0sctl.yaml"
   file_permission = "0600"
+  content         = module.orch_k0s.k0sctl_yaml
 }
 
-# The cluster-access contract the bootstrap root and the tasks read.
-# Destroying this root deletes the file, so a missing file means no cluster.
+# The cluster-access contract the bootstrap root and the tasks read. It
+# says a cluster exists, so it is written only in the publish pass, after
+# the task that runs k0sctl has the API answering; every other pass removes
+# it. Destroying this root deletes it too.
 resource "local_file" "cluster_access" {
+  count = var.publish_cluster_access ? 1 : 0
+
   filename        = "${var.state_directory}/cluster-access.yaml"
   file_permission = "0644"
   content = yamlencode({
-    kubeconfig_path = local_sensitive_file.kubeconfig.filename
+    kubeconfig_path = "${var.state_directory}/admin.kubeconfig"
     runtime_info    = local.runtime_info
   })
+}
+
+# Mesh allocations are append-only (C22, C78): the first value this root saw
+# for a cluster is its record, and a changed pod_cidr or mesh_id, or an entry
+# removed from the data instead of marked retired, fails the plan. The records
+# live in state, so an environment with no state is not checked; the destroy
+# tasks forget them with `tofu state rm` before destroying the root.
+resource "terraform_data" "allocation" {
+  for_each = local.allocations
+
+  input = each.value
+
+  lifecycle {
+    ignore_changes  = [input]
+    prevent_destroy = true
+
+    postcondition {
+      condition     = self.output == each.value
+      error_message = "environment.yaml: the allocation of cluster ${each.key} is append-only; recorded ${jsonencode(self.output)}, found ${jsonencode(each.value)}. Mark a cluster retired: true instead of removing it."
+    }
+  }
+
+  depends_on = [terraform_data.environment_contract]
 }

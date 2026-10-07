@@ -5,5 +5,4 @@ set -euo pipefail
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 require_environment >/dev/null
 
-init_root kubernetes-k0s
-tofu_in_root kubernetes-k0s plan -input=false
+plan_kubernetes_root

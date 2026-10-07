@@ -30,6 +30,7 @@ flux2 = { version = "2.9.5", slsa_signer_identity = "https://github.com/slsa-fra
 helm = "4.3.0"
 hk = "2.0.1"
 jq = "1.8.2"
+k0sctl = "0.33.1"
 kubectl = "1.36.4"
 opentofu = "1.12.6"
 shellcheck = "0.11.0"

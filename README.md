@@ -58,8 +58,9 @@ eval "$(mise env)"
 ```text
 roots/machine-orb/    the OrbStack machine and its readiness check;
                       writes the machine-hosts contract
-roots/kubernetes-k0s/ k0s on that machine; writes the kubeconfig and the
-                      cluster-access contract with the runtime values
+roots/kubernetes-k0s/ renders k0sctl.yaml for that machine; a mise task
+                      runs k0sctl; writes the cluster-access contract
+                      with the runtime values
 roots/bootstrap-flux/ bootstraps Cilium and Flux into the cluster
 contracts/layout/     the layout contract: folders, what each may
                       reference, the review checks (C79)
@@ -146,8 +147,8 @@ adds `tofu:validate` and `test`, each only when the pushed commits touch
 a file that can change its result.
 
 Deferred work is planned in `.plan/`, a local folder that Git ignores:
-start with `.plan/README.md`. The last tracked list is
-`git show b6dd6cd:TODOS.md`.
+start with `.plan/README.md`. `TODOS.md` lists small follow-ups found while
+building, each with its context.
 
 ### Worktrees
 

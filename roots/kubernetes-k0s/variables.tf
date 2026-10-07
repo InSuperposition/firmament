@@ -28,3 +28,9 @@ variable "environments_directory" {
   default     = null
   description = "Directory holding <environment>/environment.yaml; the repository's environments folder when unset."
 }
+
+variable "publish_cluster_access" {
+  type        = bool
+  default     = false
+  description = "Whether to write the cluster-access contract. The task that runs k0sctl sets it true in the pass after the API answers, and false in every other pass, which removes the file."
+}

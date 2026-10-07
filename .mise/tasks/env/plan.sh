@@ -14,8 +14,7 @@ if [[ -z "$(contract_field_or_empty machine-hosts.yaml .name)" ]]; then
   printf 'No machine recorded yet, so k0s and the bootstrap are not planned; they are applied after the machine.\n'
   exit 0
 fi
-init_root kubernetes-k0s
-tofu_in_root kubernetes-k0s plan -input=false
+plan_kubernetes_root
 
 if [[ -z "$(contract_field_or_empty cluster-access.yaml .kubeconfig_path)" ]]; then
   printf 'No cluster recorded yet, so the bootstrap is not planned; it is applied after the cluster.\n'

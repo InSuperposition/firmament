@@ -16,6 +16,10 @@
 # failed requests);
 # $FORTIO_RUN, $FORTIO_STATUS, $FORTIO_STOP and $FORTIO_RESULT name other
 # files to print instead.
+# `tofu state list` prints $TOFU_STATE_LIST. k0sctl is its own stand-in: `k0sctl
+# apply` fails with $K0SCTL_APPLY_ERROR or sleeps $K0SCTL_APPLY_SLEEP seconds
+# when set, and `k0sctl kubeconfig` prints a kubeconfig, or half of one and
+# fails with $K0SCTL_KUBECONFIG_ERROR when set.
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -42,14 +46,38 @@ setup_stubs() {
   for tool in tofu cilium hubble kubectl helm chainsaw orb orbctl dscacheutil bats mise open; do
     stub "$tool"
   done
+  stub_k0sctl
   PATH="$stubs:$PATH"
   record_contracts
+}
+
+# The k0sctl stand-in: records each call like the other tools and plays the
+# parts of apply and kubeconfig a test can ask to fail or hang.
+stub_k0sctl() {
+  cat >"$stubs/k0sctl" <<'STUB'
+#!/usr/bin/env bash
+printf 'k0sctl %s | state=%s branch=%s\n' "$*" "${TF_VAR_state_directory:-}" "${TF_VAR_git_branch:-}" >>"$CALLS"
+case "$1" in
+  apply)
+    if [[ -n "${K0SCTL_APPLY_SLEEP:-}" ]]; then exec sleep "$K0SCTL_APPLY_SLEEP"; fi
+    if [[ -n "${K0SCTL_APPLY_ERROR:-}" ]]; then printf '%s\n' "$K0SCTL_APPLY_ERROR" >&2; exit 1; fi
+    ;;
+  kubeconfig)
+    printf 'apiVersion: v1\nkind: Config\n'
+    if [[ -n "${K0SCTL_KUBECONFIG_ERROR:-}" ]]; then printf '%s\n' "$K0SCTL_KUBECONFIG_ERROR" >&2; exit 1; fi
+    printf 'clusters: []\n'
+    ;;
+esac
+exit 0
+STUB
+  chmod +x "$stubs/k0sctl"
 }
 
 # Writes the contract files a healthy local environment's roots leave in its
 # state directory: machine-hosts.yaml for a machine named firmament and
 # cluster-access.yaml for a cluster whose kubeconfig is at $1 (default
-# /state/admin.kubeconfig). Tasks read these instead of running tofu.
+# /state/admin.kubeconfig), plus the kubeconfig and k0sctl.yaml files a built
+# cluster leaves in the state directory. Tasks read these instead of running tofu.
 record_contracts() {
   local state="$FIRMAMENT_STATE_HOME/environments/local" kubeconfig="${1:-/state/admin.kubeconfig}"
   mkdir -p "$state"
@@ -57,12 +85,18 @@ record_contracts() {
     >"$state/machine-hosts.yaml"
   printf 'kubeconfig_path: %s\nruntime_info: {kube_proxy_replacement: "true", cilium_datapath_mode: netkit}\n' "$kubeconfig" \
     >"$state/cluster-access.yaml"
+  : >"$state/admin.kubeconfig"
+  : >"$state/k0sctl.yaml"
 }
 
 # Removes one contract file of the local environment, as destroying the
-# root that wrote it does: machine-hosts.yaml or cluster-access.yaml.
+# root that wrote it does: machine-hosts.yaml or cluster-access.yaml (which
+# also takes the kubeconfig the cluster-access contract points at).
 forget_contract() {
   rm -f "$FIRMAMENT_STATE_HOME/environments/local/$1"
+  if [[ "$1" == cluster-access.yaml ]]; then
+    rm -f "$FIRMAMENT_STATE_HOME/environments/local/admin.kubeconfig"
+  fi
 }
 
 # Confines git to the stand-in repositories a test builds. It clears the
@@ -82,6 +116,7 @@ stub() {
 #!/usr/bin/env bash
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
+  *" state list"*) printf '%s' "\${TOFU_STATE_LIST:-}" ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;
   *"get charts.helm.k0sproject.io"*)
     if [[ -n "\${K0S_CHARTS_ERROR:-}" ]]; then printf '%s\\n' "\$K0S_CHARTS_ERROR" >&2; exit 1; fi

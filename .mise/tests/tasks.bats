@@ -88,6 +88,13 @@ run_task() {
   ! grep -q ' apply -input=false' "$CALLS"
 }
 
+# Removes one contract file of the local environment but leaves the
+# kubeconfig, as a failed apply does when it withdraws cluster-access.yaml
+# while the cluster is still there.
+forget_contract_only() {
+  rm -f "$FIRMAMENT_STATE_HOME/environments/local/$1"
+}
+
 # Gives the local environment's machine and Kubernetes roots a state file,
 # as any applied environment has.
 local_state() {
@@ -116,7 +123,38 @@ local_state() {
   [[ "${lines[2]}" == "tofu -chdir=$root_directory/roots/machine-orb init "* ]]
   [[ "${lines[3]}" == "tofu -chdir=$root_directory/roots/machine-orb destroy -input=false -auto-approve "* ]]
   ! grep -q -- 'roots/bootstrap-flux' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
-  ! grep -q ' state rm ' "$CALLS" || fail "removed state by hand: $(cat "$CALLS")"
+  ! grep -q ' state rm ' "$CALLS" || fail "removed state with no allocation records: $(cat "$CALLS")"
+}
+
+@test "env:destroy forgets the allocation records before destroying the Kubernetes root, and only those" {
+  local_state
+  TOFU_STATE_LIST=$'terraform_data.allocation["singularity"]\nterraform_data.environment_contract\nlocal_file.k0sctl' \
+    run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  run grep -E '^tofu -chdir=.* (state rm|destroy) ' "$CALLS"
+  [ "${#lines[@]}" -eq 3 ] || fail "${lines[*]}"
+  [[ "${lines[0]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s state rm terraform_data.allocation[\"singularity\"] "* ]]
+  [[ "${lines[1]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s destroy -input=false -auto-approve "* ]]
+  [[ "${lines[2]}" == "tofu -chdir=$root_directory/roots/machine-orb destroy -input=false -auto-approve "* ]]
+}
+
+@test "env:destroy removes what the k0sctl edge wrote, even with no state file, and runs twice" {
+  local state="$FIRMAMENT_STATE_HOME/environments/local"
+  printf 'x\n' >"$state/known_hosts"
+  run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [ ! -e "$state/admin.kubeconfig" ] && [ ! -e "$state/k0sctl.yaml" ] && [ ! -e "$state/known_hosts" ]
+  run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+}
+
+@test "orb:destroy forgets the allocation records and removes the edge's files too" {
+  local state="$FIRMAMENT_STATE_HOME/environments/local"
+  local_state
+  TOFU_STATE_LIST='terraform_data.allocation["singularity"]' run_task "$root_directory/.mise/tasks/orb/destroy.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  grep -q ' state rm terraform_data.allocation\["singularity"\] ' "$CALLS"
+  [ ! -e "$state/admin.kubeconfig" ] && [ ! -e "$state/k0sctl.yaml" ]
 }
 
 @test "env:destroy runs on a fresh machine with no state yet, and destroys nothing" {
@@ -146,17 +184,22 @@ local_state() {
   ! grep -q -- 'roots/bootstrap-flux' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
 }
 
-@test "env:apply applies the machine root, then the Kubernetes root, then the bootstrap root, then waits" {
+@test "env:apply applies the machine root, the Kubernetes root around the k0sctl edge, then the bootstrap root, then waits" {
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ] || fail "$output"
-  local state="$FIRMAMENT_STATE_HOME/environments/local" root i=0
-  run grep -E '^(tofu -chdir=.* (init|apply) |cilium )' "$CALLS"
-  for root in machine-orb kubernetes-k0s bootstrap-flux; do
-    [[ "${lines[i]}" == "tofu -chdir=$root_directory/roots/$root init "*"-backend-config=path=$state/$root.tfstate "* ]] || fail "line $i: ${lines[i]}"
-    [[ "${lines[i + 1]}" == "tofu -chdir=$root_directory/roots/$root apply -input=false -auto-approve "* ]] || fail "line $((i + 1)): ${lines[i + 1]}"
-    i=$((i + 2))
-  done
-  [[ "${lines[6]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
+  local state="$FIRMAMENT_STATE_HOME/environments/local" k0s="$root_directory/roots/kubernetes-k0s"
+  run grep -E '^(tofu -chdir=.* (init|apply) |k0sctl |kubectl .*--raw /readyz|cilium )' "$CALLS"
+  [[ "${lines[0]}" == "tofu -chdir=$root_directory/roots/machine-orb init "*"-backend-config=path=$state/machine-orb.tfstate "* ]]
+  [[ "${lines[1]}" == "tofu -chdir=$root_directory/roots/machine-orb apply -input=false -auto-approve "* ]]
+  [[ "${lines[2]}" == "tofu -chdir=$k0s init "*"-backend-config=path=$state/kubernetes-k0s.tfstate "* ]]
+  [[ "${lines[3]}" == "tofu -chdir=$k0s apply -input=false -auto-approve -var=publish_cluster_access=false "* ]]
+  [[ "${lines[4]}" == "k0sctl apply --config $state/k0sctl.yaml --no-drain --timeout 900s "* ]]
+  [[ "${lines[5]}" == "k0sctl kubeconfig --config $state/k0sctl.yaml "* ]]
+  [[ "${lines[6]}" == "kubectl --kubeconfig $state/admin.kubeconfig get --raw /readyz "* ]]
+  [[ "${lines[7]}" == "tofu -chdir=$k0s apply -input=false -auto-approve -var=publish_cluster_access=true "* ]]
+  [[ "${lines[8]}" == "tofu -chdir=$root_directory/roots/bootstrap-flux init "*"-backend-config=path=$state/bootstrap-flux.tfstate "* ]]
+  [[ "${lines[9]}" == "tofu -chdir=$root_directory/roots/bootstrap-flux apply -input=false -auto-approve "* ]]
+  [[ "${lines[10]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
 }
 
 @test "env:plan plans every root once the environment records a machine and a cluster" {
@@ -195,7 +238,7 @@ local_state() {
 }
 
 @test "env:apply refuses a contract file it cannot read" {
-  printf 'kubeconfig_path: [unclosed\n' >"$FIRMAMENT_STATE_HOME/environments/local/cluster-access.yaml"
+  printf 'name: [unclosed\n' >"$FIRMAMENT_STATE_HOME/environments/local/machine-hosts.yaml"
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
   ! grep -q ' apply -input=false' "$CALLS"
@@ -235,13 +278,90 @@ local_state() {
   ! grep -q ' apply -input=false' "$CALLS"
 }
 
-@test "k0s:apply applies the Kubernetes root, then waits for the node" {
+@test "k0s:apply renders, runs k0sctl, publishes the contract, then waits for the node" {
   NODES=node/firmament run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
-  [ "$status" -eq 0 ]
-  run grep -nE '^(tofu .* apply |kubectl |cilium )' "$CALLS"
-  [ "${#lines[@]}" -eq 2 ]
-  [[ "${lines[0]}" == *"tofu -chdir=$root_directory/roots/kubernetes-k0s apply -input=false -auto-approve "* ]]
-  [[ "${lines[1]}" == *"kubectl --kubeconfig /state/admin.kubeconfig get nodes -o name "* ]]
+  [ "$status" -eq 0 ] || fail "$output"
+  run grep -nE '^(tofu .* apply |k0sctl |kubectl |cilium )' "$CALLS"
+  [ "${#lines[@]}" -eq 7 ] || fail "${lines[*]}"
+  [[ "${lines[0]}" == *"get charts.helm.k0sproject.io "* ]]
+  [[ "${lines[1]}" == *"tofu -chdir=$root_directory/roots/kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=false "* ]]
+  [[ "${lines[2]}" == *"k0sctl apply --config "* ]]
+  [[ "${lines[3]}" == *"k0sctl kubeconfig --config "* ]]
+  [[ "${lines[4]}" == *"get --raw /readyz "* ]]
+  [[ "${lines[5]}" == *"tofu -chdir=$root_directory/roots/kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=true "* ]]
+  [[ "${lines[6]}" == *"get nodes -o name "* ]]
+}
+
+@test "k0s:apply refuses a cluster whose Helm charts k0s still installs, before k0sctl runs" {
+  K0S_CHARTS=chart.helm.k0sproject.io/k0s-addon-chart-cilium run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"k0s still installs Helm charts on this cluster"* ]]
+  ! grep -qE '^(k0sctl|tofu .* apply) ' "$CALLS" || fail "$(cat "$CALLS")"
+}
+
+@test "the k0sctl edge still asks for charts after a failed run withdrew the cluster-access contract" {
+  forget_contract_only cluster-access.yaml
+  K0S_CHARTS=chart.helm.k0sproject.io/k0s-addon-chart-cilium run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"k0s still installs Helm charts on this cluster"* ]]
+  ! grep -q '^k0sctl ' "$CALLS"
+}
+
+@test "k0s:apply stops at a failed k0sctl apply and never publishes the contract" {
+  K0SCTL_APPLY_ERROR="connect: connection refused" run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"connection refused"* ]]
+  [[ "$output" == *"k0sctl apply failed or ran over 900s; the cluster-access contract stays withdrawn, and rerunning is safe"* ]]
+  ! grep -q 'k0sctl kubeconfig' "$CALLS"
+  ! grep -q 'publish_cluster_access=true' "$CALLS" || fail "published after a failed apply"
+}
+
+@test "k0s:apply kills a k0sctl apply that runs over FIRMAMENT_K0SCTL_SECONDS and never publishes" {
+  K0SCTL_APPLY_SLEEP=60 FIRMAMENT_K0SCTL_SECONDS=1 run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"ran over 1s"* ]]
+  grep -q -- '--timeout 1s ' "$CALLS"
+  ! grep -q 'publish_cluster_access=true' "$CALLS"
+}
+
+@test "k0s:apply refuses a FIRMAMENT_K0SCTL_SECONDS that is not a whole number of seconds, before k0sctl runs" {
+  FIRMAMENT_K0SCTL_SECONDS=soon run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FIRMAMENT_K0SCTL_SECONDS must be a whole number of seconds"* ]]
+  ! grep -q '^k0sctl ' "$CALLS"
+}
+
+@test "k0s:apply keeps the old kubeconfig, leaves no temp file and never publishes when k0sctl kubeconfig fails" {
+  local state="$FIRMAMENT_STATE_HOME/environments/local"
+  printf 'old\n' >"$state/admin.kubeconfig"
+  K0SCTL_KUBECONFIG_ERROR="no such host" run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"k0sctl kubeconfig failed; the cluster-access contract stays withdrawn, and rerunning is safe"* ]]
+  [ "$(cat "$state/admin.kubeconfig")" = old ]
+  [ -z "$(find "$state" -name '.admin.kubeconfig.*')" ]
+  ! grep -q 'publish_cluster_access=true' "$CALLS"
+}
+
+@test "k0s:apply never publishes while the API does not answer /readyz at the kubeconfig's address" {
+  READYZ_ERROR="connection refused" FIRMAMENT_API_SECONDS=1 run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the API server did not answer /readyz within 1s"* ]]
+  ! grep -q 'publish_cluster_access=true' "$CALLS"
+}
+
+@test "k0s:apply writes a whole kubeconfig readable by its owner only, and a second run ends the same" {
+  local state="$FIRMAMENT_STATE_HOME/environments/local" first
+  rm -f "$state/admin.kubeconfig"
+  NODES=node/firmament run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [ "$(stat -f %Lp "$state/admin.kubeconfig" 2>/dev/null || stat -c %a "$state/admin.kubeconfig")" = 600 ]
+  first=$(cat "$state/admin.kubeconfig")
+  [[ "$first" == *"kind: Config"*"clusters: []"* ]]
+  NODES=node/firmament run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [ "$(cat "$state/admin.kubeconfig")" = "$first" ]
+  [ -z "$(find "$state" -name '.admin.kubeconfig.*')" ]
+  [ "$(grep -c '^k0sctl apply ' "$CALLS")" -eq 2 ]
 }
 
 @test "verify runs every *:verify task, one at a time, env:verify first" {
@@ -1965,6 +2085,11 @@ expect_planted_value_refused() {
 @test "timoni is pinned to one version and locked" {
   grep -Eq '^timoni = "[0-9]+\.[0-9]+\.[0-9]+"$' "$root_directory/mise.toml"
   grep -q '^\[\[tools.timoni\]\]' "$root_directory/mise.lock"
+}
+
+@test "k0sctl is pinned to one version and locked" {
+  grep -Eq '^k0sctl = "[0-9]+\.[0-9]+\.[0-9]+"$' "$root_directory/mise.toml"
+  grep -q '^\[\[tools.k0sctl\]\]' "$root_directory/mise.lock"
 }
 
 @test "contracts:lint fails when there is no contract to check" {

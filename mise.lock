@@ -485,6 +485,46 @@ url = "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-windows-amd64.
 url_api = "https://api.github.com/repos/jqlang/jq/releases/assets/453012788"
 provenance = "github-attestations"
 
+[[tools.k0sctl]]
+version = "0.33.1"
+backend = "aqua:k0sproject/k0sctl"
+specifiers = ["0.33.1"]
+
+[tools.k0sctl."platforms.linux-arm64"]
+checksum = "sha256:3632072361f3e83dde9b34f83eea49673d3bfe84763cf361edc3aec7209231a6"
+url = "https://github.com/k0sproject/k0sctl/releases/download/v0.33.1/k0sctl-linux-arm64"
+url_api = "https://api.github.com/repos/k0sproject/k0sctl/releases/assets/578938981"
+
+[tools.k0sctl."platforms.linux-arm64-musl"]
+checksum = "sha256:3632072361f3e83dde9b34f83eea49673d3bfe84763cf361edc3aec7209231a6"
+url = "https://github.com/k0sproject/k0sctl/releases/download/v0.33.1/k0sctl-linux-arm64"
+url_api = "https://api.github.com/repos/k0sproject/k0sctl/releases/assets/578938981"
+
+[tools.k0sctl."platforms.linux-x64"]
+checksum = "sha256:bd5cd9125c93d8d30c33f7b2f3693fed0d74140a248d433dad74f2b7015295b5"
+url = "https://github.com/k0sproject/k0sctl/releases/download/v0.33.1/k0sctl-linux-amd64"
+url_api = "https://api.github.com/repos/k0sproject/k0sctl/releases/assets/578938984"
+
+[tools.k0sctl."platforms.linux-x64-musl"]
+checksum = "sha256:bd5cd9125c93d8d30c33f7b2f3693fed0d74140a248d433dad74f2b7015295b5"
+url = "https://github.com/k0sproject/k0sctl/releases/download/v0.33.1/k0sctl-linux-amd64"
+url_api = "https://api.github.com/repos/k0sproject/k0sctl/releases/assets/578938984"
+
+[tools.k0sctl."platforms.macos-arm64"]
+checksum = "sha256:d5e9d8663c84e3e34fc3f3b032d7f97e372cda0ecd31b363f937b0bbed18f473"
+url = "https://github.com/k0sproject/k0sctl/releases/download/v0.33.1/k0sctl-darwin-arm64"
+url_api = "https://api.github.com/repos/k0sproject/k0sctl/releases/assets/578938980"
+
+[tools.k0sctl."platforms.macos-x64"]
+checksum = "sha256:fa696fa9102f872fc0f8bdca092b753d7cdd5fe64c5fec8f8033ec6e67a9c364"
+url = "https://github.com/k0sproject/k0sctl/releases/download/v0.33.1/k0sctl-darwin-amd64"
+url_api = "https://api.github.com/repos/k0sproject/k0sctl/releases/assets/578938976"
+
+[tools.k0sctl."platforms.windows-x64"]
+checksum = "sha256:3c9dc070a8ab4080f497785826c4f7459fd5430fa9f57f6ec2c4e19d3e536b2e"
+url = "https://github.com/k0sproject/k0sctl/releases/download/v0.33.1/k0sctl-win-amd64.exe"
+url_api = "https://api.github.com/repos/k0sproject/k0sctl/releases/assets/578938978"
+
 [[tools.kubectl]]
 version = "1.36.4"
 backend = "aqua:kubernetes/kubernetes/kubectl"

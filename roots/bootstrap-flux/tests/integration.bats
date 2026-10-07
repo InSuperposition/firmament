@@ -18,7 +18,7 @@ load ../../kubernetes-k0s/tests/setup.bash
   [ "$status" -eq 0 ]
   api_address=$(yq -r '.spec.api.externalAddress' <<<"$output")
   api_port=$(yq -r '.spec.api.port' <<<"$output")
-  [ "$api_address" = firmament.orb.local ]
+  [ "$api_address" = 192.168.139.10 ]
   run bootstrap_values
   [ "$status" -eq 0 ]
   [ "$(yq -r '.managedResources.runtimeInfo.data.api_address' <<<"$output")" = "$api_address" ]
@@ -113,6 +113,6 @@ load ../../kubernetes-k0s/tests/setup.bash
   run bootstrap_values
   [ "$status" -eq 0 ]
   [ "$(yq -r '.job.hostNetwork' <<<"$output")" = true ]
-  [ "$(yq -r '.job.env.KUBERNETES_SERVICE_HOST' <<<"$output")" = firmament.orb.local ]
+  [ "$(yq -r '.job.env.KUBERNETES_SERVICE_HOST' <<<"$output")" = 192.168.139.10 ]
   [ "$(yq -r '.job.env.KUBERNETES_SERVICE_PORT' <<<"$output")" = 6443 ]
 }
