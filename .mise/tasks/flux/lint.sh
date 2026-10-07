@@ -4,11 +4,11 @@ set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 
-# Each environment's build is validated once, packages included, against
+# Each cluster's Flux build and payload are validated once, packages included, against
 # the schemas vendored in .mise/flux-schemas (flux:schemas refreshes them),
 # so the result depends only on this commit and needs no network.
 status=0
-mapfile -t builds < <(find "$MISE_PROJECT_ROOT/clusters" -mindepth 2 -maxdepth 2 -type d -name flux | sort)
+mapfile -t builds < <(find "$MISE_PROJECT_ROOT/clusters" -mindepth 2 -maxdepth 2 -type d \( -name flux -o -name payload \) | sort)
 if ((${#builds[@]} == 0)); then
   fail "no clusters/*/flux build to validate under $MISE_PROJECT_ROOT/clusters"
   exit 1

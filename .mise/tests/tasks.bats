@@ -80,6 +80,7 @@ run_task() {
 }
 
 @test "env:apply refuses an environment another worktree owns, before applying" {
+  e2e_repository
   mkdir -p "$BATS_TEST_TMPDIR/other-worktree" "$FIRMAMENT_STATE_HOME/environments/local"
   printf '%s\n' "$BATS_TEST_TMPDIR/other-worktree" >"$FIRMAMENT_STATE_HOME/environments/local/owner"
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
@@ -185,52 +186,57 @@ local_state() {
 }
 
 @test "env:apply applies the machine root, the Kubernetes root around the k0sctl edge, then the bootstrap root, then waits" {
+  e2e_repository
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ] || fail "$output"
-  local state="$FIRMAMENT_STATE_HOME/environments/local" k0s="$root_directory/roots/kubernetes-k0s"
+  local state="$FIRMAMENT_STATE_HOME/environments/local" k0s="$MISE_PROJECT_ROOT/roots/kubernetes-k0s"
   run grep -E '^(tofu -chdir=.* (init|apply) |k0sctl |kubectl .*--raw /readyz|cilium )' "$CALLS"
-  [[ "${lines[0]}" == "tofu -chdir=$root_directory/roots/machine-orb init "*"-backend-config=path=$state/machine-orb.tfstate "* ]]
-  [[ "${lines[1]}" == "tofu -chdir=$root_directory/roots/machine-orb apply -input=false -auto-approve "* ]]
+  [[ "${lines[0]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/machine-orb init "*"-backend-config=path=$state/machine-orb.tfstate "* ]]
+  [[ "${lines[1]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/machine-orb apply -input=false -auto-approve "* ]]
   [[ "${lines[2]}" == "tofu -chdir=$k0s init "*"-backend-config=path=$state/kubernetes-k0s.tfstate "* ]]
   [[ "${lines[3]}" == "tofu -chdir=$k0s apply -input=false -auto-approve -var=publish_cluster_access=false "* ]]
   [[ "${lines[4]}" == "k0sctl apply --config $state/k0sctl.yaml --no-drain --timeout 900s "* ]]
   [[ "${lines[5]}" == "k0sctl kubeconfig --config $state/k0sctl.yaml "* ]]
   [[ "${lines[6]}" == "kubectl --kubeconfig $state/admin.kubeconfig get --raw /readyz "* ]]
   [[ "${lines[7]}" == "tofu -chdir=$k0s apply -input=false -auto-approve -var=publish_cluster_access=true "* ]]
-  [[ "${lines[8]}" == "tofu -chdir=$root_directory/roots/bootstrap-flux init "*"-backend-config=path=$state/bootstrap-flux.tfstate "* ]]
-  [[ "${lines[9]}" == "tofu -chdir=$root_directory/roots/bootstrap-flux apply -input=false -auto-approve "* ]]
+  [[ "${lines[8]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/bootstrap-flux init "*"-backend-config=path=$state/bootstrap-flux.tfstate "* ]]
+  [[ "${lines[9]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/bootstrap-flux apply -input=false -auto-approve "* ]]
   [[ "${lines[10]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
 }
 
 @test "env:plan plans every root once the environment records a machine and a cluster" {
+  e2e_repository
   run_task "$root_directory/.mise/tasks/env/plan.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   local root
   for root in machine-orb kubernetes-k0s bootstrap-flux; do
-    grep -q "^tofu -chdir=$root_directory/roots/$root plan -input=false " "$CALLS" || fail "$root not planned"
+    grep -q "^tofu -chdir=$MISE_PROJECT_ROOT/roots/$root plan -input=false " "$CALLS" || fail "$root not planned"
   done
 }
 
 @test "env:plan skips the bootstrap root while the environment records no cluster" {
+  e2e_repository
   forget_contract cluster-access.yaml
   run_task "$root_directory/.mise/tasks/env/plan.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   [[ "$output" == *"No cluster recorded yet, so the bootstrap is not planned"* ]]
-  grep -q "^tofu -chdir=$root_directory/roots/kubernetes-k0s plan -input=false " "$CALLS"
+  grep -q "^tofu -chdir=$MISE_PROJECT_ROOT/roots/kubernetes-k0s plan -input=false " "$CALLS"
   ! grep -q -- 'roots/bootstrap-flux' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
 }
 
 @test "env:plan plans only the machine root while the environment records no machine" {
+  e2e_repository
   forget_contract machine-hosts.yaml
   forget_contract cluster-access.yaml
   run_task "$root_directory/.mise/tasks/env/plan.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   [[ "$output" == *"No machine recorded yet, so k0s and the bootstrap are not planned"* ]]
-  grep -q "^tofu -chdir=$root_directory/roots/machine-orb plan -input=false " "$CALLS"
+  grep -q "^tofu -chdir=$MISE_PROJECT_ROOT/roots/machine-orb plan -input=false " "$CALLS"
   ! grep -qE -- 'roots/(kubernetes-k0s|bootstrap-flux)' "$CALLS" || fail "planned a later root: $(cat "$CALLS")"
 }
 
 @test "env:apply refuses a recorded cluster that cannot say whether k0s installs charts" {
+  e2e_repository
   K0S_CHARTS_ERROR="Unable to connect to the server: dial tcp: i/o timeout" run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot tell whether k0s installs Helm charts"*"i/o timeout"* ]]
@@ -238,6 +244,7 @@ local_state() {
 }
 
 @test "env:apply refuses a contract file it cannot read" {
+  e2e_repository
   printf 'name: [unclosed\n' >"$FIRMAMENT_STATE_HOME/environments/local/machine-hosts.yaml"
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
@@ -245,6 +252,7 @@ local_state() {
 }
 
 @test "env:apply applies a destroyed environment without asking it for k0s charts" {
+  e2e_repository
   forget_contract machine-hosts.yaml
   forget_contract cluster-access.yaml
   # The stub tofu writes no contract, so the wait that follows the applies
@@ -257,13 +265,51 @@ local_state() {
 }
 
 @test "env:apply applies a cluster where k0s installs no charts" {
+  e2e_repository
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ]
   grep -q 'get charts.helm.k0sproject.io' "$CALLS"
   grep -q ' apply -input=false -auto-approve ' "$CALLS"
 }
 
+# Records the commit each tofu call is told Flux follows.
+record_pinned_commit() {
+  printf '#!/usr/bin/env bash\nprintf "tofu %%s | commit=%%s\\n" "$*" "${TF_VAR_git_commit:-}" >>"$CALLS"\n' >"$stubs/tofu"
+}
+
+@test "env:apply pins Flux to the tip of the branch on origin in every pass of the Kubernetes root" {
+  e2e_repository
+  record_pinned_commit
+  run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  local tip
+  tip=$(git -C "$MISE_PROJECT_ROOT" rev-parse origin/feature/test)
+  run grep -E "^tofu -chdir=.*/kubernetes-k0s apply " "$CALLS"
+  [ "${#lines[@]}" -eq 2 ] || fail "${lines[*]}"
+  [[ "${lines[0]}" == *"| commit=$tip" ]] || fail "${lines[0]}"
+  [[ "${lines[1]}" == *"| commit=$tip" ]] || fail "${lines[1]}"
+}
+
+@test "env:apply refuses a checkout that is not the pushed tip, before any tool runs" {
+  e2e_repository
+  git -C "$MISE_PROJECT_ROOT" -c user.name=test -c user.email=test@example.test commit -q --allow-empty -m unpushed
+  run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"is not origin/feature/test"*"push or pull first"* ]] || fail "$output"
+  ! grep -q ' apply -input=false' "$CALLS"
+}
+
+@test "env:apply refuses uncommitted changes, which Flux cannot see" {
+  e2e_repository
+  : >"$MISE_PROJECT_ROOT/untracked-file"
+  run_task "$root_directory/.mise/tasks/env/apply.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the working tree has changes Flux cannot see"* ]] || fail "$output"
+  ! grep -q ' apply -input=false' "$CALLS"
+}
+
 @test "env:apply asks no cluster for charts while the machine-hosts contract is missing" {
+  e2e_repository
   forget_contract machine-hosts.yaml
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ] || fail "$output"
@@ -272,6 +318,7 @@ local_state() {
 }
 
 @test "env:apply refuses a cluster whose Helm charts k0s still installs" {
+  e2e_repository
   K0S_CHARTS=chart.helm.k0sproject.io/k0s-addon-chart-cilium run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"k0s still installs Helm charts on this cluster"*"k0s-addon-chart-cilium"* ]]
@@ -279,20 +326,22 @@ local_state() {
 }
 
 @test "k0s:apply renders, runs k0sctl, publishes the contract, then waits for the node" {
+  e2e_repository
   NODES=node/firmament run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   run grep -nE '^(tofu .* apply |k0sctl |kubectl |cilium )' "$CALLS"
   [ "${#lines[@]}" -eq 7 ] || fail "${lines[*]}"
   [[ "${lines[0]}" == *"get charts.helm.k0sproject.io "* ]]
-  [[ "${lines[1]}" == *"tofu -chdir=$root_directory/roots/kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=false "* ]]
+  [[ "${lines[1]}" == *"tofu -chdir=$MISE_PROJECT_ROOT/roots/kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=false "* ]]
   [[ "${lines[2]}" == *"k0sctl apply --config "* ]]
   [[ "${lines[3]}" == *"k0sctl kubeconfig --config "* ]]
   [[ "${lines[4]}" == *"get --raw /readyz "* ]]
-  [[ "${lines[5]}" == *"tofu -chdir=$root_directory/roots/kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=true "* ]]
+  [[ "${lines[5]}" == *"tofu -chdir=$MISE_PROJECT_ROOT/roots/kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=true "* ]]
   [[ "${lines[6]}" == *"get nodes -o name "* ]]
 }
 
 @test "k0s:apply refuses a cluster whose Helm charts k0s still installs, before k0sctl runs" {
+  e2e_repository
   K0S_CHARTS=chart.helm.k0sproject.io/k0s-addon-chart-cilium run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"k0s still installs Helm charts on this cluster"* ]]
@@ -308,6 +357,7 @@ local_state() {
 }
 
 @test "k0s:apply stops at a failed k0sctl apply and never publishes the contract" {
+  e2e_repository
   K0SCTL_APPLY_ERROR="connect: connection refused" run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"connection refused"* ]]
@@ -317,6 +367,7 @@ local_state() {
 }
 
 @test "k0s:apply kills a k0sctl apply that runs over FIRMAMENT_K0SCTL_SECONDS and never publishes" {
+  e2e_repository
   K0SCTL_APPLY_SLEEP=60 FIRMAMENT_K0SCTL_SECONDS=1 run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"ran over 1s"* ]]
@@ -325,6 +376,7 @@ local_state() {
 }
 
 @test "k0s:apply refuses a FIRMAMENT_K0SCTL_SECONDS that is not a whole number of seconds, before k0sctl runs" {
+  e2e_repository
   FIRMAMENT_K0SCTL_SECONDS=soon run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"FIRMAMENT_K0SCTL_SECONDS must be a whole number of seconds"* ]]
@@ -332,6 +384,7 @@ local_state() {
 }
 
 @test "k0s:apply keeps the old kubeconfig, leaves no temp file and never publishes when k0sctl kubeconfig fails" {
+  e2e_repository
   local state="$FIRMAMENT_STATE_HOME/environments/local"
   printf 'old\n' >"$state/admin.kubeconfig"
   K0SCTL_KUBECONFIG_ERROR="no such host" run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
@@ -343,6 +396,7 @@ local_state() {
 }
 
 @test "k0s:apply never publishes while the API does not answer /readyz at the kubeconfig's address" {
+  e2e_repository
   READYZ_ERROR="connection refused" FIRMAMENT_API_SECONDS=1 run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"the API server did not answer /readyz within 1s"* ]]
@@ -350,6 +404,7 @@ local_state() {
 }
 
 @test "k0s:apply writes a whole kubeconfig readable by its owner only, and a second run ends the same" {
+  e2e_repository
   local state="$FIRMAMENT_STATE_HOME/environments/local" first
   rm -f "$state/admin.kubeconfig"
   NODES=node/firmament run_task "$root_directory/.mise/tasks/k0s/apply.sh" local
@@ -1361,8 +1416,8 @@ mise run --yes env:destroy" ]
 run_changed() {
   local script="$1" changed="$2"
   MISE_PROJECT_ROOT=$(make_pushed_repository main environments/local/environment.yaml \
-    clusters/singularity/flux/kustomization.yaml README.md packages/cilium/values.yaml packages/flux/fluxinstance.yaml)
-  cp "$root_directory/clusters/singularity/flux/kustomization.yaml" "$MISE_PROJECT_ROOT/clusters/singularity/flux/"
+    clusters/singularity/payload/kustomization.yaml README.md packages/cilium/values.yaml packages/flux/fluxinstance.yaml)
+  cp "$root_directory/clusters/singularity/payload/kustomization.yaml" "$MISE_PROJECT_ROOT/clusters/singularity/payload/"
   commit_and_push "$MISE_PROJECT_ROOT" main layout
   git -C "$MISE_PROJECT_ROOT" switch -q -c feature
   printf 'x\n' >>"$MISE_PROJECT_ROOT/$changed"
@@ -1373,9 +1428,9 @@ run_changed() {
 # A pushed checkout whose local environment deploys cilium, which has a
 # cluster suite, and flux, which has none.
 verify_repository() {
-  make_repository clusters/singularity/flux/kustomization.yaml >/dev/null
+  make_repository clusters/singularity/payload/kustomization.yaml >/dev/null
   printf 'resources:\n  - ../../../packages/cilium\n  - ../../../packages/flux\n' \
-    >"$BATS_TEST_TMPDIR/repository/clusters/singularity/flux/kustomization.yaml"
+    >"$BATS_TEST_TMPDIR/repository/clusters/singularity/payload/kustomization.yaml"
   e2e_repository clusters/singularity/tests/cluster/chainsaw-test.yaml \
     packages/cilium/tests/cluster/chainsaw-test.yaml packages/flux/kustomization.yaml
 }
@@ -1449,7 +1504,7 @@ STUB
 @test "env:verify runs no suite when it cannot read the environment's Flux build" {
   record_chainsaw_kubeconfig
   verify_repository
-  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/clusters/singularity/flux/kustomization.yaml"
+  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/clusters/singularity/payload/kustomization.yaml"
   commit_and_push "$MISE_PROJECT_ROOT" feature/test broken
   run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -ne 0 ]
@@ -1457,7 +1512,7 @@ STUB
 }
 
 @test "env:verify fails for an environment whose cluster has no suite" {
-  MISE_PROJECT_ROOT=$(make_repository environments/bare/environment.yaml clusters/singularity/flux/kustomization.yaml)
+  MISE_PROJECT_ROOT=$(make_repository environments/bare/environment.yaml clusters/singularity/payload/kustomization.yaml)
   run_task "$root_directory/.mise/tasks/env/verify.sh" bare
   [ "$status" -ne 0 ]
   [[ "$output" == *"environment 'bare' runs a cluster with no suite at $MISE_PROJECT_ROOT/clusters/singularity/tests/cluster"* ]]
@@ -1611,8 +1666,9 @@ STUB
   MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/flux/schemas.sh"
   [ "$status" -eq 0 ]
   run grep -c '^curl -fsSL https://raw.githubusercontent.com/fluxcd/flux-schema/88c74c0294aaf472a8df920f92a2f28811a47d72/catalog/latest/' "$CALLS"
-  [ "$output" = 4 ]
+  [ "$output" = 5 ]
   [ -f "$repository/.mise/flux-schemas/core/configmap_v1.json" ]
+  [ -f "$repository/.mise/flux-schemas/kustomize.toolkit.fluxcd.io/kustomization_v1.json" ]
   [ -f "$repository/.mise/flux-schemas/helm.toolkit.fluxcd.io/helmrelease_v2.json" ]
 }
 
@@ -2066,6 +2122,26 @@ expect_planted_value_refused() {
   expect_planted_value_refused cluster-spec '.role = "workload"' role
 }
 
+@test "the Flux root lists no package, and its source is verified against the publish workflow" {
+  local flux="$root_directory/clusters/singularity/flux"
+  run yq -r '.resources[]' "$flux/kustomization.yaml"
+  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml')" ] || fail "$output"
+  [ "$(yq -r '.spec.verify.provider' "$flux/ocirepository.yaml")" = cosign ]
+  [ "$(yq -r '.spec.ref.tag' "$flux/ocirepository.yaml")" = '${git_commit}' ]
+  [[ "$(yq -r '.spec.verify.matchOIDCIdentity[0].subject' "$flux/ocirepository.yaml")" == *'workflows/publish\.yaml@refs/heads/'* ]]
+  [ "$(yq -r '.spec.path' "$flux/payload.yaml")" = ./clusters/singularity/payload ]
+  run yq -r '.resources[]' "$root_directory/clusters/singularity/payload/kustomization.yaml"
+  [ "$output" = "$(printf '../../../packages/cilium\n../../../packages/flux')" ] || fail "$output"
+}
+
+@test "contracts:lint refuses a git_commit that is not 40 lowercase hex characters in cluster-access" {
+  expect_planted_value_refused cluster-access '.runtime_info.git_commit = "abc123"' git_commit
+}
+
+@test "contracts:lint refuses a cluster-access contract without a git_commit" {
+  expect_planted_value_refused cluster-access 'del(.runtime_info.git_commit)' git_commit
+}
+
 @test "contracts:lint refuses a binding without a tenant in bindings-spec" {
   expect_planted_value_refused bindings-spec 'del(.[0].tenant)' tenant
 }
@@ -2090,6 +2166,20 @@ expect_planted_value_refused() {
 @test "k0sctl is pinned to one version and locked" {
   grep -Eq '^k0sctl = "[0-9]+\.[0-9]+\.[0-9]+"$' "$root_directory/mise.toml"
   grep -q '^\[\[tools.k0sctl\]\]' "$root_directory/mise.lock"
+}
+
+@test "cosign is pinned to one version and locked" {
+  grep -Eq '^cosign = "[0-9]+\.[0-9]+\.[0-9]+"$' "$root_directory/mise.toml"
+  grep -q '^\[\[tools.cosign\]\]' "$root_directory/mise.lock"
+}
+
+@test "publish.yaml pins every action by commit and never uses pull_request_target" {
+  workflow="$root_directory/.github/workflows/publish.yaml"
+  run grep -E '^\s*-?\s*uses:' "$workflow"
+  [ "$status" -eq 0 ]
+  [ -z "$(grep -vE '@[0-9a-f]{40}( |$)' <<<"$output")" ] || fail "unpinned action: $output"
+  run grep -q 'pull_request_target' "$workflow"
+  [ "$status" -ne 0 ]
 }
 
 @test "contracts:lint fails when there is no contract to check" {

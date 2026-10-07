@@ -28,7 +28,7 @@ locals {
 
   runtime_info_fields = [
     "api_address", "api_port", "kube_proxy_replacement", "cilium_datapath_mode",
-    "cilium_operator_replicas", "environment", "cluster", "git_branch",
+    "cilium_operator_replicas", "environment", "cluster", "git_branch", "git_commit",
   ]
 
   invalid_runtime_info_fields = [
@@ -39,7 +39,7 @@ locals {
 
 # The cluster-access contract, checked where it is read. The same fields
 # contracts/cluster-access/schema.cue declares: a kubeconfig path and the
-# eight runtime values, every one a string because Flux substitution is
+# nine runtime values, every one a string because Flux substitution is
 # plain text replacement.
 resource "terraform_data" "cluster_access_contract" {
   input = local.cluster
@@ -52,6 +52,10 @@ resource "terraform_data" "cluster_access_contract" {
     precondition {
       condition     = length(local.invalid_runtime_info_fields) == 0
       error_message = "cluster-access.yaml: ${join(", ", local.invalid_runtime_info_fields)} must be present and a string."
+    }
+    precondition {
+      condition     = try(can(regex("^[0-9a-f]{40}$", local.cluster.runtime_info.git_commit)), false)
+      error_message = "cluster-access.yaml: runtime_info.git_commit must be 40 lowercase hex characters."
     }
     precondition {
       condition     = try(length(setsubtract(keys(local.cluster.runtime_info), local.runtime_info_fields)) == 0 && length(setsubtract(keys(local.cluster), ["kubeconfig_path", "runtime_info"])) == 0, false)

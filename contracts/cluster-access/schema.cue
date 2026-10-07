@@ -17,5 +17,6 @@ package clusteraccess
 		environment!:              string
 		cluster!:                  string
 		git_branch!:               string
+		git_commit!:               =~"^[0-9a-f]{40}$"
 	})
 })

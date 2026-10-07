@@ -61,22 +61,6 @@ report_step_times() {
   mv "$current" "$kept"
 }
 
-# Fails unless the checkout is clean, untracked files included, and HEAD is
-# the tip of the branch on origin.
-require_pushed_checkout() {
-  local branch="$1" changes head tip
-  changes=$(git -C "$MISE_PROJECT_ROOT" status --porcelain --untracked-files=all) || return
-  if [[ -n "$changes" ]]; then
-    fail "the working tree has changes Flux cannot see; commit and push them first"
-    return
-  fi
-  tip=$(remote_branch_sha "$branch") || return
-  head=$(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD)
-  if [[ "$head" != "$tip" ]]; then
-    fail "HEAD $head is not origin/$branch $tip; push or pull first"
-  fi
-}
-
 # Fails when a branch on origin no longer points at the commit the run tested.
 remote_tip_unchanged() {
   local branch="$1" tested="$2" tip

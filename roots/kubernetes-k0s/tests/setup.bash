@@ -4,10 +4,11 @@ setup_file() {
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../.." && pwd)
   export k0s_root="$root_directory/roots/kubernetes-k0s"
   export bootstrap_root="$root_directory/roots/bootstrap-flux"
-  export flux_build="$root_directory/clusters/singularity/flux"
+  export payload_build="$root_directory/clusters/singularity/payload"
   export packages_directory="$root_directory/packages"
   export root_directory
   export TF_VAR_git_branch=feature/test
+  export TF_VAR_git_commit=0123456789abcdef0123456789abcdef01234567
   export TF_VAR_environment=local
 
   tofu -chdir="$k0s_root" init -input=false -reconfigure \

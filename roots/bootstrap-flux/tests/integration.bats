@@ -51,7 +51,7 @@ load ../../kubernetes-k0s/tests/setup.bash
 @test "bootstraps Cilium with the values Flux applies" {
   run bootstrap_values
   [ "$status" -eq 0 ]
-  flux_values=$(kubectl kustomize "$flux_build" | yq -r 'select(.kind == "ConfigMap" and .metadata.name == "cilium-values") | .data["values.yaml"]')
+  flux_values=$(kubectl kustomize "$payload_build" | yq -r 'select(.kind == "ConfigMap" and .metadata.name == "cilium-values") | .data["values.yaml"]')
   [ -n "$flux_values" ]
   [ "$(yq -r '.gitopsResources.prerequisites.charts[0].values' <<<"$output")" = "$flux_values" ]
 }
@@ -101,6 +101,12 @@ load ../../kubernetes-k0s/tests/setup.bash
   [ "$(yq -r '.managedResources.runtimeInfo.data.git_branch' <<<"$output")" = feature/test ]
   [ "$(yq -r '.managedResources.runtimeInfo.data.environment' <<<"$output")" = local ]
   [ "$(yq -r '.managedResources.runtimeInfo.data.cluster' <<<"$output")" = singularity ]
+}
+
+@test "tells Flux which commit to follow" {
+  run bootstrap_values
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.managedResources.runtimeInfo.data.git_commit' <<<"$output")" = 0123456789abcdef0123456789abcdef01234567 ]
 }
 
 @test "makes Flux follow a new branch as soon as the runtime values change" {

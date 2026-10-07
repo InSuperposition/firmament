@@ -13,6 +13,17 @@ variable "git_branch" {
   }
 }
 
+variable "git_commit" {
+  type        = string
+  default     = ""
+  description = "Commit of this repository that Flux applies: the tip of git_branch on origin. The publish pass writes it to the cluster-access contract and refuses an empty value."
+
+  validation {
+    condition     = var.git_commit == "" || can(regex("^[0-9a-f]{40}$", var.git_commit))
+    error_message = "git_commit must be empty or 40 lowercase hex characters."
+  }
+}
+
 variable "environment" {
   type        = string
   description = "Name of the environment this cluster runs in, as the mise tasks pass it; Flux reads it from the runtime values."

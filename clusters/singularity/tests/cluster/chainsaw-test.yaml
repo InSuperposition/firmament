@@ -1,5 +1,5 @@
-# Read-only assertions on this cluster itself: its nodes, and what k0s
-# must leave to Flux. Each package checks its own
+# Read-only assertions on this cluster itself: its nodes, the signed artifact
+# Flux applies, and what k0s must leave to Flux. Each package checks its own
 # workloads in packages/<name>/tests/cluster. The namespace is set so
 # chainsaw uses kube-system instead of creating one.
 apiVersion: chainsaw.kyverno.io/v1alpha1
@@ -37,3 +37,29 @@ spec:
             resource:
               apiVersion: helm.k0sproject.io/v1beta1
               kind: Chart
+    - name: Flux applies only the verified artifact of the pinned commit
+      # CI may still be publishing the tag, so the source gets as long as the
+      # root Kustomization does.
+      timeouts:
+        assert: 10m
+      try:
+        - assert:
+            resource:
+              apiVersion: source.toolkit.fluxcd.io/v1
+              kind: OCIRepository
+              metadata:
+                name: payload
+                namespace: flux-system
+              status:
+                (conditions[?type == 'SourceVerified'] | [0].status): "True"
+                (starts_with(artifact.revision || '', join('', [$values.git_commit, '@sha256:']))): true
+        - assert:
+            resource:
+              apiVersion: kustomize.toolkit.fluxcd.io/v1
+              kind: Kustomization
+              metadata:
+                name: payload
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+                (starts_with(lastAppliedRevision || '', join('', [$values.git_commit, '@sha256:']))): true

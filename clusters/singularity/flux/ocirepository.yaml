@@ -1,0 +1,19 @@
+# The artifact CI published for the pinned commit. Flux applies it only when
+# it carries a keyless cosign signature from the publish workflow on a branch
+# of this repository; ${git_commit} comes from the flux-runtime-info
+# ConfigMap, which env:apply sets from the pushed tip.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: payload
+  namespace: flux-system
+spec:
+  interval: 10m
+  url: oci://ghcr.io/insuperposition/firmament
+  ref:
+    tag: ${git_commit}
+  verify:
+    provider: cosign
+    matchOIDCIdentity:
+      - issuer: ^https://token\.actions\.githubusercontent\.com$
+        subject: ^https://github\.com/InSuperposition/firmament/\.github/workflows/publish\.yaml@refs/heads/.+$
