@@ -52,7 +52,7 @@ spec:
                 namespace: flux-system
               status:
                 (conditions[?type == 'SourceVerified'] | [0].status): "True"
-                (starts_with(artifact.revision, join('', [$values.git_commit, '@sha256:']))): true
+                (starts_with(artifact.revision || '', join('', [$values.git_commit, '@sha256:']))): true
         - assert:
             resource:
               apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -62,4 +62,4 @@ spec:
                 namespace: flux-system
               status:
                 (conditions[?type == 'Ready'] | [0].status): "True"
-                (starts_with(lastAppliedRevision, join('', [$values.git_commit, '@sha256:']))): true
+                (starts_with(lastAppliedRevision || '', join('', [$values.git_commit, '@sha256:']))): true
