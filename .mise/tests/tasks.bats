@@ -2092,6 +2092,20 @@ expect_planted_value_refused() {
   grep -q '^\[\[tools.k0sctl\]\]' "$root_directory/mise.lock"
 }
 
+@test "cosign is pinned to one version and locked" {
+  grep -Eq '^cosign = "[0-9]+\.[0-9]+\.[0-9]+"$' "$root_directory/mise.toml"
+  grep -q '^\[\[tools.cosign\]\]' "$root_directory/mise.lock"
+}
+
+@test "publish.yaml pins every action by commit and never uses pull_request_target" {
+  workflow="$root_directory/.github/workflows/publish.yaml"
+  run grep -E '^\s*-?\s*uses:' "$workflow"
+  [ "$status" -eq 0 ]
+  [ -z "$(grep -vE '@[0-9a-f]{40}( |$)' <<<"$output")" ] || fail "unpinned action: $output"
+  run grep -q 'pull_request_target' "$workflow"
+  [ "$status" -ne 0 ]
+}
+
 @test "contracts:lint fails when there is no contract to check" {
   MISE_PROJECT_ROOT=$(make_repository)
   run "$root_directory/.mise/tasks/contracts/lint.sh"
