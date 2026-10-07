@@ -103,6 +103,12 @@ load ../../kubernetes-k0s/tests/setup.bash
   [ "$(yq -r '.managedResources.runtimeInfo.data.cluster' <<<"$output")" = singularity ]
 }
 
+@test "tells Flux which commit to follow" {
+  run bootstrap_values
+  [ "$status" -eq 0 ]
+  [ "$(yq -r '.managedResources.runtimeInfo.data.git_commit' <<<"$output")" = 0123456789abcdef0123456789abcdef01234567 ]
+}
+
 @test "makes Flux follow a new branch as soon as the runtime values change" {
   run bootstrap_values
   [ "$status" -eq 0 ]

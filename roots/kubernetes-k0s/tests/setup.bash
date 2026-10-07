@@ -8,6 +8,7 @@ setup_file() {
   export packages_directory="$root_directory/packages"
   export root_directory
   export TF_VAR_git_branch=feature/test
+  export TF_VAR_git_commit=0123456789abcdef0123456789abcdef01234567
   export TF_VAR_environment=local
 
   tofu -chdir="$k0s_root" init -input=false -reconfigure \

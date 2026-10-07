@@ -91,6 +91,33 @@ remote_branch_sha() {
     fail "origin/$1 does not exist; push the branch first"
 }
 
+# Fails unless the checkout is clean, untracked files included, and HEAD is
+# the tip of the branch on origin.
+require_pushed_checkout() {
+  local branch="$1" changes head tip
+  changes=$(git -C "$MISE_PROJECT_ROOT" status --porcelain --untracked-files=all) || return
+  if [[ -n "$changes" ]]; then
+    fail "the working tree has changes Flux cannot see; commit and push them first"
+    return
+  fi
+  tip=$(remote_branch_sha "$branch") || return
+  head=$(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD)
+  if [[ "$head" != "$tip" ]]; then
+    fail "HEAD $head is not origin/$branch $tip; push or pull first"
+  fi
+}
+
+# Prints the commit Flux is pinned to: the tip of the branch on origin, after
+# a fetch, and only when this checkout is that tip with nothing uncommitted,
+# so the cluster applies the commit that was checked.
+pinned_git_commit() {
+  local branch
+  branch=$(git_branch) || return
+  git -C "${MISE_PROJECT_ROOT:?run this through mise}" fetch --quiet origin || return
+  require_pushed_checkout "$branch" || return
+  remote_branch_sha "$branch"
+}
+
 # Prints the revision Flux reports once it has applied a branch at the tip
 # origin had when last fetched.
 flux_revision() {
@@ -290,6 +317,9 @@ run_k0sctl_edge() {
 apply_kubernetes_root() {
   refuse_k0s_charts || return
   init_root kubernetes-k0s || return
+  local git_commit
+  git_commit=$(pinned_git_commit) || return
+  export TF_VAR_git_commit="$git_commit"
   tofu_in_root kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=false || return
   run_k0sctl_edge || return
   tofu_in_root kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=true
@@ -303,6 +333,8 @@ plan_kubernetes_root() {
   init_root kubernetes-k0s || return
   if [[ -n "$(contract_field_or_empty cluster-access.yaml .kubeconfig_path)" ]]; then
     published=true
+    TF_VAR_git_commit=$(remote_branch_sha "$(git_branch)") || return
+    export TF_VAR_git_commit
   fi
   tofu_in_root kubernetes-k0s plan -input=false -var="publish_cluster_access=$published"
 }

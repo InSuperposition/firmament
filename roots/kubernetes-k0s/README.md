@@ -30,6 +30,7 @@ runtime_info:
   environment: local
   cluster: singularity
   git_branch: main
+  git_commit: 0123456789abcdef0123456789abcdef01234567
 ```
 
 `runtime_info` carries the values the packages substitute. Flux
@@ -91,6 +92,7 @@ k0s goes with the machine.
 | `environments/<environment>/environment.yaml` | read from the repository: `cluster` names the cluster definition, which must have `clusters/<cluster>/flux/kustomization.yaml` |
 | `environments_directory` | tests only: where to read `<environment>/environment.yaml` instead of the repository's `environments/` |
 | `git_branch` | the mise tasks: the checked-out branch, or `FIRMAMENT_GIT_BRANCH` |
+| `git_commit` | the shared apply sequence: the tip of `git_branch` on origin; empty by default, and the publish pass refuses it empty |
 | `publish_cluster_access` | the shared apply sequence: `true` only in the publish pass; default `false` |
 
 State: `$FIRMAMENT_STATE_HOME/environments/<env>/kubernetes-k0s.tfstate`.

@@ -3,6 +3,7 @@
 variables {
   state_directory = "tests/fixtures"
   git_branch      = "feature/test"
+  git_commit      = "0123456789abcdef0123456789abcdef01234567"
   environment     = "local"
 }
 
@@ -129,4 +130,43 @@ run "rejects_an_environment_without_artifact_source_naming_the_field" {
   }
 
   expect_failures = [terraform_data.environment_contract]
+}
+
+run "accepts_an_empty_git_commit_while_nothing_is_published" {
+  command = plan
+
+  variables {
+    git_commit = ""
+  }
+}
+
+run "rejects_a_short_git_commit" {
+  command = plan
+
+  variables {
+    git_commit = "abc123"
+  }
+
+  expect_failures = [var.git_commit]
+}
+
+run "rejects_an_uppercase_git_commit" {
+  command = plan
+
+  variables {
+    git_commit = "0123456789ABCDEF0123456789abcdef01234567"
+  }
+
+  expect_failures = [var.git_commit]
+}
+
+run "refuses_to_publish_the_contract_without_a_git_commit" {
+  command = plan
+
+  variables {
+    git_commit             = ""
+    publish_cluster_access = true
+  }
+
+  expect_failures = [local_file.cluster_access]
 }

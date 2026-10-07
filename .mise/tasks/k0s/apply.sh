@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Install k0s with the Kubernetes root and k0sctl (render, k0sctl apply, kubeconfig, then the cluster-access contract), then wait for the node to register; Cilium and Flux come from env:apply"
+#MISE description="Install k0s with the Kubernetes root and k0sctl, from a clean checkout at the tip of its branch on origin (render, k0sctl apply, kubeconfig, then the cluster-access contract), then wait for the node to register; Cilium and Flux come from env:apply"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"

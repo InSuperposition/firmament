@@ -54,6 +54,7 @@ locals {
     environment              = var.environment
     cluster                  = local.cluster
     git_branch               = var.git_branch
+    git_commit               = var.git_commit
   }
 }
 
@@ -226,6 +227,13 @@ resource "local_file" "cluster_access" {
     kubeconfig_path = "${var.state_directory}/admin.kubeconfig"
     runtime_info    = local.runtime_info
   })
+
+  lifecycle {
+    precondition {
+      condition     = var.git_commit != ""
+      error_message = "git_commit is empty: Flux follows a pinned commit, so the cluster-access contract needs the pushed tip of ${var.git_branch}. Run this through the mise task, which sets it."
+    }
+  }
 }
 
 # Mesh allocations are append-only (C22, C78): the first value this root saw

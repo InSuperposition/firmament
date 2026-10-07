@@ -18,6 +18,7 @@ reads against the same fields at plan time, naming the field that fails.
 | `runtime_info.environment` | string | |
 | `runtime_info.cluster` | string | |
 | `runtime_info.git_branch` | string | |
+| `runtime_info.git_commit` | string | 40 lowercase hex characters |
 
 Every `runtime_info` value is a string: Flux substitution is plain text
 replacement, so a number would not substitute.

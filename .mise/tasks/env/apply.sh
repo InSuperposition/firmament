@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-#MISE description="Apply the machine, Kubernetes and bootstrap roots in order, then wait for Flux and Cilium to be ready and the node to be Ready"
+#MISE description="Apply the machine, Kubernetes and bootstrap roots in order, from a clean checkout at the tip of its branch on origin (Flux follows that commit), then wait for Flux and Cilium to be ready and the node to be Ready"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 require_environment >/dev/null
+# Flux follows the pushed tip, so stop before anything is applied when this
+# checkout is not it.
+pinned_git_commit >/dev/null
 
 init_root machine-orb
 claim_environment
