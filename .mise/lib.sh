@@ -402,17 +402,17 @@ machine_name() {
   printf '%s-%s\n' "$environment" "$cluster"
 }
 
-# Prints the directory of each package an environment's Flux build lists,
-# one per line, or nothing for an environment without a Flux build. Only
+# Prints the directory of each package an environment's payload lists, one
+# per line, or nothing for an environment without a payload. Only
 # directories are packages; a resource file the build lists is not.
 deployed_packages() {
   local directory resources resource
   directory=$(cluster_directory) || return
-  [[ -f "$directory/flux/kustomization.yaml" ]] || return 0
-  resources=$(yq -r '.resources[]' "$directory/flux/kustomization.yaml") || return
+  [[ -f "$directory/payload/kustomization.yaml" ]] || return 0
+  resources=$(yq -r '.resources[]' "$directory/payload/kustomization.yaml") || return
   while IFS= read -r resource; do
-    if [[ -n "$resource" && -d "$directory/flux/$resource" ]]; then
-      (cd "$directory/flux/$resource" && pwd)
+    if [[ -n "$resource" && -d "$directory/payload/$resource" ]]; then
+      (cd "$directory/payload/$resource" && pwd)
     fi
   done <<<"$resources"
 }

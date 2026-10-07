@@ -36,14 +36,3 @@ spec:
               substituteFrom:
                 - kind: ConfigMap
                   name: flux-runtime-info
-          - op: add
-            path: /spec/healthChecks
-            value:
-              - apiVersion: helm.toolkit.fluxcd.io/v2
-                kind: HelmRelease
-                name: cilium
-                namespace: flux-system
-              - apiVersion: helm.toolkit.fluxcd.io/v2
-                kind: HelmRelease
-                name: flux-operator
-                namespace: flux-system

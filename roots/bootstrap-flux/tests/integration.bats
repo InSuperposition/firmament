@@ -51,7 +51,7 @@ load ../../kubernetes-k0s/tests/setup.bash
 @test "bootstraps Cilium with the values Flux applies" {
   run bootstrap_values
   [ "$status" -eq 0 ]
-  flux_values=$(kubectl kustomize "$flux_build" | yq -r 'select(.kind == "ConfigMap" and .metadata.name == "cilium-values") | .data["values.yaml"]')
+  flux_values=$(kubectl kustomize "$payload_build" | yq -r 'select(.kind == "ConfigMap" and .metadata.name == "cilium-values") | .data["values.yaml"]')
   [ -n "$flux_values" ]
   [ "$(yq -r '.gitopsResources.prerequisites.charts[0].values' <<<"$output")" = "$flux_values" ]
 }

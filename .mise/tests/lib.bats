@@ -334,11 +334,11 @@ setup() {
 }
 
 @test "skips a deployed package without a suite and a package the environment does not deploy" {
-  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/flux/kustomization.yaml \
+  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/payload/kustomization.yaml \
     packages/tested/tests/cluster/chainsaw-test.yaml packages/untested/kustomization.yaml \
     packages/undeployed/tests/cluster/chainsaw-test.yaml)
   printf 'resources:\n  - ../../../packages/untested\n  - ../../../packages/tested\n' \
-    >"$MISE_PROJECT_ROOT/clusters/singularity/flux/kustomization.yaml"
+    >"$MISE_PROJECT_ROOT/clusters/singularity/payload/kustomization.yaml"
   MISE_ENV=x run cluster_suites
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 2 ]
@@ -369,10 +369,10 @@ setup() {
 }
 
 @test "reads conformance tests without comments or blank lines, from every package when none is chosen" {
-  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/flux/kustomization.yaml \
+  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/payload/kustomization.yaml \
     packages/net-a/tests/conformance packages/net-b/tests/conformance)
   printf 'resources:\n  - ../../../packages/net-a\n  - ../../../packages/net-b\n' \
-    >"$MISE_PROJECT_ROOT/clusters/singularity/flux/kustomization.yaml"
+    >"$MISE_PROJECT_ROOT/clusters/singularity/payload/kustomization.yaml"
   printf '# policy tests\n\nclient-egress\n  # indented comment\n' >"$MISE_PROJECT_ROOT/packages/net-a/tests/conformance"
   printf 'to-fqdns\n' >"$MISE_PROJECT_ROOT/packages/net-b/tests/conformance"
   MISE_ENV=x run conformance_patterns
@@ -413,10 +413,10 @@ setup() {
 # A repository on main, pushed to origin, whose environment x runs a cluster that deploys
 # cilium and flux but not policy-kyverno, then a branch off it.
 branch_repository() {
-  MISE_PROJECT_ROOT=$(make_pushed_repository main environments/x/environment.yaml clusters/singularity/flux/kustomization.yaml roots/r/main.tf \
+  MISE_PROJECT_ROOT=$(make_pushed_repository main environments/x/environment.yaml clusters/singularity/payload/kustomization.yaml roots/r/main.tf \
     packages/cilium/values.yaml packages/flux/fluxinstance.yaml packages/policy-kyverno/policy.yaml README.md)
   printf 'resources:\n  - ../../../packages/cilium\n  - ../../../packages/flux\n' \
-    >"$MISE_PROJECT_ROOT/clusters/singularity/flux/kustomization.yaml"
+    >"$MISE_PROJECT_ROOT/clusters/singularity/payload/kustomization.yaml"
   commit_and_push "$MISE_PROJECT_ROOT" main packages
   git -C "$MISE_PROJECT_ROOT" switch -q -c feature
 }
@@ -487,18 +487,18 @@ branch_repository() {
 }
 
 @test "counts only directories the Flux build lists as packages" {
-  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/flux/kustomization.yaml clusters/singularity/flux/namespace.yaml \
+  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/payload/kustomization.yaml clusters/singularity/payload/namespace.yaml \
     packages/cilium/kustomization.yaml)
   printf 'resources:\n  - namespace.yaml\n  - ../../../packages/cilium\n' \
-    >"$MISE_PROJECT_ROOT/clusters/singularity/flux/kustomization.yaml"
+    >"$MISE_PROJECT_ROOT/clusters/singularity/payload/kustomization.yaml"
   MISE_ENV=x run deployed_packages
   [ "$status" -eq 0 ]
   [ "$output" = "$MISE_PROJECT_ROOT/packages/cilium" ]
 }
 
 @test "fails when the cluster's Flux build cannot be read" {
-  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/flux/kustomization.yaml)
-  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/clusters/singularity/flux/kustomization.yaml"
+  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/payload/kustomization.yaml)
+  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/clusters/singularity/payload/kustomization.yaml"
   MISE_ENV=x run cluster_suites
   [ "$status" -ne 0 ]
 }

@@ -1416,8 +1416,8 @@ mise run --yes env:destroy" ]
 run_changed() {
   local script="$1" changed="$2"
   MISE_PROJECT_ROOT=$(make_pushed_repository main environments/local/environment.yaml \
-    clusters/singularity/flux/kustomization.yaml README.md packages/cilium/values.yaml packages/flux/fluxinstance.yaml)
-  cp "$root_directory/clusters/singularity/flux/kustomization.yaml" "$MISE_PROJECT_ROOT/clusters/singularity/flux/"
+    clusters/singularity/payload/kustomization.yaml README.md packages/cilium/values.yaml packages/flux/fluxinstance.yaml)
+  cp "$root_directory/clusters/singularity/payload/kustomization.yaml" "$MISE_PROJECT_ROOT/clusters/singularity/payload/"
   commit_and_push "$MISE_PROJECT_ROOT" main layout
   git -C "$MISE_PROJECT_ROOT" switch -q -c feature
   printf 'x\n' >>"$MISE_PROJECT_ROOT/$changed"
@@ -1428,9 +1428,9 @@ run_changed() {
 # A pushed checkout whose local environment deploys cilium, which has a
 # cluster suite, and flux, which has none.
 verify_repository() {
-  make_repository clusters/singularity/flux/kustomization.yaml >/dev/null
+  make_repository clusters/singularity/payload/kustomization.yaml >/dev/null
   printf 'resources:\n  - ../../../packages/cilium\n  - ../../../packages/flux\n' \
-    >"$BATS_TEST_TMPDIR/repository/clusters/singularity/flux/kustomization.yaml"
+    >"$BATS_TEST_TMPDIR/repository/clusters/singularity/payload/kustomization.yaml"
   e2e_repository clusters/singularity/tests/cluster/chainsaw-test.yaml \
     packages/cilium/tests/cluster/chainsaw-test.yaml packages/flux/kustomization.yaml
 }
@@ -1504,7 +1504,7 @@ STUB
 @test "env:verify runs no suite when it cannot read the environment's Flux build" {
   record_chainsaw_kubeconfig
   verify_repository
-  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/clusters/singularity/flux/kustomization.yaml"
+  printf 'resources: [\n' >"$MISE_PROJECT_ROOT/clusters/singularity/payload/kustomization.yaml"
   commit_and_push "$MISE_PROJECT_ROOT" feature/test broken
   run_task "$root_directory/.mise/tasks/env/verify.sh" local
   [ "$status" -ne 0 ]
@@ -1512,7 +1512,7 @@ STUB
 }
 
 @test "env:verify fails for an environment whose cluster has no suite" {
-  MISE_PROJECT_ROOT=$(make_repository environments/bare/environment.yaml clusters/singularity/flux/kustomization.yaml)
+  MISE_PROJECT_ROOT=$(make_repository environments/bare/environment.yaml clusters/singularity/payload/kustomization.yaml)
   run_task "$root_directory/.mise/tasks/env/verify.sh" bare
   [ "$status" -ne 0 ]
   [[ "$output" == *"environment 'bare' runs a cluster with no suite at $MISE_PROJECT_ROOT/clusters/singularity/tests/cluster"* ]]
@@ -1666,8 +1666,9 @@ STUB
   MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/flux/schemas.sh"
   [ "$status" -eq 0 ]
   run grep -c '^curl -fsSL https://raw.githubusercontent.com/fluxcd/flux-schema/88c74c0294aaf472a8df920f92a2f28811a47d72/catalog/latest/' "$CALLS"
-  [ "$output" = 4 ]
+  [ "$output" = 5 ]
   [ -f "$repository/.mise/flux-schemas/core/configmap_v1.json" ]
+  [ -f "$repository/.mise/flux-schemas/kustomize.toolkit.fluxcd.io/kustomization_v1.json" ]
   [ -f "$repository/.mise/flux-schemas/helm.toolkit.fluxcd.io/helmrelease_v2.json" ]
 }
 
@@ -2119,6 +2120,18 @@ expect_planted_value_refused() {
 
 @test "contracts:lint refuses a role in cluster-spec" {
   expect_planted_value_refused cluster-spec '.role = "workload"' role
+}
+
+@test "the Flux root lists no package, and its source is verified against the publish workflow" {
+  local flux="$root_directory/clusters/singularity/flux"
+  run yq -r '.resources[]' "$flux/kustomization.yaml"
+  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml')" ] || fail "$output"
+  [ "$(yq -r '.spec.verify.provider' "$flux/ocirepository.yaml")" = cosign ]
+  [ "$(yq -r '.spec.ref.tag' "$flux/ocirepository.yaml")" = '${git_commit}' ]
+  [[ "$(yq -r '.spec.verify.matchOIDCIdentity[0].subject' "$flux/ocirepository.yaml")" == *'workflows/publish\.yaml@refs/heads/'* ]]
+  [ "$(yq -r '.spec.path' "$flux/payload.yaml")" = ./clusters/singularity/payload ]
+  run yq -r '.resources[]' "$root_directory/clusters/singularity/payload/kustomization.yaml"
+  [ "$output" = "$(printf '../../../packages/cilium\n../../../packages/flux')" ] || fail "$output"
 }
 
 @test "contracts:lint refuses a git_commit that is not 40 lowercase hex characters in cluster-access" {
