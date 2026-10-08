@@ -86,7 +86,8 @@ record_contracts() {
   printf 'kubeconfig_path: %s\nruntime_info: {kube_proxy_replacement: "true", cilium_datapath_mode: netkit}\n' "$kubeconfig" \
     >"$state/cluster-access.yaml"
   : >"$state/admin.kubeconfig"
-  : >"$state/k0sctl.yaml"
+  printf 'spec:\n  k0s:\n    config:\n      spec:\n        api: {externalAddress: 192.168.139.10, port: 6443}\n' \
+    >"$state/k0sctl.yaml"
 }
 
 # Removes one contract file of the local environment, as destroying the

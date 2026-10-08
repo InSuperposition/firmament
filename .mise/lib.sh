@@ -275,7 +275,7 @@ wait_for_api() {
 # over admin.kubeconfig. FIRMAMENT_K0SCTL_SECONDS (default 900) bounds the
 # apply, so a hung SSH connection cannot hang the task.
 run_k0sctl_edge() {
-  local state config kubeconfig seconds temporary
+  local state config kubeconfig seconds temporary api_port
   require_environment >/dev/null || return
   state="${TF_VAR_state_directory}"
   config="$state/k0sctl.yaml"
@@ -298,7 +298,15 @@ run_k0sctl_edge() {
   temporary=$(umask 077 && mktemp "$state/.admin.kubeconfig.XXXXXX") || return
   # shellcheck disable=SC2064 # the path is fixed now, on purpose
   trap "rm -f '$temporary'" EXIT
-  if ! (umask 077 && k0sctl kubeconfig --config "$config" >"$temporary"); then
+  # The kubeconfig names the API through OrbStack's forward on this host's
+  # loopback: macOS Local Network blocks unsigned tools from dialing the
+  # machine's own address, and the API certificate lists 127.0.0.1.
+  api_port=$(yq -r '.spec.k0s.config.spec.api.port // ""' "$config") || return
+  if [[ -z "$api_port" ]]; then
+    fail "$config has no spec.k0s.config.spec.api.port; the render pass of the Kubernetes root writes it"
+    return
+  fi
+  if ! (umask 077 && k0sctl kubeconfig --config "$config" --address "https://127.0.0.1:${api_port}" >"$temporary"); then
     rm -f "$temporary"
     trap - EXIT
     fail "k0sctl kubeconfig failed; the cluster-access contract stays withdrawn, and rerunning is safe"
