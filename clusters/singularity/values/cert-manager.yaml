@@ -1,0 +1,4 @@
+# The cert-manager chart's values on this cluster. The chart installs its
+# CRDs with the release, so Issuers and Certificates can follow.
+crds:
+  enabled: true
