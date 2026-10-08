@@ -2125,11 +2125,12 @@ expect_planted_value_refused() {
 @test "the Flux root lists no package, and its source is verified against the publish workflow" {
   local flux="$root_directory/clusters/singularity/flux"
   run yq -r '.resources[]' "$flux/kustomization.yaml"
-  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml')" ] || fail "$output"
+  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml\nrendered.yaml')" ] || fail "$output"
   [ "$(yq -r '.spec.verify.provider' "$flux/ocirepository.yaml")" = cosign ]
   [ "$(yq -r '.spec.ref.tag' "$flux/ocirepository.yaml")" = '${git_commit}' ]
   [[ "$(yq -r '.spec.verify.matchOIDCIdentity[0].subject' "$flux/ocirepository.yaml")" == *'workflows/publish\.yaml@refs/heads/'* ]]
   [ "$(yq -r '.spec.path' "$flux/payload.yaml")" = ./clusters/singularity/payload ]
+  [ "$(yq -r '.spec.path' "$flux/rendered.yaml")" = './clusters/singularity/rendered/${environment}' ]
   run yq -r '.resources[]' "$root_directory/clusters/singularity/payload/kustomization.yaml"
   [ "$output" = "$(printf '../../../packages/cilium\n../../../packages/flux')" ] || fail "$output"
 }
