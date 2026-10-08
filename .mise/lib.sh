@@ -758,15 +758,16 @@ wait_for_cilium_values() {
 # Waits until the cluster is healthy after an apply. The first Cilium wait
 # retries while k0s restarts the API server, whereas kubectl fails on the
 # first refused connection. Then the FluxInstance and the Cilium release
-# must be Ready, and Cilium is checked again in case helm-controller rolled
-# its pods meanwhile. It does not wait for Flux to apply the pushed commit;
+# must be Ready (Flux creates the release after the FluxInstance, so the wait
+# starts with its creation), and Cilium is checked again in case
+# helm-controller rolled its pods meanwhile. It does not wait for Flux to apply the pushed commit;
 # env:verify does, and cilium:verify then checks the release it deploys.
 wait_for_cluster() {
   local kubeconfig
   kubeconfig=$(environment_kubeconfig) || return
   cilium --kubeconfig "$kubeconfig" status --wait --wait-duration=10m --interactive=false
   kubectl --kubeconfig "$kubeconfig" -n flux-system wait --for=condition=Ready fluxinstance/flux --timeout=10m
-  kubectl --kubeconfig "$kubeconfig" -n flux-system wait --for=condition=Ready helmrelease/cilium --timeout=10m
+  kubectl --kubeconfig "$kubeconfig" -n flux-system wait --for=create --for=condition=Ready helmrelease/cilium --timeout=10m
   cilium --kubeconfig "$kubeconfig" status --wait --wait-duration=10m --interactive=false
   kubectl --kubeconfig "$kubeconfig" wait --for=condition=Ready node --all --timeout=5m
 }
