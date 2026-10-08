@@ -12,6 +12,9 @@ spec:
   retryInterval: 1m
   timeout: 10m
   prune: true
+  # Ready only when every release it carries is Ready, so what depends on the
+  # charts' CRDs can wait for this Kustomization.
+  wait: true
   sourceRef:
     kind: OCIRepository
     name: payload

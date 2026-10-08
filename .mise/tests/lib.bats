@@ -496,6 +496,20 @@ branch_repository() {
   [ "$output" = "$MISE_PROJECT_ROOT/packages/cilium" ]
 }
 
+@test "counts a package the cluster binds although its Flux build does not list it" {
+  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/payload/kustomization.yaml clusters/singularity/packages.yaml \
+    packages/cilium/kustomization.yaml packages/rendered/tests/cluster/chainsaw-test.yaml)
+  printf 'resources:\n  - ../../../packages/cilium\n' \
+    >"$MISE_PROJECT_ROOT/clusters/singularity/payload/kustomization.yaml"
+  printf -- '- package: cilium\n  namespace: kube-system\n  tenant: platform\n- package: rendered\n  namespace: rendered\n  tenant: platform\n- package: nodir\n  namespace: nodir\n  tenant: platform\n' \
+    >"$MISE_PROJECT_ROOT/clusters/singularity/packages.yaml"
+  MISE_ENV=x run deployed_packages
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 2 ]
+  [ "${lines[0]}" = "$MISE_PROJECT_ROOT/packages/cilium" ]
+  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/packages/rendered" ]
+}
+
 @test "fails when the cluster's Flux build cannot be read" {
   MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/payload/kustomization.yaml)
   printf 'resources: [\n' >"$MISE_PROJECT_ROOT/clusters/singularity/payload/kustomization.yaml"
