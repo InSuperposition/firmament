@@ -67,6 +67,12 @@ render() {
   grep -q 'requests.cpu: "16"' "$BATS_TEST_TMPDIR/out/namespace/flux-system_v1_resourcequota_tenant.yaml"
 }
 
+@test "each namespace defaults container requests so its quota admits pods that set none" {
+  render local "$BATS_TEST_TMPDIR/out"
+  grep -q 'defaultRequest:' "$BATS_TEST_TMPDIR/out/namespace/kube-system_v1_limitrange_tenant-defaults.yaml"
+  grep -q 'defaultRequest:' "$BATS_TEST_TMPDIR/out/namespace/flux-system_v1_limitrange_tenant-defaults.yaml"
+}
+
 @test "two renders of one environment are byte-identical" {
   render local "$BATS_TEST_TMPDIR/first"
   render local "$BATS_TEST_TMPDIR/second"

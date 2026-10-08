@@ -30,6 +30,9 @@ import (
 			"namespace-\(nsName)": #Namespace & {
 				_config: {environment: config.environment, name: nsName, tenant: tenantName}
 			}
+			"limitrange-\(nsName)": #LimitRange & {
+				_config: name: nsName
+			}
 			"resourcequota-\(nsName)": #ResourceQuota & {
 				_config: {name: nsName, quota: config.tenants[tenantName].quota}
 			}
