@@ -6,6 +6,7 @@ import (
 
 	bindingsspec "firmament.dev/firmament/contracts/bindings-spec:bindingsspec"
 	environmentspec "firmament.dev/firmament/contracts/environment:environment"
+	packagespec "firmament.dev/firmament/contracts/package-spec:packagespec"
 	tenantspec "firmament.dev/firmament/contracts/tenant-spec:tenantspec"
 )
 
@@ -13,6 +14,15 @@ import (
 _environmentFiles: _ @embed(glob=environments/*/environment.yaml)
 _tenantFiles:      _ @embed(glob=environments/*/tenants/*.yaml)
 _bindingFiles:     _ @embed(glob=clusters/*/packages.yaml)
+_packageFiles:     _ @embed(glob=packages/*/package.yaml)
+
+// A package is named by its folder.
+packages: {[string]: packagespec.#Package}
+packages: {
+	for path, data in _packageFiles {
+		(strings.Split(path, "/")[1]): data & {name: strings.Split(path, "/")[1]}
+	}
+}
 
 environments: {[string]: environmentspec.#Environment}
 environments: {
@@ -35,10 +45,12 @@ bindings: {
 	}
 }
 
-// A binding names a tenant its environment defines, and one namespace has
-// one tenant. Referencing the tenant makes a missing one an error that names it.
+// A binding names a package that exists and a tenant its environment
+// defines, and one namespace has one tenant. Referencing them makes a
+// missing one an error that names it.
 for envName, env in environments for binding in bindings[env.cluster] {
-	tenantDefined: (envName): (binding.tenant): tenants[envName][binding.tenant]
+	packageDefined: (envName): (binding.package): packages[binding.package]
+	tenantDefined: (envName): (binding.tenant):   tenants[envName][binding.tenant]
 }
 
 // The namespaces each environment declares, with their tenant.

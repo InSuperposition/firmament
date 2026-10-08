@@ -22,17 +22,38 @@ render() {
 }
 
 @test "a binding without a tenant is refused, naming the field" {
-  printf -- '- package: x\n  namespace: shop\n' >>clusters/singularity/packages.yaml
+  printf -- '- package: cilium\n  namespace: shop\n' >>clusters/singularity/packages.yaml
   run cue vet -c .:inputs
   [ "$status" -ne 0 ]
   [[ "$output" == *tenant* ]]
 }
 
 @test "a binding to a tenant the environment does not define is refused, naming it" {
-  printf -- '- package: x\n  namespace: shop\n  tenant: ghost\n' >>clusters/singularity/packages.yaml
+  printf -- '- package: cilium\n  namespace: shop\n  tenant: ghost\n' >>clusters/singularity/packages.yaml
   run cue vet -c .:inputs
   [ "$status" -ne 0 ]
   [[ "$output" == *ghost* ]]
+}
+
+@test "a binding to a package that does not exist is refused, naming it" {
+  printf -- '- package: ghost\n  namespace: shop\n  tenant: platform\n' >>clusters/singularity/packages.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *ghost* ]]
+}
+
+@test "a package.yaml whose name differs from its folder is refused, naming both" {
+  sed -i.bak 's/^name: flux$/name: fluxx/' packages/flux/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *fluxx* ]]
+}
+
+@test "a package.yaml pin equals the chart the bootstrap installs" {
+  for package in cilium flux; do
+    digest=$(yq -r '.pin.digest' "packages/$package/package.yaml")
+    [ "$digest" = "$(yq -r '.spec.ref.digest' "packages/$package/ocirepository.yaml")" ]
+  done
 }
 
 @test "a tenant without a kind is refused, naming the field" {

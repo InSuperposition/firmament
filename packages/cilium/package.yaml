@@ -1,0 +1,7 @@
+name: cilium
+layer: network
+pin:
+  source: oci://quay.io/cilium/charts/cilium
+  version: 1.20.2
+  digest: sha256:a7c12d330dd96bfcda3bf057b24be8f36566c34868265f930f776dff6f42d838
+bootstrap: true
