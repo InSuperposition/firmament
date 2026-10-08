@@ -25,9 +25,8 @@
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
 # reports $ORB_STATE (default running), and $HOST_DNS_ERROR, $ORB_DNS_ERROR
 # and $READYZ_ERROR make the Mac's lookup, the machine's lookup and the API
-# server's /readyz fail, the last with that message; the same probe by the
-# machine's address (the name's relay skipped) still fails unless
-# $IP_READYZ_OK is set.
+# server's /readyz fail, the last with that message; the same probe from
+# inside the machine still fails unless $MACHINE_READYZ_OK is set.
 # `cilium hubble port-forward` and `kubectl port-forward` listen on the local
 # port they are given, as the real ones do, until the first connection closes.
 setup_stubs() {
@@ -140,9 +139,8 @@ case "\$*" in
   *" getent hosts "*)
     if [[ -n "\${ORB_DNS_ERROR:-}" ]]; then exit 2; fi
     printf 'fd07:b51a:cc66:f0::fe  %s\\n' "\${*: -1}" ;;
-  *"config view"*) printf 'https://firmament.orb.local:6443' ;;
-  *"--server https://"*"get --raw /readyz"*)
-    if [[ -n "\${READYZ_ERROR:-}" && -z "\${IP_READYZ_OK:-}" ]]; then printf '%s\\n' "\$READYZ_ERROR" >&2; exit 1; fi
+  *"k0s kubectl get --raw /readyz"*)
+    if [[ -n "\${READYZ_ERROR:-}" && -z "\${MACHINE_READYZ_OK:-}" ]]; then printf '%s\\n' "\$READYZ_ERROR" >&2; exit 1; fi
     printf 'ok' ;;
   *"get --raw /readyz"*)
     if [[ -n "\${READYZ_ERROR:-}" ]]; then printf '%s\\n' "\$READYZ_ERROR" >&2; exit 1; fi

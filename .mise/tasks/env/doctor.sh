@@ -32,15 +32,11 @@ probe() {
   timeout --foreground -k 5 15 "$@"
 }
 
-# Asks the API server at the machine's own address, checking its certificate
-# for the name the kubeconfig uses. Succeeds only when that answers.
-reaches_api_by_address() {
-  local kubeconfig=$1 address=$2 server
-  [[ -n "$address" ]] || return 1
-  server=$(probe kubectl --kubeconfig "$kubeconfig" config view --minify -o 'jsonpath={.clusters[0].cluster.server}') || return 1
-  server=${server#https://}
-  probe kubectl --kubeconfig "$kubeconfig" --server "https://$address:${server##*:}" --tls-server-name "${server%:*}" \
-    get --raw /readyz >/dev/null 2>&1
+# Asks the API server from inside the machine, which needs neither the
+# kubeconfig's address nor macOS Local Network access. Succeeds only when
+# that answers.
+answers_inside_machine() {
+  probe orb -m "$1" sudo k0s kubectl get --raw /readyz >/dev/null 2>&1
 }
 
 state="$TF_VAR_state_directory"
@@ -94,7 +90,6 @@ elif [[ "$orbstack" != Running ]]; then
 else
   machine_info=$(probe orb info "$machine" --format json 2>/dev/null) || machine_info=""
   machine_state=$(jq -r '.record.state // empty' <<<"$machine_info" 2>/dev/null) || machine_state=""
-  machine_address=$(jq -r '.ip4 // empty' <<<"$machine_info" 2>/dev/null) || machine_address=""
   if [[ "$machine_state" == running ]]; then
     passed machine "$machine is running"
   elif [[ -n "$machine_state" ]]; then
@@ -132,12 +127,15 @@ else
     elif error=$(probe kubectl --kubeconfig "$kubeconfig" get --raw /readyz 2>&1 >/dev/null); then
       passed api "the API server is ready"
     elif [[ "$error" == *"no route to host"* ]]; then
-      failed api "no route to the API server; a background agent session without macOS Local Network access gets this" \
-        "allow the app in System Settings > Privacy & Security > Local Network, or run from a terminal"
-    elif reaches_api_by_address "$kubeconfig" "$machine_address"; then
-      # OrbStack answers the name through a relay address of its own, and
-      # that relay sometimes stops answering while the machine still does.
-      failed api "the machine answers at $machine_address but its .orb.local name does not: $(head -n 1 <<<"$error")" \
+      # k0s:apply writes the kubeconfig with the loopback address OrbStack
+      # forwards; an older one names the machine's own address, which macOS
+      # Local Network blocks for a background agent session.
+      failed api "no route to the address the kubeconfig names: $(head -n 1 <<<"$error")" \
+        "mise run k0s:apply $environment, which writes the kubeconfig with the loopback address"
+    elif answers_inside_machine "$machine"; then
+      # The API is ready on the machine, so OrbStack's forward to the host
+      # is what stopped answering.
+      failed api "the machine answers inside but the kubeconfig's address does not: $(head -n 1 <<<"$error")" \
         "orb restart $machine, then mise run orb:capture-stall $machine if it persists"
     else
       failed api "$(head -n 1 <<<"$error")" "mise run k0s:verify $environment"

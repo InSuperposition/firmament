@@ -1920,12 +1920,12 @@ run_doctor() {
   [[ "$output" == *"FAIL  machine dns: firmament cannot resolve ghcr.io"* ]]
 }
 
-@test "env:doctor explains no route to the API server as missing Local Network access" {
+@test "env:doctor sends a kubeconfig that names an unreachable address to k0s:apply" {
   local_state
   READYZ_ERROR='dial tcp 192.168.139.53:6443: connect: no route to host' run_doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *"FAIL  api: no route to the API server"* ]]
-  [[ "$output" == *"Local Network"* ]]
+  [[ "$output" == *"FAIL  api: no route to the address the kubeconfig names"* ]]
+  [[ "$output" == *"next: mise run k0s:apply local, which writes the kubeconfig with the loopback address"* ]]
 }
 
 @test "env:doctor reports an API server that is not ready" {
@@ -1936,13 +1936,13 @@ run_doctor() {
   [[ "$output" == *"next: mise run k0s:verify"* ]]
 }
 
-@test "env:doctor tells a dead .orb.local name from a dead machine" {
+@test "env:doctor tells a dead forward from a dead API server" {
   local_state
-  READYZ_ERROR='dial tcp 192.168.138.4:6443: connect: operation timed out' IP_READYZ_OK=1 run_doctor
+  READYZ_ERROR='dial tcp 127.0.0.1:6443: connect: connection refused' MACHINE_READYZ_OK=1 run_doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *"FAIL  api: the machine answers at 192.168.139.101 but its .orb.local name does not: dial tcp 192.168.138.4:6443: connect: operation timed out"* ]]
+  [[ "$output" == *"FAIL  api: the machine answers inside but the kubeconfig's address does not: dial tcp 127.0.0.1:6443: connect: connection refused"* ]]
   [[ "$output" == *"next: orb restart firmament"* ]]
-  grep -q -- '--server https://192.168.139.101:6443 --tls-server-name firmament.orb.local' "$CALLS"
+  grep -q 'orb -m firmament sudo k0s kubectl get --raw /readyz' "$CALLS"
 }
 
 @test "env:doctor probes the machine from a terminal without stopping orb" {
