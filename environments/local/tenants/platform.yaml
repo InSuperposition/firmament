@@ -1,0 +1,6 @@
+kind: platform
+quota:
+  cpu: "16"
+  memory: 32Gi
+administrators:
+  - platform-admins

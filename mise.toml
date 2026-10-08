@@ -41,7 +41,12 @@ yq = "4.53.6"
 
 [tasks.check]
 description = "Run every offline check: lint, validate and test"
-run = [{ task = "lint" }, { task = "tofu:validate" }, { task = "test" }]
+run = [
+  { task = "lint" },
+  { task = "tofu:validate" },
+  { task = "render" },
+  { task = "test" },
+]
 
 [tasks.format]
 description = "Run every *:format task"
@@ -66,6 +71,18 @@ run = ["hk check --all --step mise", "mise tasks validate"]
 [tasks."orb:test"]
 description = "Test the vm-orb module without a live VM"
 run = "bats modules/vm-orb/tests/unit.bats"
+
+[tasks.render]
+description = "Check the data files and render each environment's namespaces into clusters/<cluster>/rendered/<environment>; CI runs it before the artifact is pushed"
+env = { ENVIRONMENT = "local" }
+run = [
+  "cue vet -c .:inputs",
+  "timoni bundle build -f bundle.cue --runtime-from-env --output-dir clusters/singularity/rendered/local",
+]
+
+[tasks."render:test"]
+description = "Check that the render refuses bad data, renders the same bytes twice and keeps the vendored schema equal to its contract"
+run = "bats tests/render"
 
 [tasks."secrets:lint"]
 description = "Scan every file in the repository for secrets with betterleaks"
