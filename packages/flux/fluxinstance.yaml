@@ -14,6 +14,16 @@ spec:
   distribution:
     version: 2.9.5
     registry: ghcr.io/fluxcd
+  # Flux Operator owns the flux-system Namespace and marks it so
+  # kustomize-controller skips it, which leaves the rendered namespaces unable
+  # to label it. It stamps these labels on the Namespace and on the Flux
+  # objects instead, the same ones every tenant namespace carries. The tenant
+  # is the one the cluster's binding for flux names; the cluster suite
+  # asserts the label, so a drift fails there.
+  commonMetadata:
+    labels:
+      firmament.dev/tenant: platform
+      firmament.dev/environment: ${environment}
   components:
     - source-controller
     - kustomize-controller
