@@ -20,11 +20,11 @@
 
 **Why:** Once Flux verifies artifacts signed by the publish workflow (engine-flux), the Git branch and the workflow's permissions are part of the trust root. A loosened branch rule or a broader token permission is visible only on GitHub's settings page and would pass every offline check.
 
-**Context:** The plan's list of imperative edges has no row for repository settings. The stack has no GitHub provider and no token held for one, so start by deciding where that token lives (the secrets rule keeps it out of Git and OpenTofu state), then check what the provider can manage; package visibility is unverified.
+**Context:** The plan's list of imperative edges has no row for repository settings. The stack has no GitHub provider and no token held for one, so start by deciding where that token lives (the secrets rule keeps it out of Git and OpenTofu state), then check what the provider can manage. The `ghcr.io/insuperposition/firmament` package is public today (an anonymous `flux pull artifact` works); who may push a branch is the real control over what Flux accepts. The OpenTofu GitHub provider v6.13.0 offers `github_repository_ruleset` and `sha_pinning_required`, authenticated through `gh auth token`.
 
 **Effort:** M
 **Priority:** P3
-**Depends on:** engine-flux implementation
+**Depends on:** engine-flux (merged, #54)
 
 ### Validate Flux manifests with flux-schema 0.15.0 directly
 
@@ -36,7 +36,7 @@
 
 **Effort:** S
 **Priority:** P3
-**Depends on:** engine-flux implementation
+**Depends on:** engine-flux (merged, #54)
 
 ### Guard Flux artifact verification offline with CUE
 
@@ -48,7 +48,7 @@
 
 **Effort:** S
 **Priority:** P3
-**Depends on:** engine-flux implementation
+**Depends on:** engine-flux (merged, #54)
 
 ### Lint GitHub workflows with zizmor
 
@@ -60,7 +60,7 @@
 
 **Effort:** S
 **Priority:** P3
-**Depends on:** engine-flux implementation
+**Depends on:** engine-flux (merged, #54)
 
 ### Verify OrbStack writes known_hosts on a fresh install
 
