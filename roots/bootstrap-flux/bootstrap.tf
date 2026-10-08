@@ -74,3 +74,23 @@ module "bootstrap_flux" {
     ]
   }
 }
+
+# Flux Operator marks the flux-system Namespace so that kustomize-controller
+# skips it, which leaves the rendered namespaces unable to label it. The
+# bootstrap labels it the way they label every other tenant namespace, as a
+# separate field owner, so the operator's own labels stay untouched.
+resource "kubernetes_labels" "flux_system_tenant" {
+  api_version = "v1"
+  kind        = "Namespace"
+
+  metadata {
+    name = "flux-system"
+  }
+
+  labels = {
+    "firmament.dev/tenant"      = "platform"
+    "firmament.dev/environment" = local.cluster.runtime_info.environment
+  }
+
+  depends_on = [module.bootstrap_flux]
+}
