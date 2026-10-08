@@ -1,0 +1,6 @@
+- package: cilium
+  namespace: kube-system
+  tenant: platform
+- package: flux
+  namespace: flux-system
+  tenant: platform

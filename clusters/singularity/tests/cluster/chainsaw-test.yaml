@@ -63,3 +63,32 @@ spec:
               status:
                 (conditions[?type == 'Ready'] | [0].status): "True"
                 (starts_with(lastAppliedRevision || '', join('', [$values.git_commit, '@sha256:']))): true
+    - name: Flux applies the namespaces rendered from the bindings
+      timeouts:
+        assert: 10m
+      try:
+        - assert:
+            resource:
+              apiVersion: kustomize.toolkit.fluxcd.io/v1
+              kind: Kustomization
+              metadata:
+                name: rendered
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+                (starts_with(lastAppliedRevision || '', join('', [$values.git_commit, '@sha256:']))): true
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: flux-system
+                labels:
+                  firmament.dev/tenant: platform
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: ResourceQuota
+              metadata:
+                name: tenant
+                namespace: flux-system

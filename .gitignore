@@ -6,3 +6,6 @@ crash.log
 
 # Local roadmap and item plans; never tracked.
 .plan/
+
+# What CI renders from the data files; never tracked, packaged in the artifact.
+clusters/*/rendered/

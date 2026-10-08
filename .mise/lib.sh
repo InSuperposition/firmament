@@ -275,7 +275,7 @@ wait_for_api() {
 # over admin.kubeconfig. FIRMAMENT_K0SCTL_SECONDS (default 900) bounds the
 # apply, so a hung SSH connection cannot hang the task.
 run_k0sctl_edge() {
-  local state config kubeconfig seconds temporary
+  local state config kubeconfig seconds temporary api_port
   require_environment >/dev/null || return
   state="${TF_VAR_state_directory}"
   config="$state/k0sctl.yaml"
@@ -298,7 +298,15 @@ run_k0sctl_edge() {
   temporary=$(umask 077 && mktemp "$state/.admin.kubeconfig.XXXXXX") || return
   # shellcheck disable=SC2064 # the path is fixed now, on purpose
   trap "rm -f '$temporary'" EXIT
-  if ! (umask 077 && k0sctl kubeconfig --config "$config" >"$temporary"); then
+  # The kubeconfig names the API through OrbStack's forward on this host's
+  # loopback: macOS Local Network blocks unsigned tools from dialing the
+  # machine's own address, and the API certificate lists 127.0.0.1.
+  api_port=$(yq -r '.spec.k0s.config.spec.api.port // ""' "$config") || return
+  if [[ -z "$api_port" ]]; then
+    fail "$config has no spec.k0s.config.spec.api.port; the render pass of the Kubernetes root writes it"
+    return
+  fi
+  if ! (umask 077 && k0sctl kubeconfig --config "$config" --address "https://127.0.0.1:${api_port}" >"$temporary"); then
     rm -f "$temporary"
     trap - EXIT
     fail "k0sctl kubeconfig failed; the cluster-access contract stays withdrawn, and rerunning is safe"
@@ -750,15 +758,16 @@ wait_for_cilium_values() {
 # Waits until the cluster is healthy after an apply. The first Cilium wait
 # retries while k0s restarts the API server, whereas kubectl fails on the
 # first refused connection. Then the FluxInstance and the Cilium release
-# must be Ready, and Cilium is checked again in case helm-controller rolled
-# its pods meanwhile. It does not wait for Flux to apply the pushed commit;
+# must be Ready (Flux creates the release after the FluxInstance, so the wait
+# starts with its creation), and Cilium is checked again in case
+# helm-controller rolled its pods meanwhile. It does not wait for Flux to apply the pushed commit;
 # env:verify does, and cilium:verify then checks the release it deploys.
 wait_for_cluster() {
   local kubeconfig
   kubeconfig=$(environment_kubeconfig) || return
   cilium --kubeconfig "$kubeconfig" status --wait --wait-duration=10m --interactive=false
   kubectl --kubeconfig "$kubeconfig" -n flux-system wait --for=condition=Ready fluxinstance/flux --timeout=10m
-  kubectl --kubeconfig "$kubeconfig" -n flux-system wait --for=condition=Ready helmrelease/cilium --timeout=10m
+  kubectl --kubeconfig "$kubeconfig" -n flux-system wait --for=create --for=condition=Ready helmrelease/cilium --timeout=10m
   cilium --kubeconfig "$kubeconfig" status --wait --wait-duration=10m --interactive=false
   kubectl --kubeconfig "$kubeconfig" wait --for=condition=Ready node --all --timeout=5m
 }
