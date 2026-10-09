@@ -1,0 +1,16 @@
+name: openbao
+layer: trust
+pin:
+  source: oci://ghcr.io/openbao/charts/openbao
+  version: 0.30.1
+  digest: sha256:faaa5b3349d9f0e964d756db94eb831b5a7366bd7c557f5ce8d86a3b932e2f9f
+provides:
+  # The pod's TLS listener, not the Service port 8200 that maps to it: the
+  # network policy matches the port the pod listens on.
+  - capability: secrets
+    scope: cluster
+    port: 8443
+    protocol: TCP
+    readiness:
+      kind: StatefulSet
+      name: openbao

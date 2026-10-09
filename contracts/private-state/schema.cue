@@ -25,7 +25,7 @@ package privatestate
 
 #PrivateState: close({
 	openbao!: close({
-		// The static seal key: 32 random bytes, base64-encoded (C39).
+		// The static seal key: 32 random bytes in a binary file (C39).
 		seal_key!: #Secret
 		// The CA whose certificates may log in to OpenBao as an operator (C89).
 		operator_ca!: close({

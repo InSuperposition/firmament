@@ -357,7 +357,7 @@ setup() {
 @test "refuses a package the environment does not deploy, naming the ones it does" {
   run cluster_suites cilium,kyverno
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown package 'kyverno' for environment 'local'; choose from: cilium flux cert-manager"* ]]
+  [[ "$output" == *"unknown package 'kyverno' for environment 'local'; choose from: cilium flux cert-manager openbao"* ]]
 }
 
 @test "lists the conformance tests the chosen packages need" {

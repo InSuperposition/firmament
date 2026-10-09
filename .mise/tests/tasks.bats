@@ -2343,3 +2343,8 @@ mode_of() {
   [[ "$output" == *"nothing to seed"* ]]
   [ ! -e "$seed_state" ]
 }
+
+@test "the names openbao:seed creates equal the names the OpenBao config mounts" {
+  [ "$(cue eval -e '#SealSecretName' "$root_directory/packages/openbao/config" --out text)" = "$(sed -n 's/^readonly seal_secret=//p' "$root_directory/.mise/tasks/openbao/seed.sh")" ]
+  [ "$(cue eval -e '#OperatorCAConfigMapName' "$root_directory/packages/openbao/config" --out text)" = "$(sed -n 's/^readonly operator_ca_configmap=//p' "$root_directory/.mise/tasks/openbao/seed.sh")" ]
+}

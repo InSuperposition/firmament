@@ -9,7 +9,7 @@ schema (`schema.cue`) is closed. `mise run contracts:lint` checks the sample.
 
 | Field | Type | Rule |
 | --- | --- | --- |
-| `openbao.seal_key` | `path`, `mode` | the static seal key, 32 random bytes base64-encoded; mode `0600` |
+| `openbao.seal_key` | `path`, `mode` | the static seal key, 32 random bytes in a binary file; mode `0600` |
 | `openbao.operator_ca.certificate` | `path`, `mode` | the CA whose certificates may log in as operator; mode `0600` or `0644` |
 | `openbao.operator_ca.key` | `path`, `mode` | its key; mode `0600` |
 | `openbao.operator_client.certificate` | `path`, `mode` | one client certificate signed by that CA |

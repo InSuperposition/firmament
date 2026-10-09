@@ -78,6 +78,54 @@ render() {
   [[ "$output" == *cert-manager* ]]
 }
 
+@test "OpenBao's generated config equals its golden file" {
+  cue export .:inputs -e charts.local.openbao.values.server.ha.raft.config --out text >"$BATS_TEST_TMPDIR/openbao.hcl"
+  diff "$root_directory/packages/openbao/config/testdata/openbao.hcl" "$BATS_TEST_TMPDIR/openbao.hcl"
+}
+
+@test "an OpenBao role that does not decide require_cn is refused, naming the field" {
+  yq -i 'del(.pki.roles."cluster-leaf".require_cn)' clusters/singularity/openbao.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *require_cn* ]]
+}
+
+@test "an OpenBao role with an unsupported key_type is refused, naming the field" {
+  yq -i '.pki.roles."cluster-leaf".key_type = "dsa"' clusters/singularity/openbao.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *key_type* ]]
+}
+
+@test "a Kubernetes role that names an undeclared policy is refused, naming the policy" {
+  yq -i '.kubernetes.roles."cert-manager".policies = ["ghost"]' clusters/singularity/openbao.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *ghost* ]]
+}
+
+@test "an OpenBao data section the schema does not declare is refused, naming it" {
+  yq -i '.audit = {"type": "file"}' clusters/singularity/openbao.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *audit* ]]
+}
+
+@test "a values file that sets the key the OpenBao generator sets is refused, naming it" {
+  yq -i '.server.ha.raft.config = "ui = true"' clusters/singularity/values/openbao.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *config* ]]
+}
+
+@test "OpenBao installs through the chart module, in its own namespace, with the config in its values" {
+  render local "$BATS_TEST_TMPDIR/out"
+  release="$BATS_TEST_TMPDIR/out/openbao/helm.toolkit.fluxcd.io_v2_helmrelease_openbao.yaml"
+  [ "$(yq -r '.spec.targetNamespace' "$release")" = openbao ]
+  grep -q 'tls_acme_domains *= \["openbao.openbao.svc"\]' "$BATS_TEST_TMPDIR/out/openbao/v1_configmap_openbao-values.yaml"
+  [ -e "$BATS_TEST_TMPDIR/out/namespace/v1_namespace_openbao.yaml" ]
+}
+
 @test "a tenant without a kind is refused, naming the field" {
   sed -i.bak '/^kind:/d' environments/local/tenants/platform.yaml
   run cue vet -c .:inputs

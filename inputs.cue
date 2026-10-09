@@ -7,6 +7,7 @@ import (
 	bindingsspec "firmament.dev/firmament/contracts/bindings-spec:bindingsspec"
 	environmentspec "firmament.dev/firmament/contracts/environment:environment"
 	packagespec "firmament.dev/firmament/contracts/package-spec:packagespec"
+	openbaoconfig "firmament.dev/firmament/packages/openbao/config:openbaoconfig"
 	tenantspec "firmament.dev/firmament/contracts/tenant-spec:tenantspec"
 )
 
@@ -16,6 +17,7 @@ _tenantFiles:      _ @embed(glob=environments/*/tenants/*.yaml)
 _bindingFiles:     _ @embed(glob=clusters/*/packages.yaml)
 _packageFiles:     _ @embed(glob=packages/*/package.yaml)
 _valuesFiles:      _ @embed(glob=clusters/*/values/*.yaml)
+_openbaoFiles:     _ @embed(glob=clusters/*/openbao.yaml)
 
 // A package is named by its folder.
 packages: {[string]: packagespec.#Package}
@@ -74,6 +76,45 @@ chartValues: {
 	}
 }
 
+// OpenBao's data sections by cluster: clusters/<cluster>/openbao.yaml.
+openbaoData: {[string]: openbaoconfig.#Config}
+openbaoData: {
+	for path, data in _openbaoFiles {
+		(strings.Split(path, "/")[1]): data
+	}
+}
+
+// What a package's generator adds to its values file, by environment and
+// package. Every bound package has an entry, empty unless it has a generator.
+// A values file that sets a key the generator sets is refused, naming it.
+_generatedValues: {[string]: {[string]: {...}}}
+_generatedValues: {
+	for envName, env in environments {
+		(envName): {
+			for binding in bindings[env.cluster] {
+				(binding.package): {}
+			}
+		}
+	}
+}
+_generatedValues: {
+	for envName, env in environments for binding in bindings[env.cluster] if binding.package == "openbao" {
+		(envName): openbao: openbaoRendered[envName].values
+	}
+}
+
+// OpenBao's rendered config by environment. A regular field, not a hidden
+// one, so vetting the package also checks the cross-references it holds.
+openbaoRendered: {[string]: openbaoconfig.#Render}
+openbaoRendered: {
+	for envName, env in environments for binding in bindings[env.cluster] if binding.package == "openbao" {
+		(envName): {
+			config:    openbaoData[env.cluster]
+			namespace: binding.namespace
+		}
+	}
+}
+
 // The packages the bootstrap installs once and Flux then adopts. A field that
 // is optional in a package.yaml cannot be referenced, so they are collected
 // by iterating the fields.
@@ -94,7 +135,7 @@ charts: {
 				(binding.package): {
 					package:         packages[binding.package]
 					targetNamespace: binding.namespace
-					values:          chartValues[env.cluster][binding.package]
+					values:          chartValues[env.cluster][binding.package] & _generatedValues[envName][binding.package]
 				}
 			}
 		}
