@@ -126,6 +126,12 @@ render() {
   [ -e "$BATS_TEST_TMPDIR/out/namespace/v1_namespace_openbao.yaml" ]
 }
 
+@test "OpenBao's data-owner init container runs as root although the pod does not" {
+  run cue export .:inputs -e 'charts.local.openbao.values.server.extraInitContainers[0].securityContext' --out json
+  [ "$status" -eq 0 ]
+  [ "$(jq -c . <<<"$output")" = '{"runAsUser":0,"runAsNonRoot":false}' ]
+}
+
 @test "a tenant without a kind is refused, naming the field" {
   sed -i.bak '/^kind:/d' environments/local/tenants/platform.yaml
   run cue vet -c .:inputs

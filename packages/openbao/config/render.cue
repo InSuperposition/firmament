@@ -56,7 +56,9 @@ import (
 			name:  "data-owner"
 			image: config.storage.init_image
 			command: ["chown", "-R", "100:1000", #DataPath]
-			securityContext: runAsUser: 0
+			// The chart's pod runs as non-root; the init container is the one
+			// part that must not, or the kubelet refuses to create it.
+			securityContext: {runAsUser: 0, runAsNonRoot: false}
 			volumeMounts: [{name: "data", mountPath: #DataPath}]
 		}]
 	}
@@ -76,8 +78,7 @@ import (
 	_plain:  "http://127.0.0.1:\(#PlainListenerPort)/v1/pki"
 
 	_server: """
-		disable_mlock = true
-		api_addr      = \(strconv.Quote("https://\(_domain):\(#TLSListenerPort)"))
+		api_addr = \(strconv.Quote("https://\(_domain):\(#TLSListenerPort)"))
 
 		listener "tcp" {
 		  address         = "127.0.0.1:\(#PlainListenerPort)"

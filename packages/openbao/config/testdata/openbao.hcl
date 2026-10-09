@@ -1,5 +1,4 @@
-disable_mlock = true
-api_addr      = "https://openbao.openbao.svc:8443"
+api_addr = "https://openbao.openbao.svc:8443"
 
 listener "tcp" {
   address         = "127.0.0.1:8200"
