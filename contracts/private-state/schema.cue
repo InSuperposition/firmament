@@ -23,6 +23,14 @@ package privatestate
 	mode!: "0600" | "0644"
 })
 
+// A Raft snapshot of OpenBao and the SHA-256 of the root certificate it holds,
+// as lowercase hex. Optional: it exists only after a first snapshot.
+#Snapshot: close({
+	path!:             #FileName
+	mode!:             "0600"
+	root_fingerprint!: =~"^[0-9a-f]{64}$"
+})
+
 #PrivateState: close({
 	openbao!: close({
 		// The static seal key: 32 random bytes in a binary file (C39).
@@ -37,5 +45,9 @@ package privatestate
 			certificate!: #Certificate
 			key!:         #Secret
 		})
+		// The newest snapshot, and the one before it (kept so one bad save
+		// cannot erase the only good copy). Restore reads the newest only.
+		snapshot?:          #Snapshot
+		snapshot_previous?: #Snapshot
 	})
 })

@@ -22,3 +22,9 @@ wait_for_cluster
 # pod cannot start without them. The task does nothing while openbao is not
 # bound in the cluster.
 mise run openbao:seed
+# Then the root: bring the saved data back into a rebuilt OpenBao, publish
+# its root where cert-manager trusts it, and save the snapshot again. Each
+# task does nothing while openbao is not bound.
+mise run openbao:restore
+mise run openbao:root
+mise run openbao:snapshot

@@ -46,7 +46,9 @@ package openbaoconfig
 			service_account!: #Name
 			namespace!:       #Name
 			policies!: [#Name, ...]
-			audience!: string & !=""
+			// Checked against the token's audience when set; a role for the pod's
+			// own default token leaves it out.
+			audience?: string & !=""
 		})
 		}
 	})

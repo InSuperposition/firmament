@@ -14,6 +14,8 @@ schema (`schema.cue`) is closed. `mise run contracts:lint` checks the sample.
 | `openbao.operator_ca.key` | `path`, `mode` | its key; mode `0600` |
 | `openbao.operator_client.certificate` | `path`, `mode` | one client certificate signed by that CA |
 | `openbao.operator_client.key` | `path`, `mode` | its key; mode `0600` |
+| `openbao.snapshot` | `path`, `mode`, `root_fingerprint` | optional: the newest Raft snapshot and the SHA-256 (lowercase hex) of the root it holds; mode `0600` |
+| `openbao.snapshot_previous` | same | optional: the snapshot before it, kept by the next save |
 
 `path` is a file name beside the manifest, with no directory part.
 

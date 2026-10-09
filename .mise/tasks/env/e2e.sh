@@ -2,16 +2,22 @@
 #MISE description="Rebuild the environment's cluster from scratch from the pushed branch and run every live check against it; with --from-branch, also checks that traffic survives the switch; destroys the cluster and leaves it destroyed"
 #MISE confirm="Destroy environment {{usage.environment}}, rebuild it for the end-to-end run, and leave it destroyed?"
 #USAGE flag "--from-branch <branch>" help="Also test an upgrade: build the cluster from this branch, already merged into origin/main, then apply the checked-out branch over it"
+#USAGE flag "--rebuild-check" help="After verify, destroy and apply again, and check that OpenBao's root fingerprint is the same and the checks still pass (adds one rebuild to the run)"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
+# shellcheck source=../../lib-openbao.sh
+source "${MISE_PROJECT_ROOT}/.mise/lib-openbao.sh"
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
 environment=$(require_environment)
 from_branch="${usage_from_branch:-}"
+# shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
+rebuild_check="${usage_rebuild_check:-false}"
 
 #   destroy > [--from-branch: apply baseline > verify baseline > snapshot >
-#   start traffic >] apply > verify > [--from-branch: compare snapshot >
-#   check traffic >] conformance > destroy
+#   start traffic >] apply > verify > [--rebuild-check: record the root >
+#   destroy > apply > compare the root > verify] > [--from-branch: compare
+#   snapshot > check traffic >] conformance > destroy
 #
 # Flux reads the branch from origin, so the run tests exactly the pushed
 # commit: it refuses a checkout that differs from origin, and fails if
@@ -138,6 +144,21 @@ check_traffic() {
   mise run cilium:traffic-check | tee "$scratch/traffic"
 }
 
+# Records OpenBao's root fingerprint before the rebuild.
+record_root() {
+  openbao_context || return
+  recorded_root=$(openbao_live_fingerprint)
+}
+
+# Fails when the rebuilt OpenBao serves another root than the one recorded.
+root_unchanged() {
+  local now
+  openbao_context || return
+  now=$(openbao_live_fingerprint) || return
+  [[ "$now" == "$recorded_root" ]] ||
+    fail "the rebuilt OpenBao's root is $now, not the $recorded_root it had before the rebuild"
+}
+
 step mise run --yes env:destroy
 if [[ -n "$from_branch" ]]; then
   # The baseline applies and verifies with its own configuration, tasks and
@@ -157,6 +178,15 @@ if [[ -z "$from_branch" ]]; then
 fi
 step mise run verify
 step mise run network-policy:verify
+if [[ "$rebuild_check" == true ]]; then
+  # env:destroy saves OpenBao's snapshot, env:apply restores it: the root
+  # and the Issuer's trust in it must come back unchanged.
+  step record_root
+  step mise run --yes env:destroy
+  step mise run env:apply
+  step root_unchanged
+  step mise run verify
+fi
 if [[ -n "$from_branch" ]]; then
   step workloads_unchanged
   # An upgrade that leaves the agent alone would leave the traffic check with

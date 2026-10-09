@@ -190,7 +190,7 @@ local_state() {
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   local state="$FIRMAMENT_STATE_HOME/environments/local" k0s="$MISE_PROJECT_ROOT/roots/kubernetes-k0s"
-  run grep -E '^(tofu -chdir=.* (init|apply) |k0sctl |kubectl .*--raw /readyz|cilium |mise run openbao:seed)' "$CALLS"
+  run grep -E '^(tofu -chdir=.* (init|apply) |k0sctl |kubectl .*--raw /readyz|cilium |mise run openbao:)' "$CALLS"
   [[ "${lines[0]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/machine-orb init "*"-backend-config=path=$state/machine-orb.tfstate "* ]]
   [[ "${lines[1]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/machine-orb apply -input=false -auto-approve "* ]]
   [[ "${lines[2]}" == "tofu -chdir=$k0s init "*"-backend-config=path=$state/kubernetes-k0s.tfstate "* ]]
@@ -204,6 +204,9 @@ local_state() {
   [[ "${lines[10]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
   [[ "${lines[11]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
   [[ "${lines[12]}" == "mise run openbao:seed"* ]]
+  [[ "${lines[13]}" == "mise run openbao:restore"* ]]
+  [[ "${lines[14]}" == "mise run openbao:root"* ]]
+  [[ "${lines[15]}" == "mise run openbao:snapshot"* ]]
 }
 
 @test "env:plan plans every root once the environment records a machine and a cluster" {
@@ -1189,6 +1192,28 @@ mise run cilium:conformance
 mise run --yes env:destroy" ]
 }
 
+@test "env:e2e --rebuild-check destroys and applies again after verify, then compares OpenBao's root and verifies again" {
+  e2e_mise_stub
+  e2e_repository clusters/singularity/packages.yaml
+  printf -- '- package: openbao\n  namespace: openbao\n  tenant: platform\n' >"$MISE_PROJECT_ROOT/clusters/singularity/packages.yaml"
+  commit_and_push "$MISE_PROJECT_ROOT" feature/test packages
+  record_contracts
+  printf '#!/usr/bin/env bash\n[[ "$*" == *" exec "* ]] && printf "ROOT:A\\n"\nexit 0\n' >"$stubs/kubectl"
+  chmod +x "$stubs/kubectl"
+  usage_rebuild_check=true run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  run mise_calls
+  [ "$output" = "mise run --yes env:destroy
+mise run env:apply
+mise run verify
+mise run network-policy:verify
+mise run --yes env:destroy
+mise run env:apply
+mise run verify
+mise run cilium:conformance
+mise run --yes env:destroy" ]
+}
+
 @test "env:e2e stops at the first failing step and leaves the cluster for inspection" {
   e2e_mise_stub
   e2e_repository
@@ -2130,7 +2155,7 @@ expect_planted_value_refused() {
 @test "the Flux root lists no package, and its source is verified against the publish workflow" {
   local flux="$root_directory/clusters/singularity/flux"
   run yq -r '.resources[]' "$flux/kustomization.yaml"
-  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml\nrendered.yaml')" ] || fail "$output"
+  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml\nrendered.yaml\nissuers.yaml')" ] || fail "$output"
   [ "$(yq -r '.spec.verify.provider' "$flux/ocirepository.yaml")" = cosign ]
   [ "$(yq -r '.spec.ref.tag' "$flux/ocirepository.yaml")" = '${git_commit}' ]
   [[ "$(yq -r '.spec.verify.matchOIDCIdentity[0].subject' "$flux/ocirepository.yaml")" == *'workflows/publish\.yaml@refs/heads/'* ]]
@@ -2158,6 +2183,21 @@ expect_planted_value_refused() {
 
 @test "contracts:lint refuses a path with a directory part in private-state" {
   expect_planted_value_refused private-state '.openbao.seal_key.path = "../seal.key"' path
+}
+
+@test "contracts:lint refuses a readable snapshot in private-state" {
+  expect_planted_value_refused private-state '.openbao.snapshot = {"path": "snapshot.snap", "mode": "0644", "root_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000"}' mode
+}
+
+@test "contracts:lint refuses a snapshot fingerprint that is not a SHA-256 in private-state" {
+  expect_planted_value_refused private-state '.openbao.snapshot = {"path": "snapshot.snap", "mode": "0600", "root_fingerprint": "abc"}' root_fingerprint
+}
+
+@test "contracts:lint accepts a snapshot and its previous generation in private-state" {
+  MISE_PROJECT_ROOT=$(contract_repository)
+  yq -i '.openbao.snapshot = {"path": "snapshot.snap", "mode": "0600", "root_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000"} | .openbao.snapshot_previous = .openbao.snapshot' "$MISE_PROJECT_ROOT/contracts/private-state/private-state.yaml"
+  run "$root_directory/.mise/tasks/contracts/lint.sh"
+  [ "$status" -eq 0 ] || fail "$output"
 }
 
 @test "contracts:lint refuses a field private-state does not declare" {
