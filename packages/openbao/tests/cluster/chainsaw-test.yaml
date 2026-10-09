@@ -77,4 +77,4 @@ spec:
                 name: openbao
                 namespace: openbao
               spec:
-                (ports[?port == `8200`] | [0].targetPort): 8443
+                (ports[?name == 'http'] | [0].targetPort): 8443
