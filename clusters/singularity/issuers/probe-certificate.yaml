@@ -1,0 +1,17 @@
+# A leaf cert-manager keeps issued and renewed from the Issuer: proof that
+# the login, the trust in the root and the PKI role all work. The name is
+# inside the role's allowed domains (svc).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: issuer-probe
+  namespace: cert-manager
+spec:
+  secretName: issuer-probe-tls
+  dnsNames:
+    - probe.cert-manager.svc
+  duration: 24h
+  renewBefore: 8h
+  issuerRef:
+    kind: Issuer
+    name: openbao

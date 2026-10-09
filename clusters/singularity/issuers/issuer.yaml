@@ -1,0 +1,52 @@
+# cert-manager signs leaves with OpenBao's PKI. It logs in with its own
+# service account through OpenBao's Kubernetes auth (role cert-manager,
+# clusters/singularity/openbao.yaml) and trusts OpenBao's root through the
+# Secret openbao-root, which `mise run env:apply` fills from OpenBao itself.
+# The Issuer is NotReady until that Secret exists.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: openbao
+  namespace: cert-manager
+spec:
+  vault:
+    server: https://openbao.openbao.svc:8200
+    path: pki/sign/cluster-leaf
+    caBundleSecretRef:
+      name: openbao-root
+      key: ca.crt
+    auth:
+      kubernetes:
+        mountPath: /v1/auth/kubernetes
+        role: cert-manager
+        serviceAccountRef:
+          name: cert-manager
+          audiences:
+            - openbao
+---
+# serviceAccountRef makes cert-manager request a token for its own service
+# account; that needs the right to create one.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cert-manager-create-own-token
+  namespace: cert-manager
+rules:
+  - apiGroups: [""]
+    resources: [serviceaccounts/token]
+    resourceNames: [cert-manager]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cert-manager-create-own-token
+  namespace: cert-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cert-manager-create-own-token
+subjects:
+  - kind: ServiceAccount
+    name: cert-manager
+    namespace: cert-manager

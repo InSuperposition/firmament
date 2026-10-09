@@ -7,3 +7,4 @@ resources:
   - ocirepository.yaml
   - payload.yaml
   - rendered.yaml
+  - issuers.yaml
