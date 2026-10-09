@@ -180,14 +180,25 @@ _consumerNamespaces: {
 	}
 }
 
-// The namespaces the network policy covers: those of the trust layer's
-// packages (D1 of the network-policy review), and what it renders for each.
+// Packages that list host ports.
+_hostPortPackages: {
+	for name, package in packages for key, _ in package if key == "host_ports" {
+		(name): true
+	}
+}
+
+// The namespaces the network policy covers, and what it renders for each. A
+// namespace of a trust-layer package is enforced: default-deny and every allow
+// (D1 of the network-policy review). A namespace of another package that lists
+// host ports gets only the allow for the node, because the node's access to
+// pods is closed cluster-wide and its probes must still pass.
 policy: {[string]: {namespaces: {[string]: {...}}}}
 policy: {
 	for envName, env in environments {
 		(envName): namespaces: {
-			for binding in bindings[env.cluster] if packages[binding.package].layer == "trust" {
+			for binding in bindings[env.cluster] if packages[binding.package].layer == "trust" || _hostPortPackages[binding.package] != _|_ {
 				(binding.namespace): {
+					enforce: len([for member in bindings[env.cluster] if member.namespace == binding.namespace if packages[member.package].layer == "trust" {member}]) > 0
 					provides: [
 						for member in bindings[env.cluster] if member.namespace == binding.namespace
 						for key, value in packages[member.package] if key == "provides"

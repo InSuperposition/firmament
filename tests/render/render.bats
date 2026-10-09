@@ -159,7 +159,7 @@ render() {
     [ "$(yq -r '.spec.egress | length' "$policy")" -ge 1 ]
     [ "$(yq -r '.spec.endpointSelector | length' "$policy")" -eq 0 ]
   done
-  [ "$(find "$BATS_TEST_TMPDIR/out/cilium-policy" -type f | wc -l | tr -d ' ')" -eq 2 ]
+  [ -e "$BATS_TEST_TMPDIR/out/cilium-policy/flux-system_cilium.io_v2_ciliumnetworkpolicy_platform.yaml" ]
 }
 
 @test "OpenBao is reachable on its pod port from the namespace of the package that requires secrets, and only there" {
@@ -172,11 +172,36 @@ render() {
   [ "$(yq -r '.spec.egress[] | select(.toEndpoints[0].matchLabels["k8s:io.kubernetes.pod.namespace"] == "openbao") | .toPorts[0].ports[0].port' "$consumer")" = 8443 ]
 }
 
-@test "the node and the API server reach exactly the host ports a package lists" {
+@test "the node reaches exactly the host ports a package lists" {
   render local "$BATS_TEST_TMPDIR/out"
   consumer="$BATS_TEST_TMPDIR/out/cilium-policy/cert-manager_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
-  [ "$(yq -r '.spec.ingress[] | select(.fromEntities) | .fromEntities | join(",")' "$consumer")" = host,kube-apiserver ]
+  [ "$(yq -r '.spec.ingress[] | select(.fromEntities) | .fromEntities | join(",")' "$consumer")" = host ]
   [ "$(yq -r '.spec.ingress[] | select(.fromEntities) | [.toPorts[0].ports[].port] | join(",")' "$consumer")" = 9403,6080,10250 ]
+}
+
+@test "the kubelet's probes of the flux-system pods are allowed from the node, and nothing else is changed there" {
+  render local "$BATS_TEST_TMPDIR/out"
+  policy="$BATS_TEST_TMPDIR/out/cilium-policy/flux-system_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
+  [ "$(yq -r '.spec.ingress | length' "$policy")" -eq 1 ]
+  [ "$(yq -r '.spec.ingress[0].fromEntities | join(",")' "$policy")" = host ]
+  [ "$(yq -r '[.spec.ingress[0].toPorts[0].ports[].port] | join(",")' "$policy")" = 8081,9090,9440 ]
+  [ "$(yq -r '.spec | has("egress")' "$policy")" = false ]
+}
+
+@test "the API server's webhook calls are allowed from the konnectivity agent, not from the node alone" {
+  render local "$BATS_TEST_TMPDIR/out"
+  policy="$BATS_TEST_TMPDIR/out/cilium-policy/cert-manager_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
+  [ "$(yq -r '.spec.ingress[] | select(.fromEndpoints[0].matchLabels["k8s:k8s-app"] == "konnectivity-agent") | .toPorts[0].ports[].port' "$policy" | tr '\n' ,)" = 9403,6080,10250, ]
+  # Cilium refuses an entity and an endpoint selector in one rule.
+  [ "$(yq -r '[.spec.ingress[] | select(.fromEntities and .fromEndpoints)] | length' "$policy")" -eq 0 ]
+}
+
+@test "the release of Cilium reads the network policy's values as an optional second source" {
+  render local "$BATS_TEST_TMPDIR/out"
+  config="$BATS_TEST_TMPDIR/out/cilium-policy/flux-system_v1_configmap_cilium-values-policy.yaml"
+  [ "$(yq -r '.data["values.yaml"] | from_yaml | .extraConfig["allow-localhost"]' "$config")" = policy ]
+  [ "$(yq -r '.metadata.labels["reconcile.fluxcd.io/watch"]' "$config")" = Enabled ]
+  [ "$(yq -r '.spec.valuesFrom[1] | [.name, .optional] | join(",")' "$root_directory/packages/cilium/helmrelease.yaml")" = cilium-values-policy,true ]
 }
 
 @test "a tenant without a kind is refused, naming the field" {

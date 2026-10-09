@@ -5,3 +5,12 @@ pin:
   version: 0.60.0
   digest: sha256:493f296b479246570a214249bda2e02a884533674904a1b22b954c5c98df452e
 bootstrap: true
+# Pod ports the kubelet probes: the operator's (8081), the source
+# controller's artifact server (9090) and the controllers' health (9440).
+host_ports:
+  - port: 8081
+    protocol: TCP
+  - port: 9090
+    protocol: TCP
+  - port: 9440
+    protocol: TCP

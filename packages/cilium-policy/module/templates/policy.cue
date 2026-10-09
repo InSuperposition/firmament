@@ -31,15 +31,30 @@ package templates
 				fromEndpoints: [for c in prov.consumers {matchLabels: (_podNamespace): c}]
 				toPorts: [{ports: [{port: "\(prov.port)", protocol: prov.protocol}]}]
 			},
-			// The node (probes) and the API server (webhooks).
+			// The node's probes, and the API server's webhooks, which k0s
+			// tunnels to the pods through the konnectivity agent in kube-system
+			// (observed with Hubble: the agent, not the host, is the caller).
+			// Cilium refuses fromEndpoints and fromEntities in one rule.
 			if len(_config.policy.hostPorts) > 0 {
-				fromEntities: ["host", "kube-apiserver"]
+				fromEntities: ["host"]
+				toPorts: [{ports: [for hp in _config.policy.hostPorts {port: "\(hp.port)", protocol: hp.protocol}]}]
+			},
+			if _config.policy.enforce && len(_config.policy.hostPorts) > 0 {
+				fromEndpoints: [{matchLabels: {
+					(_podNamespace): "kube-system"
+					"k8s:k8s-app":   "konnectivity-agent"
+				}}]
 				toPorts: [{ports: [for hp in _config.policy.hostPorts {port: "\(hp.port)", protocol: hp.protocol}]}]
 			},
 		]
-		ingress: [if len(_ingress) == 0 {{}}, for r in _ingress {r}]
+		// An enforced namespace with no allow at all denies everything: one
+		// empty rule.
+		ingress: [if _config.policy.enforce && len(_ingress) == 0 {{}}, for r in _ingress {r}]
 
-		egress: [
+		if _config.policy.enforce {
+			egress: _egress
+		}
+		_egress: [
 			// DNS, to the DNS workload only.
 			{
 				toEndpoints: [{matchLabels: {

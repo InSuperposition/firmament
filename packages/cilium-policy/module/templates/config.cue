@@ -20,6 +20,9 @@ package templates
 #Protocol: "TCP" | "UDP"
 
 #NamespacePolicy: close({
+	// An enforced namespace gets the default-deny and every allow; any other
+	// gets only the allow for the node and the API server.
+	enforce: bool
 	provides: [...close({
 		capability: string
 		port:       #Port
@@ -44,6 +47,11 @@ package templates
 	config: #Config
 
 	objects: {
+		// Cilium's allow-localhost: policy, which closes the node's access to
+		// every pod, as a second values source of the Cilium release. It is
+		// applied with the policies that keep the node's probes working, and
+		// the release upgrades only after they exist.
+		"cilium-values-policy": #HostPolicyValues & {_config: namespace: config.metadata.namespace}
 		for nsName, policy in config.namespaces {
 			"policy-\(nsName)": #Policy & {_config: {name: nsName, "policy": policy}}
 		}
