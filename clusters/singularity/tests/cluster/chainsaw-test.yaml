@@ -92,3 +92,45 @@ spec:
               metadata:
                 name: tenant
                 namespace: flux-system
+    - name: The network policies are valid and the node's access to pods is closed
+      # The Cilium release upgrades after the policies that keep the node's
+      # probes working exist, so its setting arrives after them.
+      timeouts:
+        assert: 10m
+      try:
+        - assert:
+            resource:
+              apiVersion: cilium.io/v2
+              kind: CiliumNetworkPolicy
+              metadata:
+                name: platform
+                namespace: cert-manager
+              status:
+                (conditions[?type == 'Valid'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: cilium.io/v2
+              kind: CiliumNetworkPolicy
+              metadata:
+                name: platform
+                namespace: openbao
+              status:
+                (conditions[?type == 'Valid'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: cilium.io/v2
+              kind: CiliumNetworkPolicy
+              metadata:
+                name: platform
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Valid'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: cilium-config
+                namespace: kube-system
+              data:
+                allow-localhost: policy

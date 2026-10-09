@@ -13,8 +13,11 @@ requires:
 provides:
   - capability: secrets
     scope: cluster
-    port: 8200
+    port: 8443
     protocol: TCP
     readiness:
       kind: StatefulSet
       name: openbao
+host_ports:
+  - port: 8443
+    protocol: TCP

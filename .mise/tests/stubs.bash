@@ -124,6 +124,11 @@ case "\$*" in
   *"hubble port-forward"*) exec nc -l 127.0.0.1 "\${@: -1}" >/dev/null ;;
   *" port-forward "*) local_port="\${*: -1}"; exec nc -l 127.0.0.1 "\${local_port%%:*}" >/dev/null ;;
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
+  *" -n cert-manager run "*)
+    printf '%s\\n' "\${NP_ALLOWED:-{\"initialized\":true,\"sealed\":false\}exit=0}" ;;
+  *" -n default run "*)
+    printf '%s\\n' "\${NP_DENIED:-wget: can\'t connect to remote host: Operation timed out exit=1}" ;;
+  *"get configmap cilium-values-policy "*) printf '%s' "\${CILIUM_VALUES_POLICY:-}" ;;
   *"get configmap cilium-values "*) printf '%s\\n' "\${CILIUM_VALUES-a: 1}" ;;
   *"get values cilium "*) printf '%s\\n' "\${RELEASE_VALUES-a: 1}" ;;
   *"/fortio/rest/run"*) cat "\${FORTIO_RUN:-\$FORTIO_REPLIES/run.json}" ;;

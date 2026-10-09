@@ -20,6 +20,13 @@ spec:
     - kind: ConfigMap
       name: cilium-values
       valuesKey: values.yaml
+    # Added by the network policy once the policies that keep the node's
+    # probes working exist; absent until then, so the bootstrap and the first
+    # reconcile install Cilium without it.
+    - kind: ConfigMap
+      name: cilium-values-policy
+      valuesKey: values.yaml
+      optional: true
   # The chart's hubble-generate-certs Job cannot be recreated in place, so
   # upgrades patch instead of forcing.
   upgrade:

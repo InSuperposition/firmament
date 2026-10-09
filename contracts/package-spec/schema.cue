@@ -21,6 +21,15 @@ package packagespec
 	delta_keys?: [...string & !=""]
 	requires?: [...#Requirement]
 	provides?: [...#Provision]
+	// Pod ports that the node (kubelet probes) and the API server (admission
+	// webhooks) reach. The network policy allows the host and the
+	// kube-apiserver entities on exactly these.
+	host_ports?: [...#HostPort]
+})
+
+#HostPort: close({
+	port!:     int & >=1 & <=65535
+	protocol!: "TCP" | "UDP"
 })
 
 #Scope: "cluster" | "mesh"
@@ -33,8 +42,10 @@ package packagespec
 #Provision: close({
 	capability!: #Name
 	scope!:      #Scope
-	port!:       int & >=1 & <=65535
-	protocol!:   "TCP" | "UDP"
+	// The port the pod listens on, not a Service port that maps to it:
+	// Cilium matches the pod port after service translation.
+	port!:     int & >=1 & <=65535
+	protocol!: "TCP" | "UDP"
 	readiness!: close({
 		kind!: string & !=""
 		name!: string & !=""

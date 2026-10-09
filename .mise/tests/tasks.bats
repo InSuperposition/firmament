@@ -480,9 +480,10 @@ record_pinned_commit() {
   [ "$status" -eq 0 ]
   run grep -E '^(kubectl|helm|cilium) ' "$CALLS"
   [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values "* ]]
-  [[ "${lines[1]}" == "helm --kubeconfig /state/admin.kubeconfig -n kube-system get values cilium -o yaml "* ]]
-  [[ "${lines[2]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system rollout status daemonset/cilium --timeout=10m "* ]]
-  [[ "${lines[3]}" == "cilium --kubeconfig /state/admin.kubeconfig status --wait --interactive=false "* ]]
+  [[ "${lines[1]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values-policy "* ]]
+  [[ "${lines[2]}" == "helm --kubeconfig /state/admin.kubeconfig -n kube-system get values cilium -o yaml "* ]]
+  [[ "${lines[3]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system rollout status daemonset/cilium --timeout=10m "* ]]
+  [[ "${lines[4]}" == "cilium --kubeconfig /state/admin.kubeconfig status --wait --interactive=false "* ]]
 }
 
 @test "cilium:restart-agent restarts the agent DaemonSet, then waits for the rollout and for Cilium" {
@@ -1155,7 +1156,7 @@ mise_calls() {
   [[ "$output" == *"env:destroy "*"(new)"*"env:destroy (2) "*"(new)"* ]]
   [[ "${lines[-1]}" == "env:e2e passed for local at "* ]]
   kept="$FIRMAMENT_STATE_HOME/environments/local/e2e-step-times"
-  [ "$(cut -f1 "$kept" | paste -sd, -)" = "env:destroy,env:apply,platform_versions,verify,cilium:conformance,remote_tip_unchanged,env:destroy (2)" ]
+  [ "$(cut -f1 "$kept" | paste -sd, -)" = "env:destroy,env:apply,platform_versions,verify,network-policy:verify,cilium:conformance,remote_tip_unchanged,env:destroy (2)" ]
   run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -eq 0 ]
   [[ "$output" == *"env:apply "*" s  (+"*" s)"* ]]
@@ -1183,6 +1184,7 @@ mise_calls() {
   [ "$output" = "mise run --yes env:destroy
 mise run env:apply
 mise run verify
+mise run network-policy:verify
 mise run cilium:conformance
 mise run --yes env:destroy" ]
 }
@@ -1255,17 +1257,18 @@ mise run --yes env:destroy" ]
   [[ "$output" == *"Baseline: origin/main at $(git -C "$MISE_PROJECT_ROOT" rev-parse origin/main)"* ]]
   [[ "${lines[-1]}" == "env:e2e passed for local at $(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD): traffic held across the Cilium agent restart; the cluster is destroyed." ]]
   run grep '^mise ' "$CALLS"
-  [ "${#lines[@]}" -eq 10 ]
+  [ "${#lines[@]}" -eq 11 ]
   [ "${lines[0]}" = "mise run --yes env:destroy | branch=feature/test" ]
   [[ "${lines[1]}" == "mise --cd "*"/baseline run env:apply | branch=main" ]]
   [[ "${lines[2]}" == "mise --cd "*"/baseline run env:verify | branch=main" ]]
   [ "${lines[3]}" = "mise run cilium:traffic-start | branch=feature/test" ]
   [ "${lines[4]}" = "mise run env:apply | branch=feature/test" ]
   [ "${lines[5]}" = "mise run verify | branch=feature/test" ]
-  [ "${lines[6]}" = "mise run cilium:restart-agent | branch=feature/test" ]
-  [ "${lines[7]}" = "mise run cilium:traffic-check | branch=feature/test" ]
-  [ "${lines[8]}" = "mise run cilium:conformance | branch=feature/test" ]
-  [ "${lines[9]}" = "mise run --yes env:destroy | branch=feature/test" ]
+  [ "${lines[6]}" = "mise run network-policy:verify | branch=feature/test" ]
+  [ "${lines[7]}" = "mise run cilium:restart-agent | branch=feature/test" ]
+  [ "${lines[8]}" = "mise run cilium:traffic-check | branch=feature/test" ]
+  [ "${lines[9]}" = "mise run cilium:conformance | branch=feature/test" ]
+  [ "${lines[10]}" = "mise run --yes env:destroy | branch=feature/test" ]
   ! git -C "$MISE_PROJECT_ROOT" worktree list | grep -q /baseline
 }
 
@@ -1307,7 +1310,7 @@ mise run --yes env:destroy" ]
   [ "$status" -ne 0 ]
   [[ "$output" == *"the upgrade replaced or restarted workloads it should not touch"* ]]
   [[ "$output" == *"uid-before"*"uid-after"* ]]
-  [ "$(mise_calls | tail -1)" = "mise run verify" ]
+  [ "$(mise_calls | tail -1)" = "mise run network-policy:verify" ]
 }
 
 @test "env:e2e --from-branch fails when a listed workload selects no pod" {
@@ -2347,4 +2350,27 @@ mode_of() {
 @test "the names openbao:seed creates equal the names the OpenBao config mounts" {
   [ "$(cue eval -e '#SealSecretName' "$root_directory/packages/openbao/config" --out text)" = "$(sed -n 's/^readonly seal_secret=//p' "$root_directory/.mise/tasks/openbao/seed.sh")" ]
   [ "$(cue eval -e '#OperatorCAConfigMapName' "$root_directory/packages/openbao/config" --out text)" = "$(sed -n 's/^readonly operator_ca_configmap=//p' "$root_directory/.mise/tasks/openbao/seed.sh")" ]
+}
+
+@test "network-policy:verify passes when the consumer reaches OpenBao and the default namespace times out" {
+  record_contracts
+  run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  grep -q -- '-n cert-manager run' "$CALLS"
+  grep -q -- '-n default run' "$CALLS"
+  [[ "$output" == *"cert-manager reaches OpenBao in openbao"* ]]
+}
+
+@test "network-policy:verify fails when the pod outside the allowed namespace reaches OpenBao" {
+  record_contracts
+  NP_DENIED='{"initialized":true}exit=0' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"default namespace reached OpenBao"* ]]
+}
+
+@test "network-policy:verify fails when the consumer cannot reach OpenBao" {
+  record_contracts
+  NP_ALLOWED='wget: download timed out exit=1' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"did not reach OpenBao"* ]]
 }

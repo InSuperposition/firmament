@@ -750,9 +750,18 @@ canonical_values() {
 # cilium-values ConfigMap, as Flux last applied it. A HelmRelease reports
 # Ready for its previous values until helm-controller notices the change.
 cilium_values_deployed() {
-  local kubeconfig="$1" wanted deployed
+  local kubeconfig="$1" wanted deployed extra
   wanted=$(kubectl --kubeconfig "$kubeconfig" -n flux-system get configmap cilium-values \
-    -o jsonpath='{.data.values\.yaml}' | canonical_values) || return
+    -o jsonpath='{.data.values\.yaml}') || return
+  # The network policy adds an optional second values source; the release
+  # runs the two merged, the second over the first.
+  extra=$(kubectl --kubeconfig "$kubeconfig" -n flux-system get configmap cilium-values-policy \
+    -o jsonpath='{.data.values\.yaml}' 2>/dev/null) || extra=""
+  if [[ -n "$extra" ]]; then
+    # shellcheck disable=SC2016 # a yq expression, not shell
+    wanted=$(yq eval-all '. as $item ireduce ({}; . * $item)' <(printf '%s\n' "$wanted") <(printf '%s\n' "$extra")) || return
+  fi
+  wanted=$(canonical_values <<<"$wanted") || return
   deployed=$(helm --kubeconfig "$kubeconfig" -n kube-system get values cilium -o yaml | canonical_values) || return
   [[ -n "$wanted" && "$wanted" != null && "$wanted" == "$deployed" ]]
 }
