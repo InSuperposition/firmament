@@ -4,3 +4,6 @@
 - package: flux
   namespace: flux-system
   tenant: platform
+- package: cert-manager
+  namespace: cert-manager
+  tenant: platform

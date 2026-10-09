@@ -22,17 +22,60 @@ render() {
 }
 
 @test "a binding without a tenant is refused, naming the field" {
-  printf -- '- package: x\n  namespace: shop\n' >>clusters/singularity/packages.yaml
+  printf -- '- package: cilium\n  namespace: shop\n' >>clusters/singularity/packages.yaml
   run cue vet -c .:inputs
   [ "$status" -ne 0 ]
   [[ "$output" == *tenant* ]]
 }
 
 @test "a binding to a tenant the environment does not define is refused, naming it" {
-  printf -- '- package: x\n  namespace: shop\n  tenant: ghost\n' >>clusters/singularity/packages.yaml
+  printf -- '- package: cilium\n  namespace: shop\n  tenant: ghost\n' >>clusters/singularity/packages.yaml
   run cue vet -c .:inputs
   [ "$status" -ne 0 ]
   [[ "$output" == *ghost* ]]
+}
+
+@test "a binding to a package that does not exist is refused, naming it" {
+  printf -- '- package: ghost\n  namespace: shop\n  tenant: platform\n' >>clusters/singularity/packages.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *ghost* ]]
+}
+
+@test "a package.yaml whose name differs from its folder is refused, naming both" {
+  sed -i.bak 's/^name: flux$/name: fluxx/' packages/flux/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *fluxx* ]]
+}
+
+@test "a package.yaml pin equals the chart the bootstrap installs" {
+  for package in cilium flux; do
+    digest=$(yq -r '.pin.digest' "packages/$package/package.yaml")
+    [ "$digest" = "$(yq -r '.spec.ref.digest' "packages/$package/ocirepository.yaml")" ]
+  done
+}
+
+@test "a chart package whose pin names a tag instead of a digest is refused, naming the field" {
+  sed -i.bak 's/^  digest: .*/  digest: v1.21.2/' packages/cert-manager/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *digest* ]]
+}
+
+@test "a chart package without a pin is refused, naming the field" {
+  sed -i.bak '/^pin:/,/^  digest:/d' packages/cert-manager/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *pin* ]]
+}
+
+@test "a bound chart package without a values file is refused, naming the package" {
+  # Another values file keeps the glob from matching nothing.
+  mv clusters/singularity/values/cert-manager.yaml clusters/singularity/values/other.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *cert-manager* ]]
 }
 
 @test "a tenant without a kind is refused, naming the field" {
@@ -73,6 +116,24 @@ render() {
   grep -q 'defaultRequest:' "$BATS_TEST_TMPDIR/out/namespace/flux-system_v1_limitrange_tenant-defaults.yaml"
 }
 
+@test "each chart package renders its source pinned by digest, its values and its release" {
+  render local "$BATS_TEST_TMPDIR/out"
+  chart="$BATS_TEST_TMPDIR/out/cert-manager"
+  [ "$(yq -r '.spec.ref.digest' "$chart/source.toolkit.fluxcd.io_v1_ocirepository_cert-manager.yaml")" = "$(yq -r '.pin.digest' packages/cert-manager/package.yaml)" ]
+  [ "$(yq -r '.metadata.labels["reconcile.fluxcd.io/watch"]' "$chart/v1_configmap_cert-manager-values.yaml")" = Enabled ]
+  [ "$(yq -r '.data["values.yaml"] | from_yaml | .crds.enabled' "$chart/v1_configmap_cert-manager-values.yaml")" = true ]
+  release="$chart/helm.toolkit.fluxcd.io_v2_helmrelease_cert-manager.yaml"
+  [ "$(yq -r '.spec.targetNamespace' "$release")" = cert-manager ]
+  [ "$(yq -r '.spec.valuesFrom[0].name' "$release")" = cert-manager-values ]
+  [ "$(yq -r '.metadata.annotations["kustomize.toolkit.fluxcd.io/prune"]' "$release")" = disabled ]
+}
+
+@test "the bootstrap packages stay plain: the render holds no instance for them" {
+  render local "$BATS_TEST_TMPDIR/out"
+  [ ! -e "$BATS_TEST_TMPDIR/out/cilium" ]
+  [ ! -e "$BATS_TEST_TMPDIR/out/flux" ]
+}
+
 @test "two renders of one environment are byte-identical" {
   render local "$BATS_TEST_TMPDIR/first"
   render local "$BATS_TEST_TMPDIR/second"
@@ -81,4 +142,8 @@ render() {
 
 @test "the vendored tenant schema equals its contract" {
   diff "$work/contracts/tenant-spec/schema.cue" "$work/packages/namespace/module/cue.mod/pkg/firmament.dev/tenant-spec/schema.cue"
+}
+
+@test "the vendored package schema equals its contract" {
+  diff "$work/contracts/package-spec/schema.cue" "$work/packages/chart/module/cue.mod/pkg/firmament.dev/package-spec/schema.cue"
 }

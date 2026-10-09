@@ -1,0 +1,67 @@
+# Read-only assertions on a running cluster where Flux installs cert-manager.
+# The Flux objects name flux-system and the workloads name cert-manager
+# explicitly; the test namespace is set so chainsaw creates none.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cert-manager
+  labels:
+    component: cert-manager
+spec:
+  namespace: kube-system
+  steps:
+    - name: Flux installs the pinned chart
+      # CI may still be publishing the tag, so the release gets as long as
+      # the rendered Kustomization does.
+      timeouts:
+        assert: 10m
+      try:
+        - assert:
+            resource:
+              apiVersion: source.toolkit.fluxcd.io/v1
+              kind: OCIRepository
+              metadata:
+                name: cert-manager
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: helm.toolkit.fluxcd.io/v2
+              kind: HelmRelease
+              metadata:
+                name: cert-manager
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+    - name: The controller, the webhook and the CA injector are available
+      timeouts:
+        assert: 5m
+      try:
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: cert-manager
+                namespace: cert-manager
+              status:
+                (conditions[?type == 'Available'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: cert-manager-webhook
+                namespace: cert-manager
+              status:
+                (conditions[?type == 'Available'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: cert-manager-cainjector
+                namespace: cert-manager
+              status:
+                (conditions[?type == 'Available'] | [0].status): "True"

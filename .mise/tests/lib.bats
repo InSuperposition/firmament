@@ -320,10 +320,11 @@ setup() {
 @test "lists the cluster's own suite, then each deployed package's suite" {
   run cluster_suites
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 3 ]
+  [ "${#lines[@]}" -eq 4 ]
   [ "${lines[0]}" = "$root_directory/clusters/singularity/tests/cluster" ]
   [ "${lines[1]}" = "$root_directory/packages/cilium/tests/cluster" ]
   [ "${lines[2]}" = "$root_directory/packages/flux/tests/cluster" ]
+  [ "${lines[3]}" = "$root_directory/packages/cert-manager/tests/cluster" ]
 }
 
 @test "lists only the cluster's own suite when it has no Flux build" {
@@ -356,7 +357,7 @@ setup() {
 @test "refuses a package the environment does not deploy, naming the ones it does" {
   run cluster_suites cilium,kyverno
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown package 'kyverno' for environment 'local'; choose from: cilium flux"* ]]
+  [[ "$output" == *"unknown package 'kyverno' for environment 'local'; choose from: cilium flux cert-manager"* ]]
 }
 
 @test "lists the conformance tests the chosen packages need" {
@@ -494,6 +495,20 @@ branch_repository() {
   MISE_ENV=x run deployed_packages
   [ "$status" -eq 0 ]
   [ "$output" = "$MISE_PROJECT_ROOT/packages/cilium" ]
+}
+
+@test "counts a package the cluster binds although its Flux build does not list it" {
+  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/payload/kustomization.yaml clusters/singularity/packages.yaml \
+    packages/cilium/kustomization.yaml packages/rendered/tests/cluster/chainsaw-test.yaml)
+  printf 'resources:\n  - ../../../packages/cilium\n' \
+    >"$MISE_PROJECT_ROOT/clusters/singularity/payload/kustomization.yaml"
+  printf -- '- package: cilium\n  namespace: kube-system\n  tenant: platform\n- package: rendered\n  namespace: rendered\n  tenant: platform\n- package: nodir\n  namespace: nodir\n  tenant: platform\n' \
+    >"$MISE_PROJECT_ROOT/clusters/singularity/packages.yaml"
+  MISE_ENV=x run deployed_packages
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 2 ]
+  [ "${lines[0]}" = "$MISE_PROJECT_ROOT/packages/cilium" ]
+  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/packages/rendered" ]
 }
 
 @test "fails when the cluster's Flux build cannot be read" {

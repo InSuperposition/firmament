@@ -410,19 +410,34 @@ machine_name() {
   printf '%s-%s\n' "$environment" "$cluster"
 }
 
-# Prints the directory of each package an environment's payload lists, one
-# per line, or nothing for an environment without a payload. Only
-# directories are packages; a resource file the build lists is not.
+# Prints the directory of each package an environment deploys, one per line,
+# or nothing for an environment with neither a payload nor bindings. A
+# package is deployed when the Flux build lists its directory or the cluster
+# binds it: Timoni renders the bound chart packages, so the build never lists
+# them. Only directories are packages; a resource file the build lists is not,
+# and a bound package without a directory has no suite.
 deployed_packages() {
-  local directory resources resource
+  local directory resources resource name path found=""
   directory=$(cluster_directory) || return
-  [[ -f "$directory/payload/kustomization.yaml" ]] || return 0
-  resources=$(yq -r '.resources[]' "$directory/payload/kustomization.yaml") || return
-  while IFS= read -r resource; do
-    if [[ -n "$resource" && -d "$directory/payload/$resource" ]]; then
-      (cd "$directory/payload/$resource" && pwd)
-    fi
-  done <<<"$resources"
+  if [[ -f "$directory/payload/kustomization.yaml" ]]; then
+    resources=$(yq -r '.resources[]' "$directory/payload/kustomization.yaml") || return
+    while IFS= read -r resource; do
+      if [[ -n "$resource" && -d "$directory/payload/$resource" ]]; then
+        path=$(cd "$directory/payload/$resource" && pwd)
+        [[ $'\n'"$found" == *$'\n'"$path"$'\n'* ]] || found+="$path"$'\n'
+      fi
+    done <<<"$resources"
+  fi
+  if [[ -f "$directory/packages.yaml" ]]; then
+    resources=$(yq -r '.[].package' "$directory/packages.yaml") || return
+    while IFS= read -r name; do
+      if [[ -n "$name" && -d "${MISE_PROJECT_ROOT:?}/packages/$name" ]]; then
+        path=$(cd "$MISE_PROJECT_ROOT/packages/$name" && pwd)
+        [[ $'\n'"$found" == *$'\n'"$path"$'\n'* ]] || found+="$path"$'\n'
+      fi
+    done <<<"$resources"
+  fi
+  printf '%s' "$found"
 }
 
 # Fails unless every name in a comma-separated package list is a package the
