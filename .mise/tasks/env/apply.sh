@@ -18,3 +18,7 @@ apply_kubernetes_root
 init_root bootstrap-flux
 tofu_in_root bootstrap-flux apply -input=false -auto-approve
 wait_for_cluster
+# The seal key and the operator CA reach OpenBao before its first start: its
+# pod cannot start without them. The task does nothing while openbao is not
+# bound in the cluster.
+mise run openbao:seed

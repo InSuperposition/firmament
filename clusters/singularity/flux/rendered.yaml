@@ -12,9 +12,14 @@ spec:
   retryInterval: 1m
   timeout: 10m
   prune: true
-  # Ready only when every release it carries is Ready, so what depends on the
-  # charts' CRDs can wait for this Kustomization.
-  wait: true
+  # Ready once the releases whose CRDs others wait for are Ready. OpenBao
+  # is not listed: a sealed or failing OpenBao must not hold the namespaces
+  # and cert-manager back; the cluster suite checks it.
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: cert-manager
+      namespace: flux-system
   sourceRef:
     kind: OCIRepository
     name: payload

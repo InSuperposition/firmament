@@ -1,0 +1,80 @@
+# Read-only assertions on a running cluster where Flux installs OpenBao. The
+# Flux objects name flux-system and the workloads name openbao explicitly; the
+# test namespace is set so chainsaw creates none.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: openbao
+  labels:
+    component: openbao
+spec:
+  namespace: kube-system
+  steps:
+    - name: openbao:seed created what OpenBao cannot start without
+      timeouts:
+        assert: 10m
+      try:
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: openbao-static-seal
+                namespace: openbao
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: openbao-operator-ca
+                namespace: openbao
+    - name: Flux installs the pinned chart
+      # The first start waits for the image pull and for OpenBao's own ACME
+      # certificate; a cilium-envoy image once took nine minutes to pull.
+      timeouts:
+        assert: 15m
+      try:
+        - assert:
+            resource:
+              apiVersion: source.toolkit.fluxcd.io/v1
+              kind: OCIRepository
+              metadata:
+                name: openbao
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: helm.toolkit.fluxcd.io/v2
+              kind: HelmRelease
+              metadata:
+                name: openbao
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+    - name: OpenBao is initialized and unsealed
+      # The pod's readiness probe is `bao status`, which exits 0 only for an
+      # initialized, unsealed server, so a ready replica is both.
+      timeouts:
+        assert: 5m
+      try:
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: openbao
+                namespace: openbao
+              status:
+                readyReplicas: 1
+    - name: OpenBao is served on its TLS port
+      try:
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: openbao
+                namespace: openbao
+              spec:
+                (ports[?name == 'http'] | [0].targetPort): 8443

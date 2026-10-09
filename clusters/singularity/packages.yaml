@@ -7,3 +7,6 @@
 - package: cert-manager
   namespace: cert-manager
   tenant: platform
+- package: openbao
+  namespace: openbao
+  tenant: platform

@@ -1,0 +1,40 @@
+# OpenBao on this cluster: the sections packages/openbao/config turns into the
+# server config, which the chart installs. A wrong value here is permanent
+# once OpenBao has started, so the schema requires every decision.
+pki:
+  root:
+    common_name: Firmament Root CA
+    key_type: ec
+    ttl: 87600h
+  roles:
+    cluster-leaf:
+      # "any" accepts the RSA keys cert-manager requests by default and EC.
+      key_type: any
+      allowed_domains:
+        - cluster.local
+        - svc
+      allow_subdomains: true
+      require_cn: false
+      max_ttl: 720h
+policies:
+  pki-issue:
+    - path: pki/sign/cluster-leaf
+      capabilities: [update]
+  admin:
+    - path: "*"
+      capabilities: [create, read, update, delete, list, sudo]
+kubernetes:
+  host: https://kubernetes.default.svc
+  roles:
+    cert-manager:
+      service_account: cert-manager
+      namespace: cert-manager
+      policies: [pki-issue]
+      audience: openbao
+operator:
+  common_name: operator
+  policies: [admin]
+  ttl: 1h
+storage:
+  host_path: /var/lib/openbao
+  init_image: quay.io/openbao/openbao:2.7.0
