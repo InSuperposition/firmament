@@ -9,8 +9,8 @@ checks the sample.
 | Field | Type | Rule |
 | --- | --- | --- |
 | `kind` | string | `platform`, `team` or `customer` |
-| `quota.cpu` | string | a Kubernetes quantity, such as `4` or `500m` |
-| `quota.memory` | string | a Kubernetes quantity, such as `8Gi` |
+| `namespace_quota.cpu` | string | a Kubernetes quantity, such as `4` or `500m` |
+| `namespace_quota.memory` | string | a Kubernetes quantity, such as `8Gi` |
 | `administrators` | list of strings | each not empty; may be empty |
 
 See also [bindings-spec](../bindings-spec/README.md).

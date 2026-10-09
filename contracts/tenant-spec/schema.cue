@@ -9,7 +9,7 @@ package tenantspec
 
 #Tenant: close({
 	kind!: "platform" | "team" | "customer"
-	quota!: close({
+	namespace_quota!: close({
 		cpu!:    #Quantity
 		memory!: #Quantity
 	})

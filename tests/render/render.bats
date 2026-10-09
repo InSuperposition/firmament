@@ -228,6 +228,13 @@ render() {
   [[ "$output" == *cpu* ]]
 }
 
+@test "a tenant still using the old quota field is refused, naming it" {
+  sed -i.bak 's/^namespace_quota:/quota:/' environments/local/tenants/apps.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *quota* ]]
+}
+
 @test "an environment the data does not define fails the render, naming it" {
   run render nope "$BATS_TEST_TMPDIR/out"
   [ "$status" -ne 0 ]
