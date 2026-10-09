@@ -1192,6 +1192,28 @@ mise run cilium:conformance
 mise run --yes env:destroy" ]
 }
 
+@test "env:e2e --rebuild-check destroys and applies again after verify, then compares OpenBao's root and verifies again" {
+  e2e_mise_stub
+  e2e_repository clusters/singularity/packages.yaml
+  printf -- '- package: openbao\n  namespace: openbao\n  tenant: platform\n' >"$MISE_PROJECT_ROOT/clusters/singularity/packages.yaml"
+  commit_and_push "$MISE_PROJECT_ROOT" feature/test packages
+  record_contracts
+  printf '#!/usr/bin/env bash\n[[ "$*" == *" exec "* ]] && printf "ROOT:A\\n"\nexit 0\n' >"$stubs/kubectl"
+  chmod +x "$stubs/kubectl"
+  usage_rebuild_check=true run_task "$root_directory/.mise/tasks/env/e2e.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  run mise_calls
+  [ "$output" = "mise run --yes env:destroy
+mise run env:apply
+mise run verify
+mise run network-policy:verify
+mise run --yes env:destroy
+mise run env:apply
+mise run verify
+mise run cilium:conformance
+mise run --yes env:destroy" ]
+}
+
 @test "env:e2e stops at the first failing step and leaves the cluster for inspection" {
   e2e_mise_stub
   e2e_repository
