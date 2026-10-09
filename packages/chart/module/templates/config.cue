@@ -32,6 +32,7 @@ import (
 			namespace: config.metadata.namespace
 			source:    config.package.pin.source
 			digest:    config.package.pin.digest
+			for key, value in config.package if key == "verify" {verify: value}
 		}}
 		values: #ValuesConfigMap & {_config: {
 			name:      config.package.name

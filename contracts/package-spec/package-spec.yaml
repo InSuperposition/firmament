@@ -5,6 +5,9 @@ pin:
   version: 0.18.0
   digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 bootstrap: false
+verify:
+  issuer: ^https://token\.actions\.githubusercontent\.com$
+  identity: ^https://github\.com/example/charts/\.github/workflows/publish\.yaml@refs/tags/.+$
 delta_keys:
   - server.replicas
 requires:

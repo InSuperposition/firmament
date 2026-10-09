@@ -348,6 +348,42 @@ YAML
   [ "$(yq -r '.metadata.annotations["kustomize.toolkit.fluxcd.io/prune"]' "$release")" = disabled ]
 }
 
+@test "a chart package with a verify block renders the source with keyless cosign verification" {
+  yq -i '.verify.issuer = "^https://issuer\\.example$" | .verify.identity = "^https://example/signer$"' packages/cert-manager/package.yaml
+  render local "$BATS_TEST_TMPDIR/out"
+  source="$BATS_TEST_TMPDIR/out/cert-manager/source.toolkit.fluxcd.io_v1_ocirepository_cert-manager.yaml"
+  [ "$(yq -r '.spec.verify.provider' "$source")" = cosign ]
+  [ "$(yq -r '.spec.verify.matchOIDCIdentity | length' "$source")" -eq 1 ]
+  [ "$(yq -r '.spec.verify.matchOIDCIdentity[0].issuer' "$source")" = '^https://issuer\.example$' ]
+  [ "$(yq -r '.spec.verify.matchOIDCIdentity[0].subject' "$source")" = '^https://example/signer$' ]
+}
+
+@test "a chart package without a verify block renders no verification" {
+  render local "$BATS_TEST_TMPDIR/out"
+  [ "$(yq -r '.spec | has("verify")' "$BATS_TEST_TMPDIR/out/cert-manager/source.toolkit.fluxcd.io_v1_ocirepository_cert-manager.yaml")" = false ]
+}
+
+@test "an empty verify block is refused, naming the missing field" {
+  yq -i '.verify = {}' packages/cert-manager/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *issuer* ]]
+}
+
+@test "a verify block with an unknown key is refused, naming it" {
+  yq -i '.verify.issuer = "^a$" | .verify.identity = "^b$" | .verify.keyless = true' packages/cert-manager/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *keyless* ]]
+}
+
+@test "a verify identity that is not anchored is refused, naming the field" {
+  yq -i '.verify.issuer = "^a$" | .verify.identity = "signer"' packages/cert-manager/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *identity* ]]
+}
+
 @test "the bootstrap packages stay plain: the render holds no instance for them" {
   render local "$BATS_TEST_TMPDIR/out"
   [ ! -e "$BATS_TEST_TMPDIR/out/cilium" ]
