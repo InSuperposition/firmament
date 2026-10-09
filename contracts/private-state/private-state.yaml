@@ -1,0 +1,18 @@
+openbao:
+  seal_key:
+    path: seal.key
+    mode: "0600"
+  operator_ca:
+    certificate:
+      path: operator-ca.pem
+      mode: "0644"
+    key:
+      path: operator-ca.key
+      mode: "0600"
+  operator_client:
+    certificate:
+      path: operator-client.pem
+      mode: "0644"
+    key:
+      path: operator-client.key
+      mode: "0600"

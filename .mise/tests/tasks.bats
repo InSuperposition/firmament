@@ -2147,6 +2147,18 @@ expect_planted_value_refused() {
   expect_planted_value_refused bindings-spec 'del(.[0].tenant)' tenant
 }
 
+@test "contracts:lint refuses a readable seal key in private-state" {
+  expect_planted_value_refused private-state '.openbao.seal_key.mode = "0644"' mode
+}
+
+@test "contracts:lint refuses a path with a directory part in private-state" {
+  expect_planted_value_refused private-state '.openbao.seal_key.path = "../seal.key"' path
+}
+
+@test "contracts:lint refuses a field private-state does not declare" {
+  expect_planted_value_refused private-state '.openbao.root_token = {"path": "root.token", "mode": "0600"}' root_token
+}
+
 @test "contracts:lint refuses an environment without artifact_source" {
   expect_planted_value_refused environment 'del(.artifact_source)' artifact_source
 }
