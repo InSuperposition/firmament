@@ -156,6 +156,7 @@ if [[ -z "$from_branch" ]]; then
   step platform_versions
 fi
 step mise run verify
+step mise run network-policy:verify
 if [[ -n "$from_branch" ]]; then
   step workloads_unchanged
   # An upgrade that leaves the agent alone would leave the traffic check with
