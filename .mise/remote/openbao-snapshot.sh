@@ -4,7 +4,7 @@
 #   root     print the root certificate from the public endpoint
 #   save     log in as role snapshot, write /tmp/openbao.snap, print its SHA-256
 #   read     print /tmp/openbao.snap
-#   receive  write stdin to /tmp/openbao-restore.snap
+#   receive  write stdin to /tmp/openbao-restore.snap, print its SHA-256
 #   restore  print the SHA-256 of /tmp/openbao-restore.snap, then restore it
 # The login uses the pod's own service account token: no operator key leaves
 # the Mac.
@@ -34,7 +34,10 @@ save)
   sha256_of "$saved"
   ;;
 read) cat "$saved" ;;
-receive) cat >"$received" ;;
+receive)
+  cat >"$received"
+  sha256_of "$received"
+  ;;
 restore)
   sha256_of "$received"
   log_in

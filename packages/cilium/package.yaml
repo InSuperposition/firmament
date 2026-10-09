@@ -5,3 +5,27 @@ pin:
   version: 1.20.2
   digest: sha256:a7c12d330dd96bfcda3bf057b24be8f36566c34868265f930f776dff6f42d838
 bootstrap: true
+# kube-system holds k0s's pods as well as Cilium's, and the namespace denies
+# ingress by default. Pod ports the node's probes reach (found with Hubble):
+# CoreDNS health 8080 and ready 8181, the konnectivity agent 8093, the
+# metrics server 10250 (which the API server also reaches), Hubble relay
+# 4222 and Hubble UI 8081.
+host_ports:
+  - port: 8080
+    protocol: TCP
+  - port: 8181
+    protocol: TCP
+  - port: 8093
+    protocol: TCP
+  - port: 10250
+    protocol: TCP
+  - port: 4222
+    protocol: TCP
+  - port: 8081
+    protocol: TCP
+# CoreDNS answers every namespace.
+cluster_ports:
+  - port: 53
+    protocol: UDP
+  - port: 53
+    protocol: TCP

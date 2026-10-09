@@ -20,6 +20,8 @@
 # apply` fails with $K0SCTL_APPLY_ERROR or sleeps $K0SCTL_APPLY_SLEEP seconds
 # when set, and `k0sctl kubeconfig` prints a kubeconfig, or half of one and
 # fails with $K0SCTL_KUBECONFIG_ERROR when set.
+# `kubectl run ... nslookup` prints $NP_RESOLVED (default exit=0); a pod-network
+# hubble-relay pod has IP 10.0.0.7.
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -117,6 +119,7 @@ stub() {
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
   *" state list"*) printf '%s' "\${TOFU_STATE_LIST:-}" ;;
+  *"get pods -l k8s-app=hubble-relay"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.7","hostIP":"192.168.0.2"}}]}' ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;
   *"get charts.helm.k0sproject.io"*)
     if [[ -n "\${K0S_CHARTS_ERROR:-}" ]]; then printf '%s\\n' "\$K0S_CHARTS_ERROR" >&2; exit 1; fi
@@ -124,6 +127,7 @@ case "\$*" in
   *"hubble port-forward"*) exec nc -l 127.0.0.1 "\${@: -1}" >/dev/null ;;
   *" port-forward "*) local_port="\${*: -1}"; exec nc -l 127.0.0.1 "\${local_port%%:*}" >/dev/null ;;
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
+  *" -n default run "*"nslookup"*) printf '%s\\n' "\${NP_RESOLVED:-exit=0}" ;;
   *" -n cert-manager run "*)
     printf '%s\\n' "\${NP_ALLOWED:-{\"initialized\":true,\"sealed\":false\}exit=0}" ;;
   *" -n default run "*)

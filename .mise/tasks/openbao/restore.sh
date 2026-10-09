@@ -33,17 +33,23 @@ if [[ "$live" == "$recorded" ]]; then
   exit 0
 fi
 
-# A restore on a fresh instance failed with `unexpected EOF` on its first
-# attempts and then succeeded (proof-openbao-bootstrap): retry, bounded.
+# kubectl exec drops part of a long stdin stream about half the time (the pod
+# then holds a multiple of 32 KiB and OpenBao answers `unexpected EOF`). Resend
+# until the pod's checksum equals the Mac's, then restore; both steps are bounded.
+sends=10
 attempts=5
 pause="${FIRMAMENT_RESTORE_PAUSE:-10}"
 want_sum=$(sha256_hex <"$file")
+for ((send = 1; send <= sends; send++)); do
+  pod_sum=$(openbao_remote receive <"$file") || exit
+  pod_sum=${pod_sum##*$'\n'}
+  [[ "$pod_sum" == "$want_sum" ]] && break
+  if ((send == sends)); then
+    fail "the snapshot did not reach the pod whole after $sends sends: the Mac has $want_sum, the pod has $pod_sum" || exit
+  fi
+done
 for ((attempt = 1; attempt <= attempts; attempt++)); do
-  openbao_remote receive <"$file" || exit
   if output=$(openbao_remote restore 2>&1); then
-    pod_sum=$(printf '%s\n' "$output" | head -n 1)
-    [[ "$pod_sum" == "$want_sum" ]] ||
-      fail "the snapshot changed on the way in: the Mac has $want_sum, the pod has $pod_sum; the restore ran on it, check OpenBao before another apply" || exit
     break
   fi
   if ((attempt == attempts)); then

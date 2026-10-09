@@ -2408,6 +2408,13 @@ mode_of() {
   [[ "$output" == *"default namespace reached OpenBao"* ]]
 }
 
+@test "network-policy:verify fails when a pod in the default namespace cannot resolve names" {
+  record_contracts
+  NP_RESOLVED='exit=1' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not resolve a name"* ]]
+}
+
 @test "network-policy:verify fails when the consumer cannot reach OpenBao" {
   record_contracts
   NP_ALLOWED='wget: download timed out exit=1' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local

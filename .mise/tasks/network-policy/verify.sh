@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Check the network policy on the cluster: a pod in the namespace of a package that requires secrets reaches OpenBao, and a pod in a namespace nothing allows does not (starts two short-lived pods)"
+#MISE description="Check the network policy on the cluster: a pod in the namespace of a package that requires secrets reaches OpenBao, and a pod in a namespace nothing allows does not; a pod in the default namespace resolves names but cannot reach a port of an ingress-denied platform namespace (starts short-lived pods)"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
@@ -36,3 +36,20 @@ if [[ "$denied" != *'exit=1'* ]]; then
   fail "the pod in the default namespace failed for another reason than a blocked connection: $denied" || exit
 fi
 printf 'ok: %s reaches OpenBao in %s; default does not\n' "$consumer" "$provider"
+
+# The platform namespaces that deny ingress only: every pod may use DNS and
+# nothing else of theirs is reachable without an allow.
+platform=$(jq -r '[.namespaces | to_entries[] | select(.value.mode == "ingress")] | first | .key // empty' <<<"$policy")
+if [[ -n "$platform" ]]; then
+  resolved=$(timeout 180 kubectl --kubeconfig "$kubeconfig" -n default run "policy-probe-$RANDOM" --rm -i --restart=Never --image="$image" --command -- sh -c "nslookup kubernetes.default.svc.cluster.local >/dev/null 2>&1; echo exit=\$?" 2>&1 || true)
+  [[ "$resolved" == *'exit=0'* ]] || fail "a pod in the default namespace could not resolve a name: $resolved" || exit
+  # A pod-network pod of the namespace, and a port no allow names (the
+  # kubelet's probes reach other ports; this one is Hubble relay's server).
+  target=$(kubectl --kubeconfig "$kubeconfig" -n "$platform" get pods -l k8s-app=hubble-relay -o json |
+    jq -r '[.items[] | select(.status.podIP != .status.hostIP) | .status.podIP] | first // empty')
+  [[ -n "$target" ]] || fail "no pod-network pod labelled k8s-app=hubble-relay in $platform to probe" || exit
+  blocked=$(timeout 180 kubectl --kubeconfig "$kubeconfig" -n default run "policy-probe-$RANDOM" --rm -i --restart=Never \
+    --image="$image" --command -- sh -c "wget -T 8 -qO- http://$target:4245/; echo exit=\$?" 2>&1 || true)
+  [[ "$blocked" == *'timed out'* ]] || fail "a pod in the default namespace was not blocked from $platform ($target:4245): $blocked" || exit
+  printf 'ok: default resolves names and is blocked from the %s pod %s\n' "$platform" "$target"
+fi
