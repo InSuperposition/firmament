@@ -44,7 +44,7 @@ edge_repository() {
 
 # The fake pod. exec runs the remote script's subcommand against files in
 # $POD; FAKE_RESTORE_FAILURES makes that many restores fail first,
-# FAKE_BAD_READ corrupts the snapshot on its way out, FAKE_NOT_READY makes
+# FAKE_SHORT_SENDS cuts that many uploads short, FAKE_BAD_READ corrupts the snapshot on its way out, FAKE_NOT_READY makes
 # the pod not Ready, FAKE_CHAIN_BAD makes the TLS check fail.
 stub_pod() {
   cat >"$stubs/kubectl" <<'STUB'
@@ -70,7 +70,11 @@ case "$*" in
       read)
         cat "$POD/snap"
         [[ -z "${FAKE_BAD_READ:-}" ]] || printf 'garbage' ;;
-      receive) cat >"$POD/received" ;;
+      receive)
+        cat >"$POD/received"
+        shorts=$(cat "$POD/shorts" 2>/dev/null || printf '%s' "${FAKE_SHORT_SENDS:-0}")
+        if ((shorts > 0)); then printf '%s' "$((shorts - 1))" >"$POD/shorts"; head -c 3 "$POD/received" >"$POD/cut"; mv "$POD/cut" "$POD/received"; fi
+        sum <"$POD/received" ;;
       restore)
         sum <"$POD/received"
         count=$(cat "$POD/failures" 2>/dev/null || printf '%s' "${FAKE_RESTORE_FAILURES:-0}")
@@ -198,6 +202,25 @@ mode_of() {
   FAKE_RESTORE_FAILURES=9 run_task "$root_directory/.mise/tasks/openbao/restore.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"after 5 attempts"* ]] || fail "$output"
+  ! grep -q 'delete pod' "$CALLS"
+}
+
+@test "openbao:restore sends the snapshot again when the pod received it short" {
+  run_task "$root_directory/.mise/tasks/openbao/snapshot.sh"
+  printf 'ROOT:B\n' >"$pod/root.pem"
+  FAKE_SHORT_SENDS=4 run_task "$root_directory/.mise/tasks/openbao/restore.sh"
+  [ "$status" -eq 0 ] || fail "$output"
+  [ "$(grep -c 'receive$' "$CALLS")" -eq 5 ]
+  cmp "$pod/received" "$state/snapshot.snap"
+}
+
+@test "openbao:restore never restores from a snapshot that stays short" {
+  run_task "$root_directory/.mise/tasks/openbao/snapshot.sh"
+  printf 'ROOT:B\n' >"$pod/root.pem"
+  FAKE_SHORT_SENDS=99 run_task "$root_directory/.mise/tasks/openbao/restore.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"did not reach the pod whole after 10 sends"* ]] || fail "$output"
+  ! grep -q 'restore$' "$CALLS"
   ! grep -q 'delete pod' "$CALLS"
 }
 
