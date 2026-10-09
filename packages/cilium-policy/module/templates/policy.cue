@@ -1,7 +1,7 @@
 package templates
 
-// One CiliumNetworkPolicy per covered namespace. A rule section on both
-// ingress and egress makes Cilium deny everything else, so the default-deny
+// One CiliumNetworkPolicy per covered namespace. A rule section on ingress
+// (and, in full mode, egress) makes Cilium deny everything else, so the default-deny
 // and every allow take effect in one object. A section with no allow is
 // written as one empty rule, which denies all.
 #Policy: {
@@ -39,7 +39,18 @@ package templates
 				fromEntities: ["host"]
 				toPorts: [{ports: [for hp in _config.policy.hostPorts {port: "\(hp.port)", protocol: hp.protocol}]}]
 			},
-			if _config.policy.enforce && len(_config.policy.hostPorts) > 0 {
+			// Pod ports any pod may reach, such as DNS.
+			if len(_config.policy.clusterPorts) > 0 {
+				fromEntities: ["cluster"]
+				toPorts: [{ports: [for cp in _config.policy.clusterPorts {port: "\(cp.port)", protocol: cp.protocol}]}]
+			},
+			// The pods of an ingress-only namespace talk to each other: the
+			// konnectivity agent carries the API server's calls to the
+			// metrics server, for one.
+			if _config.policy.mode == "ingress" {
+				fromEndpoints: [{}]
+			},
+			if _config.policy.mode == "full" && len(_config.policy.hostPorts) > 0 {
 				fromEndpoints: [{matchLabels: {
 					(_podNamespace): "kube-system"
 					"k8s:k8s-app":   "konnectivity-agent"
@@ -47,11 +58,11 @@ package templates
 				toPorts: [{ports: [for hp in _config.policy.hostPorts {port: "\(hp.port)", protocol: hp.protocol}]}]
 			},
 		]
-		// An enforced namespace with no allow at all denies everything: one
+		// A namespace that denies ingress and has no allow at all denies everything: one
 		// empty rule.
-		ingress: [if _config.policy.enforce && len(_ingress) == 0 {{}}, for r in _ingress {r}]
+		ingress: [if _config.policy.mode != "host" && len(_ingress) == 0 {{}}, for r in _ingress {r}]
 
-		if _config.policy.enforce {
+		if _config.policy.mode == "full" {
 			egress: _egress
 		}
 		_egress: [

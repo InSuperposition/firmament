@@ -25,6 +25,10 @@ package packagespec
 	// webhooks) reach. The network policy allows the host and the
 	// kube-apiserver entities on exactly these.
 	host_ports?: [...#HostPort]
+	// Pod ports that any pod in the cluster may reach, such as the DNS
+	// workload's. The network policy allows the cluster entity on exactly
+	// these.
+	cluster_ports?: [...#HostPort]
 })
 
 #HostPort: close({

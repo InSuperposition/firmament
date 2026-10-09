@@ -20,9 +20,10 @@ package templates
 #Protocol: "TCP" | "UDP"
 
 #NamespacePolicy: close({
-	// An enforced namespace gets the default-deny and every allow; any other
-	// gets only the allow for the node and the API server.
-	enforce: bool
+	// full: ingress and egress default-deny and every allow. ingress: ingress
+	// default-deny, every allow and the namespace's own pods; egress stays
+	// open. host: only the allow for the node and the API server.
+	mode: "full" | "ingress" | "host"
 	provides: [...close({
 		capability: string
 		port:       #Port
@@ -38,6 +39,10 @@ package templates
 		})
 	})]
 	hostPorts: [...close({
+		port:     #Port
+		protocol: #Protocol
+	})]
+	clusterPorts: [...close({
 		port:     #Port
 		protocol: #Protocol
 	})]

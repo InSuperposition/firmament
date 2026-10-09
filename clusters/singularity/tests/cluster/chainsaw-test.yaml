@@ -122,6 +122,15 @@ spec:
               kind: CiliumNetworkPolicy
               metadata:
                 name: platform
+                namespace: kube-system
+              status:
+                (conditions[?type == 'Valid'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: cilium.io/v2
+              kind: CiliumNetworkPolicy
+              metadata:
+                name: platform
                 namespace: flux-system
               status:
                 (conditions[?type == 'Valid'] | [0].status): "True"

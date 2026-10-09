@@ -188,6 +188,16 @@ render() {
   [ "$(yq -r '.spec | has("egress")' "$policy")" = false ]
 }
 
+@test "kube-system denies ingress only: the node, every pod on DNS and its own pods are allowed, egress is untouched" {
+  render local "$BATS_TEST_TMPDIR/out"
+  policy="$BATS_TEST_TMPDIR/out/cilium-policy/kube-system_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
+  [ "$(yq -r '.spec | has("egress")' "$policy")" = false ]
+  [ "$(yq -r '.spec.ingress[] | select(.fromEntities[0] == "host") | [.toPorts[0].ports[].port] | join(",")' "$policy")" = 8080,8181,8093,10250,4222,8081 ]
+  [ "$(yq -r '.spec.ingress[] | select(.fromEntities[0] == "cluster") | [.toPorts[0].ports[] | .port + "/" + .protocol] | join(",")' "$policy")" = 53/UDP,53/TCP ]
+  [ "$(yq -r '[.spec.ingress[] | select(.fromEndpoints and (.fromEndpoints[0] | length) == 0)] | length' "$policy")" -eq 1 ]
+  [ "$(yq -r '[.spec.ingress[] | select(.fromEntities and .fromEndpoints)] | length' "$policy")" -eq 0 ]
+}
+
 @test "the API server's webhook calls are allowed from the konnectivity agent, not from the node alone" {
   render local "$BATS_TEST_TMPDIR/out"
   policy="$BATS_TEST_TMPDIR/out/cilium-policy/cert-manager_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"

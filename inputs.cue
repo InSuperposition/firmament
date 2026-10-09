@@ -188,17 +188,24 @@ _hostPortPackages: {
 }
 
 // The namespaces the network policy covers, and what it renders for each. A
-// namespace of a trust-layer package is enforced: default-deny and every allow
-// (D1 of the network-policy review). A namespace of another package that lists
-// host ports gets only the allow for the node, because the node's access to
-// pods is closed cluster-wide and its probes must still pass.
+// namespace of a trust-layer package is in full mode: default-deny both ways
+// and every allow (D1 of the network-policy review). A namespace of a
+// network-layer package denies ingress only (platform-policy): its pods are
+// k0s's and must keep reaching the API server and the internet. A namespace of
+// another package that lists host ports gets only the allow for the node,
+// because the node's access to pods is closed cluster-wide and its probes
+// must still pass.
 policy: {[string]: {namespaces: {[string]: {...}}}}
 policy: {
 	for envName, env in environments {
 		(envName): namespaces: {
-			for binding in bindings[env.cluster] if packages[binding.package].layer == "trust" || _hostPortPackages[binding.package] != _|_ {
+			for binding in bindings[env.cluster] if packages[binding.package].layer == "trust" || packages[binding.package].layer == "network" || _hostPortPackages[binding.package] != _|_ {
 				(binding.namespace): {
-					enforce: len([for member in bindings[env.cluster] if member.namespace == binding.namespace if packages[member.package].layer == "trust" {member}]) > 0
+					mode: [
+						if len([for member in bindings[env.cluster] if member.namespace == binding.namespace if packages[member.package].layer == "trust" {member}]) > 0 {"full"},
+						if len([for member in bindings[env.cluster] if member.namespace == binding.namespace if packages[member.package].layer == "network" {member}]) > 0 {"ingress"},
+						"host",
+					][0]
 					provides: [
 						for member in bindings[env.cluster] if member.namespace == binding.namespace
 						for key, value in packages[member.package] if key == "provides"
@@ -221,6 +228,11 @@ policy: {
 						for member in bindings[env.cluster] if member.namespace == binding.namespace
 						for key, value in packages[member.package] if key == "host_ports"
 						for hostPort in value {hostPort},
+					]
+					clusterPorts: [
+						for member in bindings[env.cluster] if member.namespace == binding.namespace
+						for key, value in packages[member.package] if key == "cluster_ports"
+						for clusterPort in value {clusterPort},
 					]
 				}
 			}
