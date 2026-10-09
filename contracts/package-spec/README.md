@@ -17,7 +17,8 @@ the file check it again through a vendored copy of the schema.
 | `bootstrap` | bool | optional; applied once from upstream |
 | `delta_keys` | list of strings | optional; the keys an environment delta may set |
 | `requires[]` | `capability`, `scope` | `scope` is `cluster` or `mesh` |
-| `provides[]` | `capability`, `scope`, `port`, `protocol`, `readiness {kind, name}` | `port` 1 to 65535, `protocol` `TCP` or `UDP` |
+| `provides[]` | `capability`, `scope`, `port`, `protocol`, `readiness {kind, name}` | `port` is the pod (container) port, 1 to 65535, not a Service port that maps to it; `protocol` `TCP` or `UDP` |
+| `host_ports[]` | `port`, `protocol` | optional; pod ports the node (probes) and the API server (webhooks) reach; the network policy allows the `host` and `kube-apiserver` entities on exactly these |
 
 Cross-file rules (every requirement met exactly once, no cycle, a delta key
 declared here) belong to the modules and the `inputs` package that read

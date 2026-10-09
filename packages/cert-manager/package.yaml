@@ -4,3 +4,16 @@ pin:
   source: oci://quay.io/jetstack/charts/cert-manager
   version: v1.21.2
   digest: sha256:634dce9c13b56677a2c05e2ab76c312d0be2664022d5dd05815da67e1fd5f610
+# cert-manager logs in to OpenBao to sign certificates.
+requires:
+  - capability: secrets
+    scope: cluster
+# Pod ports the node and the API server reach: the controller's liveness probe
+# (9403), the webhook's probes (6080) and the admission webhook itself (10250).
+host_ports:
+  - port: 9403
+    protocol: TCP
+  - port: 6080
+    protocol: TCP
+  - port: 10250
+    protocol: TCP
