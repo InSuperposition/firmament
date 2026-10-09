@@ -190,7 +190,7 @@ local_state() {
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   local state="$FIRMAMENT_STATE_HOME/environments/local" k0s="$MISE_PROJECT_ROOT/roots/kubernetes-k0s"
-  run grep -E '^(tofu -chdir=.* (init|apply) |k0sctl |kubectl .*--raw /readyz|cilium |mise run openbao:seed)' "$CALLS"
+  run grep -E '^(tofu -chdir=.* (init|apply) |k0sctl |kubectl .*--raw /readyz|cilium |mise run openbao:)' "$CALLS"
   [[ "${lines[0]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/machine-orb init "*"-backend-config=path=$state/machine-orb.tfstate "* ]]
   [[ "${lines[1]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/machine-orb apply -input=false -auto-approve "* ]]
   [[ "${lines[2]}" == "tofu -chdir=$k0s init "*"-backend-config=path=$state/kubernetes-k0s.tfstate "* ]]
@@ -204,6 +204,9 @@ local_state() {
   [[ "${lines[10]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
   [[ "${lines[11]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
   [[ "${lines[12]}" == "mise run openbao:seed"* ]]
+  [[ "${lines[13]}" == "mise run openbao:restore"* ]]
+  [[ "${lines[14]}" == "mise run openbao:root"* ]]
+  [[ "${lines[15]}" == "mise run openbao:snapshot"* ]]
 }
 
 @test "env:plan plans every root once the environment records a machine and a cluster" {
@@ -2130,7 +2133,7 @@ expect_planted_value_refused() {
 @test "the Flux root lists no package, and its source is verified against the publish workflow" {
   local flux="$root_directory/clusters/singularity/flux"
   run yq -r '.resources[]' "$flux/kustomization.yaml"
-  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml\nrendered.yaml')" ] || fail "$output"
+  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml\nrendered.yaml\nissuers.yaml')" ] || fail "$output"
   [ "$(yq -r '.spec.verify.provider' "$flux/ocirepository.yaml")" = cosign ]
   [ "$(yq -r '.spec.ref.tag' "$flux/ocirepository.yaml")" = '${git_commit}' ]
   [[ "$(yq -r '.spec.verify.matchOIDCIdentity[0].subject' "$flux/ocirepository.yaml")" == *'workflows/publish\.yaml@refs/heads/'* ]]
