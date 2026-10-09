@@ -73,3 +73,53 @@
 **Effort:** S
 **Priority:** P3
 **Depends on:** machines-orbstack implementation
+
+## Tenancy
+
+### Run the first database for a tenant (CloudNativePG)
+
+**What:** Add the `cloudnative-pg` operator as a platform chart package and a `Cluster` in the tenant's namespace, with storage, authenticated TLS and least-privilege checks.
+
+**Why:** The first-tenant review (2026-10-09) deferred the database. It found these requirements: a StorageClass (none exists; OpenBao writes to a hostPath folder), `sslmode=verify-full` against the cluster CA with a wrong-CA rejection test, a dedicated app ServiceAccount with token automount off and a `kubectl auth can-i` check for the database identity, the 9443 webhook (`failurePolicy: Fail`) needing the konnectivity-agent allow in any policy mode, probe `host_ports` 8000 and 44100, `depends_on` so the operator is Ready before the `Cluster`, and `api_server_clients` so only database pods reach the API server.
+
+**Context:** CloudNativePG creates and manages its own per-instance PVCs and does not use StatefulSets, so decide the StorageClass against that model; the OpenEBS `localpv-provisioner` OCI chart (`ghcr.io/openebs/charts/localpv-provisioner`) is the resolved candidate, re-resolve the pin first. Resolved chart: `ghcr.io/cloudnative-pg/charts/cloudnative-pg` 0.29.1, operator 1.30.1. Instance pods carry `cnpg.io/cluster`; ports: operator webhook 9443, instance status 8000, PostgreSQL 5432. `inputs.cue` allows one provider per capability per cluster, so a second database needs that rule revisited. Confirm the read-write Service name and the keys of the generated `<cluster>-app` Secret.
+
+**Effort:** L
+**Priority:** P2
+**Depends on:** the first-tenant slice (cv, `namespace_quota`, tenant-wide default-deny)
+
+### Give a tenant chart a namespace-scoped installer
+
+**What:** Render `spec.serviceAccountName` on the `HelmRelease` of every non-platform tenant package, with a per-namespace installer ServiceAccount and RoleBinding created by the namespace module.
+
+**Why:** `helmrelease.cue` names a `targetNamespace` but no impersonation identity, so a signed tenant chart installs with the controller's authority and can create cluster-scoped objects. Signature verification authenticates the publisher, not the permissions its manifests deserve.
+
+**Context:** Today the only chart author is the platform owner. Trigger: a second chart author or any tenant that is not the owner.
+
+**Effort:** M
+**Priority:** P2
+**Depends on:** the first-tenant slice
+
+### Bind tenant administrators and select workloads inside a namespace
+
+**What:** Turn `administrators` into Roles and RoleBindings in the tenant's namespaces, and add workload selectors to `provides`/`requires` so a rule can name pods, not only namespaces.
+
+**Why:** `administrators` is read by no module (only the schema and samples mention it), so tenant isolation is network policy alone; and policy peers are whole namespaces, so an unrelated pod in the same namespace is as trusted as the app.
+
+**Context:** Trigger: a second person, or a second workload in a tenant namespace.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** the first-tenant slice
+
+### Verify image signatures at admission
+
+**What:** A Kyverno `ImageValidatingPolicy` (`policies.kyverno.io/v1`) with `matchImageReferences` for the tenant image and `attestors[].cosign.keyless.identities` holding the workflow subject and the GitHub OIDC issuer.
+
+**Why:** Images are pinned by digest from cluster values and the chart signature is verified by Flux, but nothing checks the image signature when a pod is admitted.
+
+**Context:** Adds a controller. Trigger: a second image publisher or a tenant-authored release. Use the CEL policy types, not legacy `ClusterPolicy`.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** the first-tenant slice
