@@ -16,6 +16,28 @@ render() {
   ENVIRONMENT="${1:-local}" timoni bundle build -f bundle.cue --runtime-from-env --output-dir "$2"
 }
 
+# Binds a tenant package `site` to the namespace cv: it lists host port 44100
+# and requires secrets.
+bind_site() {
+  mkdir -p packages/site
+  cat >packages/site/package.yaml <<'YAML'
+name: site
+layer: app
+pin:
+  source: oci://ghcr.io/example/charts/site
+  version: 1.0.0
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+requires:
+  - capability: secrets
+    scope: cluster
+host_ports:
+  - port: 44100
+    protocol: TCP
+YAML
+  printf '{}\n' >clusters/singularity/values/site.yaml
+  printf -- '- package: site\n  namespace: cv\n  tenant: apps\n' >>clusters/singularity/packages.yaml
+}
+
 @test "the data files pass cue vet -c" {
   run cue vet -c .:inputs
   [ "$status" -eq 0 ]
@@ -204,6 +226,61 @@ render() {
   [ "$(yq -r '.spec.ingress[] | select(.fromEndpoints[0].matchLabels["k8s:k8s-app"] == "konnectivity-agent") | .toPorts[0].ports[].port' "$policy" | tr '\n' ,)" = 9403,6080,10250, ]
   # Cilium refuses an entity and an endpoint selector in one rule.
   [ "$(yq -r '[.spec.ingress[] | select(.fromEntities and .fromEndpoints)] | length' "$policy")" -eq 0 ]
+}
+
+@test "the policies of the platform namespaces stay byte-identical to the recorded render" {
+  render local "$BATS_TEST_TMPDIR/out"
+  for golden in "$root_directory"/tests/render/golden/platform-policy/*; do
+    diff "$golden" "$BATS_TEST_TMPDIR/out/cilium-policy/$(basename "$golden")"
+  done
+}
+
+@test "binding a tenant namespace that requires nothing leaves the policies of the platform namespaces byte-identical" {
+  bind_site
+  yq -i 'del(.requires)' packages/site/package.yaml
+  render local "$BATS_TEST_TMPDIR/out"
+  for golden in "$root_directory"/tests/render/golden/platform-policy/*; do
+    diff "$golden" "$BATS_TEST_TMPDIR/out/cilium-policy/$(basename "$golden")"
+  done
+}
+
+@test "one clusterwide policy denies both directions everywhere but the platform and system namespaces" {
+  render local "$BATS_TEST_TMPDIR/out"
+  policy="$BATS_TEST_TMPDIR/out/cilium-policy/cilium.io_v2_ciliumclusterwidenetworkpolicy_tenant-default-deny.yaml"
+  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0] | [.key, .operator] | join(" ")' "$policy")" = "io.kubernetes.pod.namespace NotIn" ]
+  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | join(",")' "$policy")" = cert-manager,default,flux-system,kube-node-lease,kube-public,kube-system,openbao ]
+  [ "$(yq -r '.spec.enableDefaultDeny | [.ingress, .egress] | join(",")' "$policy")" = true,true ]
+  [ "$(yq -r '.spec.ingress | length' "$policy")" -eq 1 ]
+  [ "$(yq -r '.spec.ingress[0] | length' "$policy")" -eq 0 ]
+  [ "$(yq -r '.spec.egress | length' "$policy")" -eq 1 ]
+  [ "$(yq -r '.spec.egress[0].toEndpoints[0].matchLabels["k8s:k8s-app"]' "$policy")" = kube-dns ]
+}
+
+@test "a tenant namespace is not excluded from the clusterwide policy" {
+  bind_site
+  render local "$BATS_TEST_TMPDIR/out"
+  policy="$BATS_TEST_TMPDIR/out/cilium-policy/cilium.io_v2_ciliumclusterwidenetworkpolicy_tenant-default-deny.yaml"
+  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | contains(["cv"])' "$policy")" = false ]
+}
+
+@test "a tenant namespace gets only its allows: the node on its host port, its provider on the pod port, no API server" {
+  bind_site
+  render local "$BATS_TEST_TMPDIR/out"
+  policy="$BATS_TEST_TMPDIR/out/cilium-policy/cv_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
+  [ "$(yq -r '.spec.ingress | length' "$policy")" -eq 2 ]
+  [ "$(yq -r '.spec.ingress[] | select(.fromEntities[0] == "host") | .toPorts[0].ports[0].port' "$policy")" = 44100 ]
+  [ "$(yq -r '.spec.ingress[] | select(.fromEndpoints[0].matchLabels["k8s:k8s-app"] == "konnectivity-agent") | .toPorts[0].ports[0].port' "$policy")" = 44100 ]
+  [ "$(yq -r '.spec.egress | length' "$policy")" -eq 1 ]
+  [ "$(yq -r '.spec.egress[0].toEndpoints[0].matchLabels["k8s:io.kubernetes.pod.namespace"]' "$policy")" = openbao ]
+  [ "$(yq -r '[.spec.egress[] | select(.toEntities)] | length' "$policy")" -eq 0 ]
+}
+
+@test "a tenant namespace whose packages allow nothing gets no policy of its own" {
+  bind_site
+  yq -i 'del(.requires) | del(.host_ports)' packages/site/package.yaml
+  render local "$BATS_TEST_TMPDIR/out"
+  [ ! -e "$BATS_TEST_TMPDIR/out/cilium-policy/cv_cilium.io_v2_ciliumnetworkpolicy_platform.yaml" ]
+  grep -q 'tenant-default-deny' "$BATS_TEST_TMPDIR/out/cilium-policy/cilium.io_v2_ciliumclusterwidenetworkpolicy_tenant-default-deny.yaml"
 }
 
 @test "the release of Cilium reads the network policy's values as an optional second source" {

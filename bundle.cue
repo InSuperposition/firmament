@@ -31,7 +31,10 @@ bundle: {
 		"cilium-policy": {
 			module: url: "file://packages/cilium-policy/module"
 			namespace: "flux-system"
-			values: namespaces: inputs.policy[_environment].namespaces
+			values: {
+				namespaces:         inputs.policy[_environment].namespaces
+				excludedNamespaces: inputs.policy[_environment].excludedNamespaces
+			}
 		}
 
 		namespace: {

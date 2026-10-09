@@ -50,7 +50,7 @@ package templates
 			if _config.policy.mode == "ingress" {
 				fromEndpoints: [{}]
 			},
-			if _config.policy.mode == "full" && len(_config.policy.hostPorts) > 0 {
+			if (_config.policy.mode == "full" || _config.policy.mode == "allow") && len(_config.policy.hostPorts) > 0 {
 				fromEndpoints: [{matchLabels: {
 					(_podNamespace): "kube-system"
 					"k8s:k8s-app":   "konnectivity-agent"
@@ -60,10 +60,23 @@ package templates
 		]
 		// A namespace that denies ingress and has no allow at all denies everything: one
 		// empty rule.
-		ingress: [if _config.policy.mode != "host" && len(_ingress) == 0 {{}}, for r in _ingress {r}]
+		if _config.policy.mode != "allow" {
+			ingress: [if _config.policy.mode != "host" && len(_ingress) == 0 {{}}, for r in _ingress {r}]
+		}
 
 		if _config.policy.mode == "full" {
 			egress: _egress
+		}
+		// An allow namespace is denied by the tenant-wide policy, which also
+		// opens DNS. It gets a rule section only for what its packages allow,
+		// and no section at all when they allow nothing.
+		if _config.policy.mode == "allow" {
+			if len(_ingress) > 0 {
+				ingress: _ingress
+			}
+			if len(_requiresEgress) > 0 {
+				egress: _requiresEgress
+			}
 		}
 		_egress: [
 			// DNS, to the DNS workload only.
@@ -75,8 +88,11 @@ package templates
 				toPorts: [{ports: [{port: "53", protocol: "UDP"}, {port: "53", protocol: "TCP"}]}]
 			},
 			{toEntities: ["kube-apiserver"]},
-			// A capability this namespace requires: its provider's namespace,
-			// on the pod port.
+			for r in _requiresEgress {r},
+		]
+		// A capability this namespace requires: its provider's namespace,
+		// on the pod port.
+		_requiresEgress: [
 			for req in _config.policy.requires {
 				toEndpoints: [{matchLabels: (_podNamespace): req.provider.namespace}]
 				toPorts: [{ports: [{port: "\(req.provider.port)", protocol: req.provider.protocol}]}]

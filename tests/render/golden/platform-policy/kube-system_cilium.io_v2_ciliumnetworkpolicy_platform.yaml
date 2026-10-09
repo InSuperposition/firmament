@@ -1,0 +1,36 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+  name: platform
+  namespace: kube-system
+spec:
+  endpointSelector: {}
+  ingress:
+  - fromEntities:
+    - host
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+      - port: "8181"
+        protocol: TCP
+      - port: "8093"
+        protocol: TCP
+      - port: "10250"
+        protocol: TCP
+      - port: "4222"
+        protocol: TCP
+      - port: "8081"
+        protocol: TCP
+  - fromEntities:
+    - cluster
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+      - port: "53"
+        protocol: TCP
+  - fromEndpoints:
+    - {}
