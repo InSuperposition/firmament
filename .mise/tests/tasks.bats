@@ -2160,6 +2160,21 @@ expect_planted_value_refused() {
   expect_planted_value_refused private-state '.openbao.seal_key.path = "../seal.key"' path
 }
 
+@test "contracts:lint refuses a readable snapshot in private-state" {
+  expect_planted_value_refused private-state '.openbao.snapshot = {"path": "snapshot.snap", "mode": "0644", "root_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000"}' mode
+}
+
+@test "contracts:lint refuses a snapshot fingerprint that is not a SHA-256 in private-state" {
+  expect_planted_value_refused private-state '.openbao.snapshot = {"path": "snapshot.snap", "mode": "0600", "root_fingerprint": "abc"}' root_fingerprint
+}
+
+@test "contracts:lint accepts a snapshot and its previous generation in private-state" {
+  MISE_PROJECT_ROOT=$(contract_repository)
+  yq -i '.openbao.snapshot = {"path": "snapshot.snap", "mode": "0600", "root_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000"} | .openbao.snapshot_previous = .openbao.snapshot' "$MISE_PROJECT_ROOT/contracts/private-state/private-state.yaml"
+  run "$root_directory/.mise/tasks/contracts/lint.sh"
+  [ "$status" -eq 0 ] || fail "$output"
+}
+
 @test "contracts:lint refuses a field private-state does not declare" {
   expect_planted_value_refused private-state '.openbao.root_token = {"path": "root.token", "mode": "0600"}' root_token
 }
