@@ -34,6 +34,10 @@ locals {
       hosts = [{
         role     = "controller+worker"
         noTaints = true
+        # k0sctl downloads the binary on the Mac, keeps it in its cache for the
+        # next rebuild and uploads it over SSH, so a stalled download inside the
+        # machine cannot use up the apply's time budget.
+        uploadBinary = true
         ssh = {
           address         = var.ssh_address
           user            = var.ssh_user
