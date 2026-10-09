@@ -34,8 +34,11 @@ the CNI included, belong to Flux. The node stays NotReady until a CNI runs;
 k0sctl waits only for the API server on a `controller+worker` host.
 
 The k0s version is the `k0s_version` default in `variables.tf`, the one
-place it is set. k0sctl downloads it onto the machine, so the host runs no
-k0s binary and `mise` pins only `k0sctl`. To upgrade, check the newest
+place it is set. k0sctl downloads it on the host that runs it (`uploadBinary`),
+keeps it in its cache and uploads it to the machine, so a rebuild does not
+download 240 MB again and a stalled download inside the machine cannot use up
+the apply's time budget; the host runs no k0s binary and `mise` pins only
+`k0sctl`. To upgrade, check the newest
 stable release of `k0sproject/k0s`, change the default, and run the
 module's tests; a live check is `mise run env:e2e`.
 

@@ -77,6 +77,15 @@ run "pins_k0s_to_the_version_variable" {
   }
 }
 
+run "uploads_the_k0s_binary_from_the_host" {
+  command = plan
+
+  assert {
+    condition     = yamldecode(output.k0sctl_yaml).spec.hosts[0].uploadBinary == true
+    error_message = "k0sctl must download k0s on the host running it and upload it, not download it inside the machine."
+  }
+}
+
 run "takes_another_k0s_version" {
   command = plan
 
