@@ -27,6 +27,13 @@ bundle: {
 			}
 		}
 
+		// The network policy of the namespaces inputs.cue selects.
+		"cilium-policy": {
+			module: url: "file://packages/cilium-policy/module"
+			namespace: "flux-system"
+			values: namespaces: inputs.policy[_environment].namespaces
+		}
+
 		namespace: {
 			module: url: "file://packages/namespace/module"
 			namespace: "flux-system"

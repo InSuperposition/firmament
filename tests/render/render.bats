@@ -132,6 +132,53 @@ render() {
   [ "$(jq -c . <<<"$output")" = '{"runAsUser":0,"runAsNonRoot":false}' ]
 }
 
+@test "a requirement no package provides is refused, naming the package and the capability" {
+  yq -i '.requires[0].capability = "ghostcap"' packages/cert-manager/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *cert-manager* ]]
+  [[ "$output" == *ghostcap* ]]
+}
+
+@test "a host port outside 1 to 65535 or with an unknown protocol is refused, naming the field" {
+  yq -i '.host_ports[0].port = 70000' packages/cert-manager/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *port* ]]
+  yq -i '.host_ports[0].port = 9403 | .host_ports[0].protocol = "ICMP"' packages/cert-manager/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *protocol* ]]
+}
+
+@test "each trust namespace gets one policy with both an ingress and an egress section" {
+  render local "$BATS_TEST_TMPDIR/out"
+  for ns in cert-manager openbao; do
+    policy="$BATS_TEST_TMPDIR/out/cilium-policy/${ns}_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
+    [ "$(yq -r '.spec.ingress | length' "$policy")" -ge 1 ]
+    [ "$(yq -r '.spec.egress | length' "$policy")" -ge 1 ]
+    [ "$(yq -r '.spec.endpointSelector | length' "$policy")" -eq 0 ]
+  done
+  [ "$(find "$BATS_TEST_TMPDIR/out/cilium-policy" -type f | wc -l | tr -d ' ')" -eq 2 ]
+}
+
+@test "OpenBao is reachable on its pod port from the namespace of the package that requires secrets, and only there" {
+  render local "$BATS_TEST_TMPDIR/out"
+  provider="$BATS_TEST_TMPDIR/out/cilium-policy/openbao_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
+  consumer="$BATS_TEST_TMPDIR/out/cilium-policy/cert-manager_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
+  [ "$(yq -r '.spec.ingress | length' "$provider")" -eq 1 ]
+  [ "$(yq -r '.spec.ingress[0].fromEndpoints[0].matchLabels["k8s:io.kubernetes.pod.namespace"]' "$provider")" = cert-manager ]
+  [ "$(yq -r '.spec.ingress[0].toPorts[0].ports[0].port' "$provider")" = 8443 ]
+  [ "$(yq -r '.spec.egress[] | select(.toEndpoints[0].matchLabels["k8s:io.kubernetes.pod.namespace"] == "openbao") | .toPorts[0].ports[0].port' "$consumer")" = 8443 ]
+}
+
+@test "the node and the API server reach exactly the host ports a package lists" {
+  render local "$BATS_TEST_TMPDIR/out"
+  consumer="$BATS_TEST_TMPDIR/out/cilium-policy/cert-manager_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
+  [ "$(yq -r '.spec.ingress[] | select(.fromEntities) | .fromEntities | join(",")' "$consumer")" = host,kube-apiserver ]
+  [ "$(yq -r '.spec.ingress[] | select(.fromEntities) | [.toPorts[0].ports[].port] | join(",")' "$consumer")" = 9403,6080,10250 ]
+}
+
 @test "a tenant without a kind is refused, naming the field" {
   sed -i.bak '/^kind:/d' environments/local/tenants/platform.yaml
   run cue vet -c .:inputs

@@ -141,3 +141,78 @@ charts: {
 		}
 	}
 }
+
+// ---- network policy ----------------------------------------------------
+
+// Who provides each capability in an environment's cluster, and where. A
+// capability provided twice is a conflict; a requirement nobody provides
+// is refused below, naming the package and the capability.
+_providerOf: {[string]: {[string]: {namespace: string, port: int, protocol: string}}}
+_providerOf: {
+	for envName, env in environments {
+		(envName): {
+			for binding in bindings[env.cluster] for key, value in packages[binding.package] if key == "provides" for provision in value {
+				(provision.capability): {namespace: binding.namespace, port: provision.port, protocol: provision.protocol}
+			}
+		}
+	}
+}
+
+requirementMet: {
+	for envName, env in environments for binding in bindings[env.cluster] for key, value in packages[binding.package] if key == "requires" for requirement in value {
+		(envName): (binding.package): (requirement.capability): _providerOf[envName][requirement.capability]
+	}
+}
+
+// The namespaces of the packages that require each capability. A provided
+// capability has an entry even when nobody requires it.
+_consumerNamespaces: {[string]: {[string]: {[string]: true}}}
+_consumerNamespaces: {
+	for envName, env in environments {
+		(envName): {
+			for capability, _ in _providerOf[envName] {
+				(capability): {}
+			}
+			for binding in bindings[env.cluster] for key, value in packages[binding.package] if key == "requires" for requirement in value {
+				(requirement.capability): (binding.namespace): true
+			}
+		}
+	}
+}
+
+// The namespaces the network policy covers: those of the trust layer's
+// packages (D1 of the network-policy review), and what it renders for each.
+policy: {[string]: {namespaces: {[string]: {...}}}}
+policy: {
+	for envName, env in environments {
+		(envName): namespaces: {
+			for binding in bindings[env.cluster] if packages[binding.package].layer == "trust" {
+				(binding.namespace): {
+					provides: [
+						for member in bindings[env.cluster] if member.namespace == binding.namespace
+						for key, value in packages[member.package] if key == "provides"
+						for provision in value {
+							capability: provision.capability
+							port:       provision.port
+							protocol:   provision.protocol
+							consumers: [for consumer, _ in _consumerNamespaces[envName][provision.capability] {consumer}]
+						},
+					]
+					requires: [
+						for member in bindings[env.cluster] if member.namespace == binding.namespace
+						for key, value in packages[member.package] if key == "requires"
+						for requirement in value {
+							capability: requirement.capability
+							provider:   _providerOf[envName][requirement.capability]
+						},
+					]
+					hostPorts: [
+						for member in bindings[env.cluster] if member.namespace == binding.namespace
+						for key, value in packages[member.package] if key == "host_ports"
+						for hostPort in value {hostPort},
+					]
+				}
+			}
+		}
+	}
+}
