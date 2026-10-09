@@ -10,7 +10,7 @@ listener "tcp" {
   address                         = "[::]:8443"
   tls_acme_ca_directory           = "http://127.0.0.1:8200/v1/pki/acme/directory"
   tls_acme_domains                = ["openbao.openbao.svc"]
-  tls_acme_cache_path             = "/openbao/data/acme"
+  tls_acme_cache_path             = "/home/openbao/acme"
   tls_acme_disable_alpn_challenge = true
 }
 
@@ -95,6 +95,13 @@ initialize "policies" {
       policy = "path \"pki/sign/cluster-leaf\" {\n  capabilities = [\"update\"]\n}\n"
     }
   }
+  request "policy-snapshot" {
+    operation = "update"
+    path      = "sys/policies/acl/snapshot"
+    data = {
+      policy = "path \"sys/storage/raft/snapshot\" {\n  capabilities = [\"read\"]\n}\npath \"sys/storage/raft/snapshot-force\" {\n  capabilities = [\"update\"]\n}\n"
+    }
+  }
   request "policy-admin" {
     operation = "update"
     path      = "sys/policies/acl/admin"
@@ -127,6 +134,15 @@ initialize "kubernetes-auth" {
       bound_service_account_namespaces = ["cert-manager"]
       token_policies = ["pki-issue"]
       audience = "openbao"
+    }
+  }
+  request "role-snapshot" {
+    operation = "update"
+    path      = "auth/kubernetes/role/snapshot"
+    data = {
+      bound_service_account_names = ["openbao"]
+      bound_service_account_namespaces = ["openbao"]
+      token_policies = ["snapshot"]
     }
   }
 }

@@ -20,6 +20,12 @@ policies:
   pki-issue:
     - path: pki/sign/cluster-leaf
       capabilities: [update]
+  # Read by the snapshot edge through the pod's own token (openbao:snapshot).
+  snapshot:
+    - path: sys/storage/raft/snapshot
+      capabilities: [read]
+    - path: sys/storage/raft/snapshot-force
+      capabilities: [update]
   admin:
     - path: "*"
       capabilities: [create, read, update, delete, list, sudo]
@@ -31,6 +37,10 @@ kubernetes:
       namespace: cert-manager
       policies: [pki-issue]
       audience: openbao
+    snapshot:
+      service_account: openbao
+      namespace: openbao
+      policies: [snapshot]
 operator:
   common_name: operator
   policies: [admin]

@@ -11,6 +11,10 @@ import (
 #SealKeyPath:             "/openbao/seal/seal.key"
 #OperatorCAPath:          "/openbao/operator-ca/operator-ca.pem"
 #DataPath:                "/openbao/data"
+// The chart mounts an emptyDir at the home folder: a cached certificate must
+// not outlive the pod, or a restored database could be served with a
+// certificate from the root it replaced.
+#ACMECachePath:           "/home/openbao/acme"
 #SealSecretName:          "openbao-static-seal"
 #OperatorCAConfigMapName: "openbao-operator-ca"
 #PlainListenerPort:       8200
@@ -90,7 +94,7 @@ import (
 		  address                         = "[::]:\(#TLSListenerPort)"
 		  tls_acme_ca_directory           = "\(_plain)/acme/directory"
 		  tls_acme_domains                = [\(strconv.Quote(_domain))]
-		  tls_acme_cache_path             = \(strconv.Quote("\(#DataPath)/acme"))
+		  tls_acme_cache_path             = \(strconv.Quote(#ACMECachePath))
 		  tls_acme_disable_alpn_challenge = true
 		}
 
@@ -181,7 +185,7 @@ import (
 					"bound_service_account_names = \((#List & {in: [role.service_account]}).out)",
 					"bound_service_account_namespaces = \((#List & {in: [role.namespace]}).out)",
 					"token_policies = \((#List & {in: role.policies}).out)",
-					"audience = \(strconv.Quote(role.audience))",
+					if role.audience != _|_ {"audience = \(strconv.Quote(role.audience))"},
 				]
 			},
 		]
