@@ -190,7 +190,7 @@ local_state() {
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   local state="$FIRMAMENT_STATE_HOME/environments/local" k0s="$MISE_PROJECT_ROOT/roots/kubernetes-k0s"
-  run grep -E '^(tofu -chdir=.* (init|apply) |k0sctl |kubectl .*--raw /readyz|cilium )' "$CALLS"
+  run grep -E '^(tofu -chdir=.* (init|apply) |k0sctl |kubectl .*--raw /readyz|cilium |mise run openbao:seed)' "$CALLS"
   [[ "${lines[0]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/machine-orb init "*"-backend-config=path=$state/machine-orb.tfstate "* ]]
   [[ "${lines[1]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/machine-orb apply -input=false -auto-approve "* ]]
   [[ "${lines[2]}" == "tofu -chdir=$k0s init "*"-backend-config=path=$state/kubernetes-k0s.tfstate "* ]]
@@ -202,6 +202,8 @@ local_state() {
   [[ "${lines[8]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/bootstrap-flux init "*"-backend-config=path=$state/bootstrap-flux.tfstate "* ]]
   [[ "${lines[9]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/bootstrap-flux apply -input=false -auto-approve "* ]]
   [[ "${lines[10]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
+  [[ "${lines[11]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
+  [[ "${lines[12]}" == "mise run openbao:seed"* ]]
 }
 
 @test "env:plan plans every root once the environment records a machine and a cluster" {
@@ -2244,4 +2246,100 @@ environment_lint_repository() {
     >"$MISE_PROJECT_ROOT/.mise/tasks/x/ok.sh"
   run "$root_directory/.mise/tasks/environments/lint.sh"
   [ "$status" -eq 0 ] || fail "$output"
+}
+
+# A repository that binds openbao in its cluster, with the contracts the seed
+# task validates the manifest against, and the local environment's contracts.
+seed_repository() {
+  MISE_PROJECT_ROOT=$(make_repository environments/local/environment.yaml clusters/singularity/packages.yaml clusters/singularity/openbao.yaml)
+  ln -s "$root_directory/contracts" "$MISE_PROJECT_ROOT/contracts"
+  printf -- '- package: openbao\n  namespace: openbao\n  tenant: platform\n' >"$MISE_PROJECT_ROOT/clusters/singularity/packages.yaml"
+  printf 'operator:\n  common_name: operator\n' >"$MISE_PROJECT_ROOT/clusters/singularity/openbao.yaml"
+  export MISE_PROJECT_ROOT
+  record_contracts
+  seed_state="$FIRMAMENT_STATE_HOME/environments/local/openbao"
+}
+
+mode_of() {
+  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+}
+
+@test "openbao:seed generates the secret files with the right modes and seeds the Secret and the ConfigMap" {
+  seed_repository
+  run_task "$root_directory/.mise/tasks/openbao/seed.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  for file in seal.key operator-ca.key operator-client.key; do
+    [ "$(mode_of "$seed_state/$file")" = 600 ] || fail "$file has mode $(mode_of "$seed_state/$file")"
+  done
+  [ "$(mode_of "$seed_state/operator-ca.pem")" = 644 ]
+  [ "$(wc -c <"$seed_state/seal.key" | tr -d ' ')" = 32 ]
+  diff "$root_directory/contracts/private-state/private-state.yaml" "$seed_state/private-state.yaml"
+  openssl verify -CAfile "$seed_state/operator-ca.pem" "$seed_state/operator-client.pem"
+  openssl x509 -in "$seed_state/operator-client.pem" -noout -subject | grep -q 'CN *= *operator'
+  grep -q 'create secret generic openbao-static-seal --from-file=seal.key=' "$CALLS"
+  grep -q 'create configmap openbao-operator-ca --from-file=operator-ca.pem=' "$CALLS"
+  grep -q -- '-n openbao create' "$CALLS"
+}
+
+@test "openbao:seed prints no key" {
+  seed_repository
+  run_task "$root_directory/.mise/tasks/openbao/seed.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" != *"BEGIN"* ]]
+  [[ "$output" != *"$(base64 <"$seed_state/seal.key" | tr -d '\n')"* ]]
+}
+
+@test "openbao:seed run twice changes no file" {
+  seed_repository
+  run_task "$root_directory/.mise/tasks/openbao/seed.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  before=$(cd "$seed_state" && cksum seal.key operator-ca.key operator-ca.pem operator-client.key operator-client.pem private-state.yaml)
+  run_task "$root_directory/.mise/tasks/openbao/seed.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [ "$before" = "$(cd "$seed_state" && cksum seal.key operator-ca.key operator-ca.pem operator-client.key operator-client.pem private-state.yaml)" ]
+}
+
+@test "openbao:seed stops when the manifest names a file that is gone, and creates nothing" {
+  seed_repository
+  run_task "$root_directory/.mise/tasks/openbao/seed.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  rm "$seed_state/seal.key"
+  : >"$CALLS"
+  run_task "$root_directory/.mise/tasks/openbao/seed.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"seal.key"* ]]
+  [[ "$output" == *"damaged"* ]]
+  [ ! -e "$seed_state/seal.key" ]
+  ! grep -q 'create secret' "$CALLS"
+}
+
+@test "openbao:seed refuses a seal key that is readable by others" {
+  seed_repository
+  run_task "$root_directory/.mise/tasks/openbao/seed.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  chmod 644 "$seed_state/seal.key"
+  run_task "$root_directory/.mise/tasks/openbao/seed.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"seal.key"* ]]
+  [[ "$output" == *"mode 644"* ]]
+}
+
+@test "openbao:seed fills the files an interrupted first run left out and keeps the ones it made" {
+  seed_repository
+  mkdir -p "$seed_state"
+  printf 'old' >"$seed_state/seal.key"
+  chmod 600 "$seed_state/seal.key"
+  run_task "$root_directory/.mise/tasks/openbao/seed.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [ "$(cat "$seed_state/seal.key")" = old ]
+  [ -f "$seed_state/operator-ca.pem" ]
+}
+
+@test "openbao:seed does nothing when the cluster does not bind openbao" {
+  seed_repository
+  printf -- '- package: cilium\n  namespace: kube-system\n  tenant: platform\n' >"$MISE_PROJECT_ROOT/clusters/singularity/packages.yaml"
+  run_task "$root_directory/.mise/tasks/openbao/seed.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"nothing to seed"* ]]
+  [ ! -e "$seed_state" ]
 }
