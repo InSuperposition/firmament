@@ -2402,3 +2402,48 @@ mode_of() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"did not reach port 8443 of openbao"* ]]
 }
+
+@test "tenant:verify checks a copy with the real signer, a copy with another signer and a copy of an unsigned chart" {
+  run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok: Flux verifies cv, refuses it when another signer is required, and refuses an unsigned chart"* ]]
+  [ "$(jq -s 'length' "$BATS_TEST_TMPDIR/applied")" -eq 3 ]
+  jq -s -e 'map(select(.metadata.name | startswith("test-control-"))) | .[0] | .spec.verify.matchOIDCIdentity[0].subject == "subject" and .spec.url == "oci://registry.test/cv"' "$BATS_TEST_TMPDIR/applied"
+  jq -s -e 'map(select(.metadata.name | startswith("test-wrong-signer-"))) | .[0] | .spec.verify.matchOIDCIdentity[0].subject | startswith("^https://github\\.com/firmament-test/")' "$BATS_TEST_TMPDIR/applied"
+  jq -s -e 'map(select(.metadata.name | startswith("test-unsigned-"))) | .[0] | .spec.url == "oci://ghcr.io/insuperposition/charts/cv-unsigned" and (.spec.ref.digest | startswith("sha256:")) and .spec.verify.matchOIDCIdentity[0].subject == "subject"' "$BATS_TEST_TMPDIR/applied"
+  jq -s -e 'all(.metadata.labels["firmament.test/tenant-verify"] == "true")' "$BATS_TEST_TMPDIR/applied"
+  grep -q -- '--for=condition=SourceVerified=True .*test-control-' "$CALLS"
+  grep -q -- '--for=condition=SourceVerified=False .*test-wrong-signer-' "$CALLS"
+  grep -q -- '--for=condition=SourceVerified=False .*test-unsigned-' "$CALLS"
+}
+
+@test "tenant:verify fails when the copy with the real signer does not verify, so a refusal cannot be a network fault" {
+  TV_FAIL='SourceVerified=True' run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"source test-control-"*"never had SourceVerified=True"* ]]
+  ! grep -q 'test-wrong-signer' "$CALLS"
+}
+
+@test "tenant:verify fails when a chart that demands another signer is accepted" {
+  TV_FAIL='SourceVerified=False ocirepositories.source.toolkit.fluxcd.io/test-wrong-signer' run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"source test-wrong-signer-"*"never had SourceVerified=False"* ]]
+}
+
+@test "tenant:verify fails when an unsigned chart is accepted" {
+  TV_FAIL='SourceVerified=False ocirepositories.source.toolkit.fluxcd.io/test-unsigned' run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"source test-unsigned-"*"never had SourceVerified=False"* ]]
+}
+
+@test "tenant:verify deletes the temporary sources before it starts and after it fails" {
+  TV_FAIL='SourceVerified=True' run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [ "$(grep -c 'delete ocirepositories.source.toolkit.fluxcd.io -l firmament.test/tenant-verify' "$CALLS")" -eq 2 ]
+}
+
+@test "tenant:verify has nothing to check when no chart source must be signed" {
+  OCI_SOURCES='{"items":[{"metadata":{"name":"flux"},"spec":{}}]}' run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"nothing to check"* ]]
+}

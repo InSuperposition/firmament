@@ -28,6 +28,10 @@
 # 10.0.0.9, and `kubectl run` there prints $NP_TENANT_API (default: timed out).
 # `kubectl exec ... hubble observe` prints one flow, or nothing for the verdict
 # named in $NP_NO_FLOW (DROPPED or FORWARDED).
+# `kubectl get ocirepositories` lists $OCI_SOURCES (default: one signed source
+# named cv), and `kubectl apply -f -` appends what it reads to
+# $BATS_TEST_TMPDIR/applied. `kubectl wait` on a chart source fails when its
+# arguments contain $TV_FAIL.
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -125,6 +129,13 @@ stub() {
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
   *" state list"*) printf '%s' "\${TOFU_STATE_LIST:-}" ;;
+  *"get ocirepositories.source.toolkit.fluxcd.io cv "*)
+    printf '%s\\n' '{"apiVersion":"source.toolkit.fluxcd.io/v1","kind":"OCIRepository","metadata":{"name":"cv","namespace":"flux-system","uid":"u"},"spec":{"url":"oci://registry.test/cv","ref":{"digest":"sha256:aaa"},"verify":{"provider":"cosign","matchOIDCIdentity":[{"issuer":"issuer","subject":"subject"}]}},"status":{}}' ;;
+  *"get ocirepositories.source.toolkit.fluxcd.io -l"*)
+    if [[ -n "\${OCI_SOURCES:-}" ]]; then printf '%s\\n' "\$OCI_SOURCES"; else printf '%s\\n' '{"items":[{"metadata":{"name":"cv"},"spec":{"verify":{}}}]}'; fi ;;
+  *" apply -f -"*) cat >>"\$BATS_TEST_TMPDIR/applied" ;;
+  *" wait "*"ocirepositories"*)
+    if [[ -n "\${TV_FAIL:-}" && "\$*" == *"\$TV_FAIL"* ]]; then exit 1; fi ;;
   *" exec "*"hubble observe"*)
     if [[ "\$*" == *"--verdict \${NP_NO_FLOW:-none} "* ]]; then exit 0; fi
     printf '%s\\n' 'Oct 10 10:53:20.425: probe -> target FLOW' ;;

@@ -1,0 +1,5 @@
+# A chart published without a signature, by the cv repository's
+# publish-unsigned-fixture workflow. tenant:verify points a temporary source at
+# it and expects Flux to refuse it.
+source: oci://ghcr.io/insuperposition/charts/cv-unsigned
+digest: sha256:da2663a505bfe203dba424193e73f6f7e08e20a2e1499d4b41a7c7ac71ddc04a
