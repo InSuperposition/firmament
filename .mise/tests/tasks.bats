@@ -279,6 +279,7 @@ local_state() {
 
 # Records the commit each tofu call is told Flux follows.
 record_pinned_commit() {
+  own_stub tofu
   printf '#!/usr/bin/env bash\nprintf "tofu %%s | commit=%%s\\n" "$*" "${TF_VAR_git_commit:-}" >>"$CALLS"\n' >"$stubs/tofu"
 }
 
@@ -506,6 +507,7 @@ record_pinned_commit() {
 
 @test "tofu:test stops at the first failing suite" {
   MISE_PROJECT_ROOT=$(make_repository modules/a/tests/unit.tftest.hcl modules/b/tests/unit.tftest.hcl)
+  own_stub tofu
   printf '#!/usr/bin/env bash\nprintf "tofu %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *" test" ]]\n' >"$stubs/tofu"
   run "$root_directory/.mise/tasks/tofu/test.sh"
   [ "$status" -ne 0 ]
@@ -540,6 +542,7 @@ record_pinned_commit() {
 }
 
 @test "flux:ui opens no browser when the port-forward exits" {
+  own_stub kubectl
   printf '#!/usr/bin/env bash\nprintf "kubectl %%s\\n" "$*" >>"$CALLS"\nexit 1\n' >"$stubs/kubectl"
   TF_VAR_state_directory="$FIRMAMENT_STATE_HOME/environments/local" usage_port=23458 run "$root_directory/.mise/tasks/flux/ui.sh"
   [ "$status" -ne 0 ]
@@ -634,6 +637,7 @@ traffic_directory_of_local() {
 }
 
 @test "cilium:traffic-start stops before starting fortio when the fortio rollout does not finish" {
+  own_stub kubectl
   cat >"$stubs/kubectl" <<'STUB'
 #!/usr/bin/env bash
 printf 'kubectl %s\n' "$*" >>"$CALLS"
@@ -658,6 +662,7 @@ STUB
 }
 
 @test "cilium:traffic-start stops before starting fortio when the conn-disrupt setup fails" {
+  own_stub cilium
   printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *--conn-disrupt-test-setup* ]]\n' >"$stubs/cilium"
   run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
   [ "$status" -ne 0 ]
@@ -755,6 +760,7 @@ expect_traffic_check_failure() {
 
 @test "cilium:traffic-check fails when a conn-disrupt connection broke, and still stops the fortio run" {
   started_traffic
+  own_stub cilium
   printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *--include-conn-disrupt-test* ]]\n' >"$stubs/cilium"
   expect_traffic_check_failure "conn-disrupt: a connection held open since cilium:traffic-start broke"
   grep -q '/fortio/rest/stop?runid=3&wait=on' "$CALLS"
@@ -795,6 +801,7 @@ expect_traffic_check_failure() {
 
 @test "cilium:traffic-check reports every problem it finds" {
   started_traffic
+  own_stub cilium
   printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *--include-conn-disrupt-test* ]]\n' >"$stubs/cilium"
   fortio_result '.DurationHistogram.Count = 1000 | .RetCodes = {"-1": 10, "200": 990}' >"$FORTIO_RESULT"
   expect_traffic_check_failure "conn-disrupt: a connection held open" "fortio: 10 of 1000 requests failed" "fortio: 1000 requests in 20s is under 90%"
@@ -812,6 +819,7 @@ expect_traffic_check_failure() {
 
 @test "cilium:traffic-check fails when fortio does not answer, showing why, and keeps the workloads" {
   started_traffic
+  own_stub kubectl
   cat >"$stubs/kubectl" <<'STUB'
 #!/usr/bin/env bash
 printf 'kubectl %s\n' "$*" >>"$CALLS"
@@ -839,6 +847,7 @@ STUB
 
 @test "cilium:traffic-check keeps a broken connection in the report when fortio then fails to stop" {
   started_traffic
+  own_stub cilium
   printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *--include-conn-disrupt-test* ]]\n' >"$stubs/cilium"
   export FORTIO_STOP="$BATS_TEST_TMPDIR/stop.json"
   printf '{"message":"stopping","ResultID":""}\n' >"$FORTIO_STOP"
@@ -847,6 +856,7 @@ STUB
 
 @test "cilium:traffic-check fails and keeps the workloads when fortio does not return the result" {
   started_traffic
+  own_stub kubectl
   cat >"$stubs/kubectl" <<'STUB'
 #!/usr/bin/env bash
 printf 'kubectl %s\n' "$*" >>"$CALLS"
@@ -932,6 +942,7 @@ STUB
 @test "cilium:traffic-check keeps the verdict in the failure when cleanup fails" {
   started_traffic
   pods uid-after >"$PODS"
+  own_stub kubectl
   cat >"$stubs/kubectl" <<'STUB'
 #!/usr/bin/env bash
 printf 'kubectl %s\n' "$*" >>"$CALLS"
@@ -949,6 +960,7 @@ STUB
 }
 
 @test "cilium:traffic-start stops every fortio run when the reply to its start is lost" {
+  own_stub kubectl
   cat >"$stubs/kubectl" <<'STUB'
 #!/usr/bin/env bash
 printf 'kubectl %s\n' "$*" >>"$CALLS"
@@ -961,6 +973,7 @@ STUB
 }
 
 @test "cilium:traffic-start stops no fortio run when it fails before asking for one" {
+  own_stub cilium
   printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *--conn-disrupt-test-setup* ]]\n' >"$stubs/cilium"
   run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
   [ "$status" -ne 0 ]
@@ -1020,6 +1033,7 @@ STUB
 # the matching call; ON_CALL runs ON_CALL_RUN just before the matching call.
 # cilium:traffic-check ends with its verdict, as the real task does.
 e2e_mise_stub() {
+  own_stub mise
   cat >"$stubs/mise" <<'STUB'
 #!/usr/bin/env bash
 printf 'mise %s | branch=%s\n' "$*" "${FIRMAMENT_GIT_BRANCH:-}" >>"$CALLS"
@@ -1042,6 +1056,7 @@ e2e_repository() {
 
 # Records each chainsaw call with the KUBECONFIG it runs under.
 record_chainsaw_kubeconfig() {
+  own_stub chainsaw
   printf '#!/usr/bin/env bash\nprintf "chainsaw %%s | KUBECONFIG=%%s\\n" "$*" "$KUBECONFIG" >>"$CALLS"\n' >"$stubs/chainsaw"
 }
 
@@ -1115,6 +1130,7 @@ mise run --yes env:destroy" ]
   printf -- '- package: openbao\n  namespace: openbao\n  tenant: platform\n' >"$MISE_PROJECT_ROOT/clusters/singularity/packages.yaml"
   commit_and_push "$MISE_PROJECT_ROOT" feature/test packages
   record_contracts
+  own_stub kubectl
   printf '#!/usr/bin/env bash\n[[ "$*" == *" exec "* ]] && printf "ROOT:A\\n"\nexit 0\n' >"$stubs/kubectl"
   chmod +x "$stubs/kubectl"
   usage_rebuild_check=true run_task "$root_directory/.mise/tasks/env/e2e.sh" local
@@ -1413,6 +1429,7 @@ verify_repository() {
 }
 
 @test "env:verify gives the suites the runtime values OpenTofu recorded" {
+  own_stub chainsaw
   cat >"$stubs/chainsaw" <<'STUB'
 #!/usr/bin/env bash
 while (($#)); do
@@ -1742,6 +1759,7 @@ run_capture_stall() {
   done
   # orb sets terminal modes; a process in a background process group that
   # does so is stopped until its capture times out.
+  own_stub orb
   cat >"$stubs/orb" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
@@ -1894,6 +1912,7 @@ run_doctor() {
   local_state
   # orb sets terminal modes; a process in a background process group that
   # does so is stopped until the probe times out.
+  own_stub orb
   cat >"$stubs/orb" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
