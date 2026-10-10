@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Measure the traffic cilium:traffic-start began: fails when a conn-disrupt connection broke, any fortio request failed or fortio sent under 90% of the requested rate, prints the slowest request, and ends with whether the traffic crossed a Cilium agent restart; removes the test workloads when it passes"
+#MISE description="Measure the traffic cilium:traffic-start began: fails when a conn-disrupt connection broke, any fortio request failed or fortio sent under 90% of the requested rate, prints the slowest request, and ends with whether the traffic crossed a Cilium agent restart; removes the test workloads and the test-owned clusterwide policy when it passes"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
@@ -33,6 +33,10 @@ fail_with_problems() {
 # cilium:traffic-start saw the run sending before it returned; still
 # sending now means it covered everything in between. A run already
 # stopped, or state left from a destroyed cluster, has nothing to measure.
+# Without its permit the fixtures are denied by the clusterwide default deny,
+# and the measurement would blame Cilium for it.
+kubectl --kubeconfig "$kubeconfig" get ciliumclusterwidenetworkpolicies.cilium.io "$TRAFFIC_PERMIT_NAME" >/dev/null 2>&1 ||
+  fail "the traffic permit $TRAFFIC_PERMIT_NAME is gone, so the clusterwide default deny blocks traffic-probe and cilium-test-1; start a new run with: mise run cilium:traffic-start"
 state=$(fortio_run_state "$kubeconfig" "$run_id")
 if [[ "$state" != running ]]; then
   fail "fortio run $run_id is not running (state '${state:-none}'), so there is nothing to measure; start a new run with: mise run cilium:traffic-start"
@@ -112,5 +116,7 @@ kubectl --kubeconfig "$kubeconfig" delete namespace traffic-probe --timeout=2m |
   fail "$verdict, but removing the traffic-probe namespace failed"
 cilium --kubeconfig "$kubeconfig" connectivity test --cleanup ||
   fail "$verdict, but removing the cilium-test namespaces failed"
+remove_traffic_permit "$kubeconfig" ||
+  fail "$verdict, but removing the traffic permit failed"
 rm -rf "$traffic"
 printf '%s\n' "$verdict"
