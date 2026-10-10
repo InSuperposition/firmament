@@ -35,6 +35,9 @@
 # 10.0.0.12, and `kubectl exec holder` prints $TV_LISTENING (default exit=0).
 # `kubectl get` of the traffic permit fails when $PERMIT_MISSING is set, and of
 # the namespace cilium-test-1 when $CILIUM_TEST_NAMESPACE_MISSING is set.
+# `kubectl get gateway platform` prints $GATEWAY_JSON (default: one address and
+# listener port 8880), and `kubectl run` in default with `wget -T 8 -S` prints
+# $GATEWAY_ANSWER (default: HTTP/1.1 200 OK exit=0).
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -199,6 +202,10 @@ case "\$*" in
   *"hubble port-forward"*) exec nc -l 127.0.0.1 "\${@: -1}" >/dev/null ;;
   *" port-forward "*) local_port="\${*: -1}"; exec nc -l 127.0.0.1 "\${local_port%%:*}" >/dev/null ;;
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
+  *"get gateway platform "*)
+    if [[ -n "\${GATEWAY_JSON:-}" ]]; then printf '%s\\n' "\$GATEWAY_JSON"; else printf '%s\\n' '{"status":{"addresses":[{"value":"192.0.2.10"}]},"spec":{"listeners":[{"port":8880}]}}'; fi ;;
+  *" -n default run "*"wget -T 8 -S"*)
+    printf '%s\\n' "\${GATEWAY_ANSWER:-  HTTP/1.1 200 OK exit=0}" ;;
   *" -n default run "*"nslookup"*) printf '%s\\n' "\${NP_RESOLVED:-exit=0}" ;;
   *" -n cv run "*)
     printf '%s\\n' "\${NP_TENANT_API:-wget: download timed out exit=1}" ;;

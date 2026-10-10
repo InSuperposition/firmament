@@ -2554,3 +2554,29 @@ mode_of() {
   [ "$status" -ne 0 ]
   ! grep -q 'delete ciliumclusterwidenetworkpolicies' "$CALLS"
 }
+
+@test "gateway:verify passes when the Gateway answers 200 and Hubble saw the request forwarded into cv" {
+  run_task "$root_directory/.mise/tasks/gateway/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok: the Gateway serves cv at http://192.0.2.10:8880/"* ]]
+  grep -q -- 'hubble observe --from-pod default/policy-probe-.* --verdict FORWARDED --to-namespace cv' "$CALLS"
+}
+
+@test "gateway:verify fails, with the answer, when the Gateway does not answer 200" {
+  GATEWAY_ANSWER='  HTTP/1.1 403 Forbidden exit=1' run_task "$root_directory/.mise/tasks/gateway/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"did not get HTTP 200 from http://192.0.2.10:8880/"*"403 Forbidden"* ]]
+}
+
+@test "gateway:verify fails when Hubble recorded no forwarded flow into cv, so another backend cannot pass for cv" {
+  NP_NO_FLOW=FORWARDED run_task "$root_directory/.mise/tasks/gateway/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Hubble recorded no FORWARDED flow from default/policy-probe-"* ]]
+}
+
+@test "gateway:verify fails when the Gateway has no address yet" {
+  GATEWAY_JSON='{"status":{},"spec":{"listeners":[{"port":8880}]}}' run_task "$root_directory/.mise/tasks/gateway/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"has no address or listener port yet"* ]]
+  ! grep -q -- ' run ' "$CALLS"
+}
