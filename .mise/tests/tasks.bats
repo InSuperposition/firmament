@@ -2410,6 +2410,33 @@ mode_of() {
   [[ "$output" == *"a pod in cv cannot reach the API server"* ]]
 }
 
+@test "network-policy:verify asks Hubble for the verdict of every probe" {
+  record_contracts
+  run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  grep -q -- 'exec ds/cilium -c cilium-agent -- hubble observe --from-pod cert-manager/policy-probe-[0-9]* --verdict FORWARDED --to-namespace openbao' "$CALLS"
+  grep -q -- 'hubble observe --from-pod default/policy-probe-[0-9]* --verdict DROPPED --to-namespace openbao' "$CALLS"
+  grep -q -- 'hubble observe --from-pod default/policy-probe-[0-9]* --verdict FORWARDED --to-port 53' "$CALLS"
+  grep -q -- 'hubble observe --from-pod default/policy-probe-[0-9]* --verdict DROPPED --to-ip 10.0.0.9 --to-port 44100' "$CALLS"
+  grep -q -- 'hubble observe --from-pod cv/policy-probe-[0-9]* --verdict DROPPED' "$CALLS"
+}
+
+@test "network-policy:verify fails when a blocked probe has no dropped flow, so a routing fault cannot pass for a policy drop" {
+  record_contracts
+  stub_sleep
+  NP_NO_FLOW=DROPPED run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Hubble recorded no DROPPED flow from default/policy-probe-"* ]]
+}
+
+@test "network-policy:verify fails when an allowed probe has no forwarded flow" {
+  record_contracts
+  stub_sleep
+  NP_NO_FLOW=FORWARDED run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Hubble recorded no FORWARDED flow from cert-manager/policy-probe-"* ]]
+}
+
 @test "network-policy:verify fails when a tenant pod reaches the API server" {
   record_contracts
   NP_TENANT_API='{"major":"1"}exit=0' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local

@@ -23,6 +23,8 @@
 # `kubectl run ... nslookup` prints $NP_RESOLVED (default exit=0); a pod-network
 # hubble-relay pod has IP 10.0.0.7. A pod in the tenant namespace cv has IP
 # 10.0.0.9, and `kubectl run` there prints $NP_TENANT_API (default: timed out).
+# `kubectl exec ... hubble observe` prints one flow, or nothing for the verdict
+# named in $NP_NO_FLOW (DROPPED or FORWARDED).
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -120,6 +122,9 @@ stub() {
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
   *" state list"*) printf '%s' "\${TOFU_STATE_LIST:-}" ;;
+  *" exec "*"hubble observe"*)
+    if [[ "\$*" == *"--verdict \${NP_NO_FLOW:-none} "* ]]; then exit 0; fi
+    printf '%s\\n' 'Oct 10 10:53:20.425: probe -> target FLOW' ;;
   *"get pods -l k8s-app=hubble-relay"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.7","hostIP":"192.168.0.2"}}]}' ;;
   *"-n cv get pods"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.9","hostIP":"192.168.0.2"}}]}' ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;
@@ -162,6 +167,13 @@ esac
 exit 0
 STUB
   chmod +x "$stubs/$1"
+}
+
+# Makes sleep return at once, for a test that waits for something a stand-in
+# never provides.
+stub_sleep() {
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$stubs/sleep"
+  chmod +x "$stubs/sleep"
 }
 
 # Builds a stand-in repository holding the real .mise directory and an empty
