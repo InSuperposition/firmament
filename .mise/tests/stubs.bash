@@ -9,6 +9,8 @@
 # that message instead. $CILIUM_VALUES is the values.yaml the cilium-values
 # ConfigMap holds and $RELEASE_VALUES what `helm get values cilium` prints;
 # both default to the same values, so the release runs what Flux applied.
+# $CILIUM_VALUES_GATEWAY_ERROR makes reading the gateway overlay fail with
+# that message.
 # The local environment's contract files record a machine and a cluster
 # (record_contracts below). Calls to the fortio REST
 # API print the replies fortio gave in a live run, kept in $FORTIO_REPLIES
@@ -35,6 +37,9 @@
 # 10.0.0.12, and `kubectl exec holder` prints $TV_LISTENING (default exit=0).
 # `kubectl get` of the traffic permit fails when $PERMIT_MISSING is set, and of
 # the namespace cilium-test-1 when $CILIUM_TEST_NAMESPACE_MISSING is set.
+# `kubectl get gateway platform` prints $GATEWAY_JSON (default: one address and
+# listener port 8880), and `kubectl run` in default with `wget -T 8 -S` prints
+# $GATEWAY_ANSWER (default: HTTP/1.1 200 OK exit=0).
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -199,6 +204,10 @@ case "\$*" in
   *"hubble port-forward"*) exec nc -l 127.0.0.1 "\${@: -1}" >/dev/null ;;
   *" port-forward "*) local_port="\${*: -1}"; exec nc -l 127.0.0.1 "\${local_port%%:*}" >/dev/null ;;
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
+  *"get gateway platform "*)
+    if [[ -n "\${GATEWAY_JSON:-}" ]]; then printf '%s\\n' "\$GATEWAY_JSON"; else printf '%s\\n' '{"status":{"addresses":[{"value":"192.0.2.10"}]},"spec":{"listeners":[{"port":8880}]}}'; fi ;;
+  *" -n default run "*"wget -T 8 -S"*)
+    printf '%s\\n' "\${GATEWAY_ANSWER:-  HTTP/1.1 200 OK exit=0}" ;;
   *" -n default run "*"nslookup"*) printf '%s\\n' "\${NP_RESOLVED:-exit=0}" ;;
   *" -n cv run "*)
     printf '%s\\n' "\${NP_TENANT_API:-wget: download timed out exit=1}" ;;
@@ -206,6 +215,9 @@ case "\$*" in
   *" run "*"nc -z"*) printf '%s\\n' "\${NP_ALLOWED:-exit=0}" ;;
   *" -n default run "*)
     printf '%s\\n' "\${NP_DENIED:-wget: can\'t connect to remote host: Operation timed out exit=1}" ;;
+  *"get configmap cilium-values-gateway "*)
+    if [[ -n "\${CILIUM_VALUES_GATEWAY_ERROR:-}" ]]; then printf '%s\\n' "\$CILIUM_VALUES_GATEWAY_ERROR" >&2; exit 1; fi
+    printf '%s' "\${CILIUM_VALUES_GATEWAY:-}" ;;
   *"get configmap cilium-values-policy "*) printf '%s' "\${CILIUM_VALUES_POLICY:-}" ;;
   *"get configmap cilium-values "*) printf '%s\\n' "\${CILIUM_VALUES-a: 1}" ;;
   *"get values cilium "*) printf '%s\\n' "\${RELEASE_VALUES-a: 1}" ;;

@@ -1,0 +1,7 @@
+# Cilium's Gateway controller, listening on the node's own address: the cluster
+# has no load balancer to give a Gateway one. The definitions it needs exist by
+# the time this file applies, because the gateway Kustomization waits for them.
+gatewayAPI:
+  enabled: true
+  hostNetwork:
+    enabled: true

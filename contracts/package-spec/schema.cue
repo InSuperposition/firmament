@@ -29,6 +29,9 @@ package packagespec
 	// workload's. The network policy allows the cluster entity on exactly
 	// these.
 	cluster_ports?: [...#HostPort]
+	// Pod ports that the platform Gateway's Envoy reaches. The network
+	// policy allows the ingress entity on exactly these.
+	ingress_ports?: [...#HostPort]
 	// Who must have signed the chart, checked keyless with cosign by Flux
 	// before the chart is used. Absent: the digest pin is the only check.
 	verify?: #Verify

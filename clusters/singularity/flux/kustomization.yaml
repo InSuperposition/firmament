@@ -8,3 +8,5 @@ resources:
   - payload.yaml
   - rendered.yaml
   - issuers.yaml
+  - gateway-api-crds.yaml
+  - gateway.yaml

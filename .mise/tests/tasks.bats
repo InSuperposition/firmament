@@ -478,9 +478,10 @@ record_pinned_commit() {
   run grep -E '^(kubectl|helm|cilium) ' "$CALLS"
   [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values "* ]]
   [[ "${lines[1]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values-policy "* ]]
-  [[ "${lines[2]}" == "helm --kubeconfig /state/admin.kubeconfig -n kube-system get values cilium -o yaml "* ]]
-  [[ "${lines[3]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system rollout status daemonset/cilium --timeout=10m "* ]]
-  [[ "${lines[4]}" == "cilium --kubeconfig /state/admin.kubeconfig status --wait --interactive=false "* ]]
+  [[ "${lines[2]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values-gateway "* ]]
+  [[ "${lines[3]}" == "helm --kubeconfig /state/admin.kubeconfig -n kube-system get values cilium -o yaml "* ]]
+  [[ "${lines[4]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system rollout status daemonset/cilium --timeout=10m "* ]]
+  [[ "${lines[5]}" == "cilium --kubeconfig /state/admin.kubeconfig status --wait --interactive=false "* ]]
 }
 
 @test "cilium:restart-agent restarts the agent DaemonSet, then waits for the rollout and for Cilium" {
@@ -2089,7 +2090,7 @@ expect_planted_value_refused() {
 @test "the Flux root lists no package, and its source is verified against the publish workflow" {
   local flux="$root_directory/clusters/singularity/flux"
   run yq -r '.resources[]' "$flux/kustomization.yaml"
-  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml\nrendered.yaml\nissuers.yaml')" ] || fail "$output"
+  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml\nrendered.yaml\nissuers.yaml\ngateway-api-crds.yaml\ngateway.yaml')" ] || fail "$output"
   [ "$(yq -r '.spec.verify.provider' "$flux/ocirepository.yaml")" = cosign ]
   [ "$(yq -r '.spec.ref.tag' "$flux/ocirepository.yaml")" = '${git_commit}' ]
   [[ "$(yq -r '.spec.verify.matchOIDCIdentity[0].subject' "$flux/ocirepository.yaml")" == *'workflows/publish\.yaml@refs/heads/'* ]]
@@ -2552,4 +2553,30 @@ mode_of() {
   run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
   [ "$status" -ne 0 ]
   ! grep -q 'delete ciliumclusterwidenetworkpolicies' "$CALLS"
+}
+
+@test "gateway:verify passes when the Gateway answers 200 and Hubble saw the request forwarded into cv" {
+  run_task "$root_directory/.mise/tasks/gateway/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok: the Gateway serves cv at http://192.0.2.10:8880/"* ]]
+  grep -q -- 'hubble observe --from-pod default/policy-probe-.* --verdict FORWARDED --to-namespace cv' "$CALLS"
+}
+
+@test "gateway:verify fails, with the answer, when the Gateway does not answer 200" {
+  GATEWAY_ANSWER='  HTTP/1.1 403 Forbidden exit=1' run_task "$root_directory/.mise/tasks/gateway/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"did not get HTTP 200 from http://192.0.2.10:8880/"*"403 Forbidden"* ]]
+}
+
+@test "gateway:verify fails when Hubble recorded no forwarded flow into cv, so another backend cannot pass for cv" {
+  NP_NO_FLOW=FORWARDED run_task "$root_directory/.mise/tasks/gateway/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Hubble recorded no FORWARDED flow from default/policy-probe-"* ]]
+}
+
+@test "gateway:verify fails when the Gateway has no address yet" {
+  GATEWAY_JSON='{"status":{},"spec":{"listeners":[{"port":8880}]}}' run_task "$root_directory/.mise/tasks/gateway/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"has no address or listener port yet"* ]]
+  ! grep -q -- ' run ' "$CALLS"
 }

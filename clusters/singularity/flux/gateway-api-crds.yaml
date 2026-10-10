@@ -1,0 +1,18 @@
+# Applies the Gateway API definitions and waits until the API server serves
+# them. The Cilium Gateway controller is switched on only after that, by the
+# gateway Kustomization, because it looks for the definitions when it starts.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: gateway-api-crds
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  timeout: 10m
+  prune: true
+  wait: true
+  sourceRef:
+    kind: OCIRepository
+    name: payload
+  path: ./clusters/singularity/gateway-api-crds

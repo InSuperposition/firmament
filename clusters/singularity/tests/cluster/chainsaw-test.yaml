@@ -182,6 +182,58 @@ spec:
                 namespace: cv
               status:
                 (conditions[?type == 'Valid'] | [0].status): "True"
+    - name: The platform Gateway is programmed and the cv route is accepted
+      # Flux applies the Gateway API definitions, then the Gateway and the
+      # route; Cilium programs the listener once its release has the values.
+      timeouts:
+        assert: 10m
+      try:
+        - assert:
+            resource:
+              apiVersion: kustomize.toolkit.fluxcd.io/v1
+              kind: Kustomization
+              metadata:
+                name: gateway-api-crds
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: kustomize.toolkit.fluxcd.io/v1
+              kind: Kustomization
+              metadata:
+                name: gateway
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: GatewayClass
+              metadata:
+                name: cilium
+              status:
+                (conditions[?type == 'Accepted'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: Gateway
+              metadata:
+                name: platform
+                namespace: kube-system
+              status:
+                (conditions[?type == 'Programmed'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: HTTPRoute
+              metadata:
+                name: cv
+                namespace: cv
+              status:
+                parents:
+                  - (conditions[?type == 'Accepted'] | [0].status): "True"
+                    (conditions[?type == 'ResolvedRefs'] | [0].status): "True"
     - name: cert-manager issues from OpenBao
       # env:apply creates openbao-root after OpenBao is Ready; the Issuer
       # logs in with cert-manager's service account and trusts that root.
