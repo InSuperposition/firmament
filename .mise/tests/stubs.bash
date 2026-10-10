@@ -31,7 +31,8 @@
 # `kubectl get ocirepositories` lists $OCI_SOURCES (default: one signed source
 # named cv), and `kubectl apply -f -` appends what it reads to
 # $BATS_TEST_TMPDIR/applied. `kubectl wait` on a chart source fails when its
-# arguments contain $TV_FAIL.
+# arguments contain $TV_FAIL. The holder pod of the temporary namespace has IP
+# 10.0.0.12, and `kubectl exec holder` prints $TV_LISTENING (default exit=0).
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -133,6 +134,8 @@ case "\$*" in
     printf '%s\\n' '{"apiVersion":"source.toolkit.fluxcd.io/v1","kind":"OCIRepository","metadata":{"name":"cv","namespace":"flux-system","uid":"u"},"spec":{"url":"oci://registry.test/cv","ref":{"digest":"sha256:aaa"},"verify":{"provider":"cosign","matchOIDCIdentity":[{"issuer":"issuer","subject":"subject"}]}},"status":{}}' ;;
   *"get ocirepositories.source.toolkit.fluxcd.io -l"*)
     if [[ -n "\${OCI_SOURCES:-}" ]]; then printf '%s\\n' "\$OCI_SOURCES"; else printf '%s\\n' '{"items":[{"metadata":{"name":"cv"},"spec":{"verify":{}}}]}'; fi ;;
+  *" get pod holder "*) printf '%s\\n' 10.0.0.12 ;;
+  *" exec holder "*) printf '%s\\n' "\${TV_LISTENING:-exit=0}" ;;
   *" apply -f -"*) cat >>"\$BATS_TEST_TMPDIR/applied" ;;
   *" wait "*"ocirepositories"*)
     if [[ -n "\${TV_FAIL:-}" && "\$*" == *"\$TV_FAIL"* ]]; then exit 1; fi ;;
