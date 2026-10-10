@@ -1,4 +1,4 @@
 # The cv chart's values on this cluster: the image the release pins, by the
 # digest of the signed image.
 image:
-  digest: sha256:892fcc1c35a19197261ac5c6695d5dda19a08e69b02711434d2b4666947f5909
+  digest: sha256:2009b87980da0887cccc8bd4e681771e183f522d05358a1e711bfa0a69cacedd

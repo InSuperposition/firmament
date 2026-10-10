@@ -2,8 +2,8 @@ name: cv
 layer: app
 pin:
   source: oci://ghcr.io/insuperposition/charts/cv
-  version: 0.1.0
-  digest: sha256:e462d64a1702c2e5650a4bb001a58052b5be15bd66703b0af2c3904781ceaeab
+  version: 0.1.1
+  digest: sha256:e2e23ef16404303b2c0bd230e877ddef4d85028235001c3e27fc71460323b15d
 # Flux installs the chart only when it carries a keyless cosign signature from
 # the cv repository's publish workflow on a release tag.
 verify:
