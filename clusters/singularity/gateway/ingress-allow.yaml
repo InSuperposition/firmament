@@ -1,0 +1,19 @@
+# Lets clients outside the cluster reach the Gateway listener. The clusterwide
+# deny also selects Cilium's ingress endpoint, which hosts the Envoy listener.
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: gateway-listener-ingress
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  endpointSelector:
+    matchLabels:
+      reserved:ingress: ""
+  ingress:
+    - fromEntities:
+        - world
+      toPorts:
+        - ports:
+            - port: "8880"
+              protocol: TCP
