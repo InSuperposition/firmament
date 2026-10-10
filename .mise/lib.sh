@@ -542,21 +542,6 @@ cluster_suites() {
   done <<<"$packages"
 }
 
-# Prints the Cilium connectivity test patterns that the chosen packages list
-# in tests/conformance, one --test regular expression per line, without
-# blank lines and # comments. An empty package list chooses every package.
-conformance_patterns() {
-  local only="${1:-}" packages package
-  check_packages "$only" || return
-  packages=$(deployed_packages) || return
-  while IFS= read -r package; do
-    if [[ -n "$package" && -f "$package/tests/conformance" ]] &&
-      package_selected "${package##*/}" "$only"; then
-      grep -Ev '^[[:space:]]*(#|$)' "$package/tests/conformance" || true
-    fi
-  done <<<"$packages"
-}
-
 # Prints a short name for an env:e2e step from its command: the task a
 # `mise ... run` call runs, otherwise the command's first word.
 step_label() {

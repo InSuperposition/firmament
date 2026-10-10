@@ -258,9 +258,9 @@ lines.
 
 ### Notes for this repo (not part of the issue)
 
-- `mise run cilium:conformance` passes `--log-check-only-test-time`, so
-  the start-up error does not fail the suite, while agent errors logged
-  during the tests still do. Remove the flag once either this fix or the
+- Run `cilium connectivity test` by hand with `--log-check-only-test-time`,
+  so the start-up error does not fail the suite, while agent errors logged
+  during the tests still do. Drop the flag once either this fix or the
   [OrbStack kernel request](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy)
   lands.
 - Until either fix lands, `packages/cilium` sets
@@ -665,8 +665,8 @@ Not attached. Available on request.
 
 ### Notes for this repo (not part of the three issues above)
 
-- `mise run cilium:conformance` forwards Hubble Relay, fails when Relay
-  is unreachable, and runs `--flow-validation disabled`. Hubble still
+- Run `cilium connectivity test` by hand with a Hubble Relay forward
+  (`cilium hubble port-forward`) and `--flow-validation disabled`. Hubble still
   records each action's flows and prints them for any action that
   fails; only the flow assertions are off. Cilium's own CI runs the
   same way.

@@ -16,7 +16,7 @@ environment_scripts() {
 
 # Runs a task script the way mise does, with MISE_ENV naming the environment
 # and the state directory mise derives from it.
-# cilium:conformance and the UI tasks forward to a random high port, so a
+# The UI tasks forward to a random high port, so a
 # real forward on a default port does not collide with the tests.
 run_task() {
   local script="$1" environment="$2"
@@ -74,7 +74,7 @@ run_task() {
 @test "every task that changes an environment claims it first" {
   local script
   for script in "$root_directory"/.mise/tasks/*/apply.sh "$root_directory"/.mise/tasks/*/destroy.sh \
-    "$root_directory/.mise/tasks/env/e2e.sh" "$root_directory"/.mise/tasks/cilium/{conformance,restart-agent,traffic-start,traffic-check}.sh; do
+    "$root_directory/.mise/tasks/env/e2e.sh" "$root_directory"/.mise/tasks/cilium/{restart-agent,traffic-start,traffic-check}.sh; do
     grep -qx 'claim_environment' "$script" || fail "$script changes the environment without claiming it"
   done
 }
@@ -454,13 +454,6 @@ record_pinned_commit() {
   [ "${lines[2]%% |*}" = "mise run k0s:verify" ]
 }
 
-@test "conformance --changed runs nothing when no package changed" {
-  TASKS="cilium:conformance" usage_changed=true run_changed "$root_directory/.mise/tasks/conformance.sh" README.md
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"No packages changed, so no conformance tests run"* ]]
-  [ ! -e "$CALLS" ]
-}
-
 @test "verify refuses a package the environment does not deploy, before running any task" {
   usage_only=cilium,nope run_task "$root_directory/.mise/tasks/verify.sh" local
   [ "$status" -ne 0 ]
@@ -526,34 +519,6 @@ record_pinned_commit() {
   [ ! -e "$CALLS" ]
 }
 
-@test "cilium:conformance records flows through a Hubble Relay port-forward, then removes its test workloads" {
-  run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
-  [ "$status" -eq 0 ]
-  run grep '^cilium ' "$CALLS"
-  [ "${#lines[@]}" -eq 3 ]
-  [[ "${lines[0]%% |*}" =~ ^"cilium --kubeconfig /state/admin.kubeconfig hubble port-forward --port-forward "([0-9]+)$ ]]
-  local port="${BASH_REMATCH[1]}"
-  [ "${lines[1]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --log-check-only-test-time --hubble-server localhost:$port --flow-validation disabled --test-concurrency 3" ]
-  [ "${lines[2]%% |*}" = "cilium --kubeconfig /state/admin.kubeconfig connectivity test --cleanup --test-concurrency 3" ]
-}
-
-@test "cilium:conformance runs and cleans up the suite across the namespaces --test-concurrency names" {
-  usage_test_concurrency=5 run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
-  [ "$status" -eq 0 ]
-  [ "$(grep -c -- ' connectivity test .*--test-concurrency 5 |' "$CALLS")" -eq 2 ]
-}
-
-@test "cilium:conformance refuses a --test-concurrency that is not a whole number of 1 or more, before calling any tool" {
-  local count
-  for count in 0 -1 two 1.5 03; do
-    rm -f "$CALLS"
-    usage_test_concurrency=$count run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
-    [ "$status" -ne 0 ] || fail "accepted $count"
-    [[ "$output" == *"--test-concurrency must be a whole number of 1 or more, not '$count'"* ]] || fail "$count: $output"
-    [ ! -e "$CALLS" ] || fail "$count: called $(cat "$CALLS")"
-  done
-}
-
 @test "cilium:observe follows flows through a Relay port-forward on a free random port" {
   run_task "$root_directory/.mise/tasks/cilium/observe.sh" local
   [ "$status" -eq 0 ]
@@ -597,58 +562,6 @@ record_pinned_commit() {
     ! grep -Eq '^(cilium|kubectl|open) ' "$CALLS" || fail "$script called $(cat "$CALLS")"
   done
   kill "$listener"
-}
-
-@test "cilium:conformance --only runs the tests the chosen packages list" {
-  usage_only=cilium run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
-  [ "$status" -eq 0 ]
-  run grep ' connectivity test --log-check-only-test-time ' "$CALLS"
-  [[ "${lines[0]%% |*}" == *" --test-concurrency 3 --test .*" ]]
-}
-
-@test "cilium:conformance --only runs nothing when no chosen package lists a test" {
-  usage_only=flux run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"No conformance tests apply to: flux"* ]]
-  [ ! -e "$CALLS" ]
-}
-
-@test "cilium:conformance refuses an unknown package before calling any tool" {
-  usage_only=nope run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown package 'nope' for environment 'local'; choose from: cilium flux"* ]]
-  [ ! -e "$CALLS" ]
-}
-
-@test "conformance runs every *:conformance task, passing --only on" {
-  TASKS="a:verify cilium:conformance other:conformance" usage_only=flux run_task "$root_directory/.mise/tasks/conformance.sh" local
-  [ "$status" -eq 0 ]
-  run grep '^mise run' "$CALLS"
-  [ "${#lines[@]}" -eq 2 ]
-  [ "${lines[0]%% |*}" = "mise run cilium:conformance --only flux" ]
-  [ "${lines[1]%% |*}" = "mise run other:conformance --only flux" ]
-}
-
-@test "conformance refuses an unknown package before running any task" {
-  usage_only=nope run_task "$root_directory/.mise/tasks/conformance.sh" local
-  [ "$status" -ne 0 ]
-  [ ! -e "$CALLS" ]
-}
-
-@test "cilium:conformance keeps the test workloads of a failing suite" {
-  printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" == *"hubble port-forward"* ]] && exec nc -l 127.0.0.1 "${@: -1}" >/dev/null\n[[ "$*" != *--log-check-only-test-time* ]]\n' >"$stubs/cilium"
-  run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
-  [ "$status" -ne 0 ]
-  grep -q -- --log-check-only-test-time "$CALLS"
-  ! grep -q -- --cleanup "$CALLS"
-}
-
-@test "cilium:conformance stops before the suite when the Hubble Relay port-forward exits" {
-  printf '#!/usr/bin/env bash\nprintf "cilium %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *"hubble port-forward"* ]]\n' >"$stubs/cilium"
-  run_task "$root_directory/.mise/tasks/cilium/conformance.sh" local
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"the process that should listen on local port"*"exited"* ]]
-  ! grep -q ' connectivity test' "$CALLS"
 }
 
 @test "every traffic probe image is pinned by digest" {
@@ -1159,7 +1072,7 @@ mise_calls() {
   [[ "$output" == *"env:destroy "*"(new)"*"env:destroy (2) "*"(new)"* ]]
   [[ "${lines[-1]}" == "env:e2e passed for local at "* ]]
   kept="$FIRMAMENT_STATE_HOME/environments/local/e2e-step-times"
-  [ "$(cut -f1 "$kept" | paste -sd, -)" = "env:destroy,env:apply,platform_versions,verify,network-policy:verify,cilium:conformance,remote_tip_unchanged,env:destroy (2)" ]
+  [ "$(cut -f1 "$kept" | paste -sd, -)" = "env:destroy,env:apply,platform_versions,verify,network-policy:verify,remote_tip_unchanged,env:destroy (2)" ]
   run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -eq 0 ]
   [[ "$output" == *"env:apply "*" s  (+"*" s)"* ]]
@@ -1188,7 +1101,6 @@ mise_calls() {
 mise run env:apply
 mise run verify
 mise run network-policy:verify
-mise run cilium:conformance
 mise run --yes env:destroy" ]
 }
 
@@ -1210,7 +1122,6 @@ mise run network-policy:verify
 mise run --yes env:destroy
 mise run env:apply
 mise run verify
-mise run cilium:conformance
 mise run --yes env:destroy" ]
 }
 
@@ -1266,12 +1177,12 @@ mise run --yes env:destroy" ]
 @test "env:e2e fails when origin moves while it runs, and keeps the cluster" {
   e2e_mise_stub
   e2e_repository
-  export ON_CALL="run cilium:conformance"
+  export ON_CALL="run network-policy:verify"
   export ON_CALL_RUN='git -C "$MISE_PROJECT_ROOT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m moved && git -C "$MISE_PROJECT_ROOT" push -q origin HEAD:refs/heads/feature/test'
   run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"origin/feature/test moved from"*"during the run"* ]]
-  [ "$(mise_calls | tail -1)" = "mise run cilium:conformance" ]
+  [ "$(mise_calls | tail -1)" = "mise run network-policy:verify" ]
 }
 
 @test "env:e2e --from-branch applies the baseline branch, verifies it, then applies the checkout over it" {
@@ -1282,7 +1193,7 @@ mise run --yes env:destroy" ]
   [[ "$output" == *"Baseline: origin/main at $(git -C "$MISE_PROJECT_ROOT" rev-parse origin/main)"* ]]
   [[ "${lines[-1]}" == "env:e2e passed for local at $(git -C "$MISE_PROJECT_ROOT" rev-parse HEAD): traffic held across the Cilium agent restart; the cluster is destroyed." ]]
   run grep '^mise ' "$CALLS"
-  [ "${#lines[@]}" -eq 11 ]
+  [ "${#lines[@]}" -eq 10 ]
   [ "${lines[0]}" = "mise run --yes env:destroy | branch=feature/test" ]
   [[ "${lines[1]}" == "mise --cd "*"/baseline run env:apply | branch=main" ]]
   [[ "${lines[2]}" == "mise --cd "*"/baseline run env:verify | branch=main" ]]
@@ -1292,8 +1203,7 @@ mise run --yes env:destroy" ]
   [ "${lines[6]}" = "mise run network-policy:verify | branch=feature/test" ]
   [ "${lines[7]}" = "mise run cilium:restart-agent | branch=feature/test" ]
   [ "${lines[8]}" = "mise run cilium:traffic-check | branch=feature/test" ]
-  [ "${lines[9]}" = "mise run cilium:conformance | branch=feature/test" ]
-  [ "${lines[10]}" = "mise run --yes env:destroy | branch=feature/test" ]
+  [ "${lines[9]}" = "mise run --yes env:destroy | branch=feature/test" ]
   ! git -C "$MISE_PROJECT_ROOT" worktree list | grep -q /baseline
 }
 
@@ -1369,12 +1279,12 @@ mise run --yes env:destroy" ]
 @test "env:e2e fails when it cannot fetch origin at the end, and keeps the cluster" {
   e2e_mise_stub
   e2e_repository
-  export ON_CALL="run cilium:conformance"
+  export ON_CALL="run network-policy:verify"
   export ON_CALL_RUN='git -C "$MISE_PROJECT_ROOT" remote set-url origin "$BATS_TEST_TMPDIR/missing.git"'
   run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"env:e2e stopped at: remote_tip_unchanged feature/test"* ]]
-  [ "$(mise_calls | tail -1)" = "mise run cilium:conformance" ]
+  [ "$(mise_calls | tail -1)" = "mise run network-policy:verify" ]
 }
 
 @test "env:e2e --from-branch refuses a baseline that is not merged into main" {
@@ -1432,12 +1342,12 @@ mise run --yes env:destroy" ]
 @test "env:e2e --from-branch fails when the baseline branch moves while it runs" {
   e2e_mise_stub
   upgrade_repository
-  export ON_CALL="run cilium:conformance"
+  export ON_CALL="run cilium:traffic-check"
   export ON_CALL_RUN='git -C "$MISE_PROJECT_ROOT" push -q --force origin HEAD:refs/heads/main'
   usage_from_branch=main run_task "$root_directory/.mise/tasks/env/e2e.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"origin/main moved from"*"during the run"* ]]
-  [ "$(mise_calls | tail -1)" = "mise run cilium:conformance" ]
+  [ "$(mise_calls | tail -1)" = "mise run cilium:traffic-check" ]
   ! git -C "$MISE_PROJECT_ROOT" worktree list | grep -q /baseline
 }
 
