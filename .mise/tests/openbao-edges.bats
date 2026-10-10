@@ -47,6 +47,7 @@ edge_repository() {
 # FAKE_SHORT_SENDS cuts that many uploads short, FAKE_BAD_READ corrupts the snapshot on its way out, FAKE_NOT_READY makes
 # the pod not Ready, FAKE_CHAIN_BAD makes the TLS check fail.
 stub_pod() {
+  own_stub kubectl
   cat >"$stubs/kubectl" <<'STUB'
 #!/usr/bin/env bash
 printf 'kubectl %s\n' "$*" >>"$CALLS"
@@ -247,6 +248,7 @@ mode_of() {
 
 @test "env:destroy stops before destroying anything when the save fails" {
   local_state
+  own_stub mise
   printf '#!/usr/bin/env bash\nprintf "mise %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != "run openbao:snapshot" ]]\n' >"$stubs/mise"
   run_task "$root_directory/.mise/tasks/env/destroy.sh"
   [ "$status" -ne 0 ]

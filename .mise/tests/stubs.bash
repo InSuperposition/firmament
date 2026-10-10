@@ -68,6 +68,7 @@ setup_stubs() {
 # The k0sctl stand-in: records each call like the other tools and plays the
 # parts of apply and kubeconfig a test can ask to fail or hang.
 stub_k0sctl() {
+  link_shared_stub k0sctl && return
   cat >"$stubs/k0sctl" <<'STUB'
 #!/usr/bin/env bash
 printf 'k0sctl %s | state=%s branch=%s\n' "$*" "${TF_VAR_state_directory:-}" "${TF_VAR_git_branch:-}" >>"$CALLS"
@@ -85,6 +86,7 @@ esac
 exit 0
 STUB
   chmod +x "$stubs/k0sctl"
+  share_stub k0sctl
 }
 
 # Writes the contract files a healthy local environment's roots leave in its
@@ -126,7 +128,46 @@ seal_git() {
   export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_ALLOW_PROTOCOL=file
 }
 
+# Stand-ins are written once per bats run and linked into each test's
+# directory: macOS checks a script the first time it runs, about 200 ms, and a
+# stand-in written anew for every test paid that in every test. The shared
+# copies are read-only, so a test that rewrites one must first call own_stub,
+# which swaps the link for a private copy; without it the write fails.
+shared_stubs() {
+  printf '%s/stubs\n' "$BATS_RUN_TMPDIR"
+}
+
+# Links the shared stand-in $1 into the test's directory and succeeds, or
+# fails when no test has written it yet.
+link_shared_stub() {
+  [[ -e "$(shared_stubs)/$1" ]] || return 1
+  ln -s "$(shared_stubs)/$1" "$stubs/$1"
+}
+
+# Moves the stand-in just written to $stubs/$1 into the shared directory, made
+# read-only, and links it back. A stand-in another test shared first wins.
+share_stub() {
+  mkdir -p "$(shared_stubs)"
+  chmod 555 "$stubs/$1"
+  mv -n "$stubs/$1" "$(shared_stubs)/$1"
+  rm -f "$stubs/$1"
+  ln -s "$(shared_stubs)/$1" "$stubs/$1"
+}
+
+# Gives the test a private, writable copy of a shared stand-in, so it can
+# replace the stand-in's contents.
+own_stub() {
+  local target
+  if [[ -L "$stubs/$1" ]]; then
+    target=$(readlink "$stubs/$1")
+    rm "$stubs/$1"
+    cp "$target" "$stubs/$1"
+    chmod u+w "$stubs/$1"
+  fi
+}
+
 stub() {
+  link_shared_stub "$1" && return
   cat >"$stubs/$1" <<STUB
 #!/usr/bin/env bash
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
@@ -191,6 +232,7 @@ esac
 exit 0
 STUB
   chmod +x "$stubs/$1"
+  share_stub "$1"
 }
 
 # Makes sleep return at once, for a test that waits for something a stand-in
