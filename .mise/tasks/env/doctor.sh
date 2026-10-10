@@ -39,6 +39,27 @@ answers_inside_machine() {
   probe orb -m "$1" sudo k0s kubectl get --raw /readyz >/dev/null 2>&1
 }
 
+# Connects from the Mac to the address and port the platform Gateway
+# reports, the same address a browser uses. The cluster not having a Gateway
+# or an address yet is not a failure: Flux applies it, Cilium programs it.
+check_gateway_port() {
+  local gateway address port
+  if ! gateway=$(probe kubectl --kubeconfig "$1" -n kube-system get gateway platform --ignore-not-found -o json 2>&1); then
+    failed gateway "cannot read the Gateway kube-system/platform: $(head -n 1 <<<"$gateway")" "mise run k0s:verify $environment"
+    return
+  fi
+  address=$(jq -r '.status.addresses[0].value // empty' <<<"$gateway" 2>/dev/null) || address=""
+  port=$(jq -r '.spec.listeners[0].port // empty' <<<"$gateway" 2>/dev/null) || port=""
+  if [[ -z "$address" || -z "$port" ]]; then
+    skipped gateway "no Gateway with an address and a listener port yet; Flux applies it"
+  elif probe nc -z -w 5 "$address" "$port" >/dev/null 2>&1; then
+    passed gateway "the Mac connects to $address:$port"
+  else
+    failed gateway "the Mac cannot connect to $address:$port, where the Gateway listens" \
+      "mise run gateway:verify; if that passes, allow Local Network access for the terminal, or orb restart $machine"
+  fi
+}
+
 state="$TF_VAR_state_directory"
 passed environment "$environment"
 
@@ -126,6 +147,7 @@ else
       failed api "the kubeconfig file ${kubeconfig:-(none recorded)} is missing" "mise run k0s:apply $environment"
     elif error=$(probe kubectl --kubeconfig "$kubeconfig" get --raw /readyz 2>&1 >/dev/null); then
       passed api "the API server is ready"
+      check_gateway_port "$kubeconfig"
     elif [[ "$error" == *"no route to host"* ]]; then
       # k0s:apply writes the kubeconfig with the loopback address OrbStack
       # forwards; an older one names the machine's own address, which macOS
