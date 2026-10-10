@@ -17,3 +17,17 @@ spec:
         - ports:
             - port: "8880"
               protocol: TCP
+  egress:
+    - toEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8880"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cv
+      toPorts:
+        - ports:
+            - port: "44100"
+              protocol: TCP
