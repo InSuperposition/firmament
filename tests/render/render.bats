@@ -276,6 +276,22 @@ YAML
   [ "$(yq -r '[.spec.egress[] | select(.toEntities)] | length' "$policy")" -eq 0 ]
 }
 
+@test "a tenant package's ingress ports open exactly those pod ports to the Gateway's ingress entity" {
+  bind_site
+  printf 'ingress_ports:\n  - port: 44100\n    protocol: TCP\n' >>packages/site/package.yaml
+  render local "$BATS_TEST_TMPDIR/out"
+  policy="$BATS_TEST_TMPDIR/out/cilium-policy/shop_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
+  [ "$(yq -r '.spec.ingress | length' "$policy")" -eq 3 ]
+  [ "$(yq -r '.spec.ingress[] | select(.fromEntities[0] == "ingress") | .toPorts[0].ports | map(.port + "/" + .protocol) | join(",")' "$policy")" = 44100/TCP ]
+}
+
+@test "a tenant package without ingress ports gets no rule for the ingress entity" {
+  bind_site
+  render local "$BATS_TEST_TMPDIR/out"
+  policy="$BATS_TEST_TMPDIR/out/cilium-policy/shop_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
+  [ "$(yq -r '[.spec.ingress[] | select(.fromEntities[0] == "ingress")] | length' "$policy")" -eq 0 ]
+}
+
 @test "a tenant namespace whose packages allow nothing gets no policy of its own" {
   bind_site
   yq -i 'del(.requires) | del(.host_ports)' packages/site/package.yaml

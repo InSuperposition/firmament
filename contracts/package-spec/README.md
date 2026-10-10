@@ -20,6 +20,7 @@ the file check it again through a vendored copy of the schema.
 | `provides[]` | `capability`, `scope`, `port`, `protocol`, `readiness {kind, name}` | `port` is the pod (container) port, 1 to 65535, not a Service port that maps to it; `protocol` `TCP` or `UDP` |
 | `host_ports[]` | `port`, `protocol` | optional; pod ports the node (probes) and the API server (webhooks) reach; the network policy allows the `host` and `kube-apiserver` entities on exactly these |
 | `cluster_ports[]` | `port`, `protocol` | optional; pod ports any pod in the cluster may reach (the DNS workload's); the network policy allows the `cluster` entity on exactly these |
+| `ingress_ports[]` | `port`, `protocol` | optional; pod ports the platform Gateway's Envoy reaches (the pod port behind the route's Service, not the Service port); the network policy allows the `ingress` entity on exactly these |
 | `verify` | `issuer`, `identity` | optional; who must have signed the chart, checked keyless with cosign by Flux before it is used (`OCIRepository` `spec.verify`); both are regular expressions and must start with `^` and end with `$`; absent, the digest pin is the only check |
 
 Cross-file rules (every requirement met exactly once, no cycle, a delta key

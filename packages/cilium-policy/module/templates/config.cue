@@ -52,6 +52,10 @@ package templates
 		port:     #Port
 		protocol: #Protocol
 	})]
+	ingressPorts: [...close({
+		port:     #Port
+		protocol: #Protocol
+	})]
 })
 
 #Instance: {

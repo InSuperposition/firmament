@@ -44,6 +44,12 @@ package templates
 				fromEntities: ["cluster"]
 				toPorts: [{ports: [for cp in _config.policy.clusterPorts {port: "\(cp.port)", protocol: cp.protocol}]}]
 			},
+			// Pod ports the Gateway's Envoy reaches, which Cilium runs as the
+			// reserved ingress endpoint.
+			if len(_config.policy.ingressPorts) > 0 {
+				fromEntities: ["ingress"]
+				toPorts: [{ports: [for ip in _config.policy.ingressPorts {port: "\(ip.port)", protocol: ip.protocol}]}]
+			},
 			// The pods of an ingress-only namespace talk to each other: the
 			// konnectivity agent carries the API server's calls to the
 			// metrics server, for one.
@@ -67,6 +73,7 @@ package templates
 		if _config.policy.mode == "full" {
 			egress: _egress
 		}
+
 		// An allow namespace is denied by the tenant-wide policy, which also
 		// opens DNS. It gets a rule section only for what its packages allow,
 		// and no section at all when they allow nothing.

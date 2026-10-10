@@ -13,3 +13,7 @@ verify:
 host_ports:
   - port: 44100
     protocol: TCP
+# The same pod port, reached by the platform Gateway.
+ingress_ports:
+  - port: 44100
+    protocol: TCP

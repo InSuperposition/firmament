@@ -255,6 +255,11 @@ policy: {
 						for key, value in packages[member.package] if key == "cluster_ports"
 						for clusterPort in value {clusterPort},
 					]
+					ingressPorts: [
+						for member in bindings[env.cluster] if member.namespace == binding.namespace
+						for key, value in packages[member.package] if key == "ingress_ports"
+						for ingressPort in value {ingressPort},
+					]
 				}
 			}
 		}

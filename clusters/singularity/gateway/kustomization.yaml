@@ -3,7 +3,6 @@ kind: Kustomization
 resources:
   - gateway.yaml
   - httproute.yaml
-  - cv-ingress.yaml
 configMapGenerator:
   - name: cilium-values-gateway
     namespace: flux-system
