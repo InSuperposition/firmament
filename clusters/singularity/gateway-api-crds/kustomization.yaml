@@ -1,0 +1,5 @@
+# The Gateway API definitions, from the packages folder.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../packages/gateway-api
