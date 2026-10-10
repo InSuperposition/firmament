@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Check the network policy on the cluster: a pod in the namespace of a package that requires secrets reaches OpenBao, and a pod in a namespace nothing allows does not; a pod in the default namespace resolves names but cannot reach a port of an ingress-denied platform namespace (starts short-lived pods)"
+#MISE description="Check the network policy on the cluster: a pod in the namespace of a package that requires secrets reaches OpenBao, and a pod in a namespace nothing allows does not; a pod in the default namespace resolves names but cannot reach a port of an ingress-denied platform namespace, nor a tenant namespace; a tenant pod cannot reach the API server (starts short-lived pods)"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
@@ -52,4 +52,22 @@ if [[ -n "$platform" ]]; then
     --image="$image" --command -- sh -c "wget -T 8 -qO- http://$target:4245/; echo exit=\$?" 2>&1 || true)
   [[ "$blocked" == *'timed out'* ]] || fail "a pod in the default namespace was not blocked from $platform ($target:4245): $blocked" || exit
   printf 'ok: default resolves names and is blocked from the %s pod %s\n' "$platform" "$target"
+fi
+
+# The namespaces of a tenant that is not the platform tenant: ingress is
+# denied by the clusterwide policy, and no allow opens the API server to them.
+tenant=$(jq -r '[.namespaces | to_entries[] | select(.value.mode == "allow" and (.value.hostPorts | length) > 0)] | first | .key // empty' <<<"$policy")
+if [[ -n "$tenant" ]]; then
+  port=$(jq -r --arg ns "$tenant" '.namespaces[$ns].hostPorts[0].port' <<<"$policy")
+  target=$(kubectl --kubeconfig "$kubeconfig" -n "$tenant" get pods -o json |
+    jq -r '[.items[] | select(.status.podIP != .status.hostIP) | .status.podIP] | first // empty')
+  [[ -n "$target" ]] || fail "no pod-network pod in $tenant to probe" || exit
+  blocked=$(timeout 180 kubectl --kubeconfig "$kubeconfig" -n default run "policy-probe-$RANDOM" --rm -i --restart=Never \
+    --image="$image" --command -- sh -c "wget -T 8 -qO- http://$target:$port/; echo exit=\$?" 2>&1 || true)
+  [[ "$blocked" == *'timed out'* ]] || fail "a pod in the default namespace was not blocked from $tenant ($target:$port): $blocked" || exit
+  printf 'ok: default is blocked from the %s pod %s on port %s\n' "$tenant" "$target" "$port"
+  api=$(timeout 180 kubectl --kubeconfig "$kubeconfig" -n "$tenant" run "policy-probe-$RANDOM" --rm -i --restart=Never \
+    --image="$image" --command -- sh -c "wget -T 8 -qO- --no-check-certificate https://kubernetes.default.svc/version; echo exit=\$?" 2>&1 || true)
+  [[ "$api" == *'timed out'* ]] || fail "a pod in $tenant was not blocked from the API server: $api" || exit
+  printf 'ok: a pod in %s cannot reach the API server\n' "$tenant"
 fi

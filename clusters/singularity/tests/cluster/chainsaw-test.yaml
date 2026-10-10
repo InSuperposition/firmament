@@ -143,6 +143,45 @@ spec:
                 namespace: kube-system
               data:
                 allow-localhost: policy
+    - name: The apps tenant owns the cv namespace, which is denied by default
+      # The namespace exists because a binding declares it; the clusterwide
+      # policy denies every namespace the platform tenant does not own, and
+      # the namespace's own policy allows the node's probes.
+      timeouts:
+        assert: 10m
+      try:
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: cv
+                labels:
+                  firmament.dev/tenant: apps
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: ResourceQuota
+              metadata:
+                name: tenant
+                namespace: cv
+        - assert:
+            resource:
+              apiVersion: cilium.io/v2
+              kind: CiliumClusterwideNetworkPolicy
+              metadata:
+                name: tenant-default-deny
+              status:
+                (conditions[?type == 'Valid'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: cilium.io/v2
+              kind: CiliumNetworkPolicy
+              metadata:
+                name: platform
+                namespace: cv
+              status:
+                (conditions[?type == 'Valid'] | [0].status): "True"
     - name: cert-manager issues from OpenBao
       # env:apply creates openbao-root after OpenBao is Ready; the Issuer
       # logs in with cert-manager's service account and trusts that root.

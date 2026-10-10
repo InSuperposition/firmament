@@ -334,12 +334,13 @@ setup() {
 @test "lists the cluster's own suite, then each deployed package's suite" {
   run cluster_suites
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 5 ]
+  [ "${#lines[@]}" -eq 6 ]
   [ "${lines[0]}" = "$root_directory/clusters/singularity/tests/cluster" ]
   [ "${lines[1]}" = "$root_directory/packages/cilium/tests/cluster" ]
   [ "${lines[2]}" = "$root_directory/packages/flux/tests/cluster" ]
   [ "${lines[3]}" = "$root_directory/packages/cert-manager/tests/cluster" ]
   [ "${lines[4]}" = "$root_directory/packages/openbao/tests/cluster" ]
+  [ "${lines[5]}" = "$root_directory/packages/cv/tests/cluster" ]
 }
 
 @test "lists only the cluster's own suite when it has no Flux build" {

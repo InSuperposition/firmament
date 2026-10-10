@@ -21,7 +21,8 @@
 # when set, and `k0sctl kubeconfig` prints a kubeconfig, or half of one and
 # fails with $K0SCTL_KUBECONFIG_ERROR when set.
 # `kubectl run ... nslookup` prints $NP_RESOLVED (default exit=0); a pod-network
-# hubble-relay pod has IP 10.0.0.7.
+# hubble-relay pod has IP 10.0.0.7. A pod in the tenant namespace cv has IP
+# 10.0.0.9, and `kubectl run` there prints $NP_TENANT_API (default: timed out).
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -120,6 +121,7 @@ printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" 
 case "\$*" in
   *" state list"*) printf '%s' "\${TOFU_STATE_LIST:-}" ;;
   *"get pods -l k8s-app=hubble-relay"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.7","hostIP":"192.168.0.2"}}]}' ;;
+  *"-n cv get pods"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.9","hostIP":"192.168.0.2"}}]}' ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;
   *"get charts.helm.k0sproject.io"*)
     if [[ -n "\${K0S_CHARTS_ERROR:-}" ]]; then printf '%s\\n' "\$K0S_CHARTS_ERROR" >&2; exit 1; fi
@@ -130,6 +132,8 @@ case "\$*" in
   *" -n default run "*"nslookup"*) printf '%s\\n' "\${NP_RESOLVED:-exit=0}" ;;
   *" -n cert-manager run "*)
     printf '%s\\n' "\${NP_ALLOWED:-{\"initialized\":true,\"sealed\":false\}exit=0}" ;;
+  *" -n cv run "*)
+    printf '%s\\n' "\${NP_TENANT_API:-wget: download timed out exit=1}" ;;
   *" -n default run "*)
     printf '%s\\n' "\${NP_DENIED:-wget: can\'t connect to remote host: Operation timed out exit=1}" ;;
   *"get configmap cilium-values-policy "*) printf '%s' "\${CILIUM_VALUES_POLICY:-}" ;;

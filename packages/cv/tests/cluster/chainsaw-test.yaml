@@ -1,0 +1,72 @@
+# Read-only assertions on a running cluster where Flux installs the cv site.
+# The Flux objects name flux-system and the workloads name cv explicitly; the
+# test namespace is set so chainsaw creates none.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cv
+  labels:
+    component: cv
+spec:
+  namespace: kube-system
+  steps:
+    - name: Flux verifies the chart's signature and installs it
+      # The source is Ready only after Flux has checked the signer pinned in
+      # the package; an unsigned chart, or one signed by another identity,
+      # never gets there.
+      timeouts:
+        assert: 10m
+      try:
+        - assert:
+            resource:
+              apiVersion: source.toolkit.fluxcd.io/v1
+              kind: OCIRepository
+              metadata:
+                name: cv
+                namespace: flux-system
+              status:
+                (conditions[?type == 'SourceVerified'] | [0].status): "True"
+                (conditions[?type == 'Ready'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: helm.toolkit.fluxcd.io/v2
+              kind: HelmRelease
+              metadata:
+                name: cv
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+    - name: The site runs from an image pinned by digest, with no API token
+      # Available means the kubelet's probe of port 44100 passed through the
+      # namespace's default-deny.
+      timeouts:
+        assert: 5m
+      try:
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: cv
+                namespace: cv
+              status:
+                (conditions[?type == 'Available'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: ServiceAccount
+              metadata:
+                name: cv
+                namespace: cv
+              automountServiceAccountToken: false
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                namespace: cv
+                labels:
+                  app.kubernetes.io/name: cv
+              spec:
+                automountServiceAccountToken: false
+                (containers[0].image | contains(@, '@sha256:')): true

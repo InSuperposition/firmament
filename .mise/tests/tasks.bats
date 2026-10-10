@@ -2401,6 +2401,22 @@ mode_of() {
   [[ "$output" == *"cert-manager reaches OpenBao in openbao"* ]]
 }
 
+@test "network-policy:verify checks that the default namespace is blocked from a tenant pod and a tenant pod from the API server" {
+  record_contracts
+  run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  grep -q -- '-n cv run' "$CALLS"
+  [[ "$output" == *"default is blocked from the cv pod 10.0.0.9 on port 44100"* ]]
+  [[ "$output" == *"a pod in cv cannot reach the API server"* ]]
+}
+
+@test "network-policy:verify fails when a tenant pod reaches the API server" {
+  record_contracts
+  NP_TENANT_API='{"major":"1"}exit=0' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not blocked from the API server"* ]]
+}
+
 @test "network-policy:verify fails when the pod outside the allowed namespace reaches OpenBao" {
   record_contracts
   NP_DENIED='{"initialized":true}exit=0' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
