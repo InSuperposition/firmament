@@ -2302,13 +2302,34 @@ mode_of() {
   [ "$(cue eval -e '#OperatorCAConfigMapName' "$root_directory/packages/openbao/config" --out text)" = "$(sed -n 's/^readonly operator_ca_configmap=//p' "$root_directory/.mise/tasks/openbao/seed.sh")" ]
 }
 
-@test "network-policy:verify passes when the consumer reaches OpenBao and the default namespace times out" {
+@test "network-policy:verify passes when the consumer reaches the provider's port and the default namespace does not" {
   record_contracts
   run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
   [ "$status" -eq 0 ] || fail "$output"
-  grep -q -- '-n cert-manager run' "$CALLS"
-  grep -q -- '-n default run' "$CALLS"
-  [[ "$output" == *"cert-manager reaches OpenBao in openbao"* ]]
+  grep -q -- '-n cert-manager run .*nc -z -w 8 \$address 8443' "$CALLS"
+  grep -q -- 'for address in 10.0.0.5;' "$CALLS"
+  [[ "$output" == *"cert-manager reaches port 8443 of openbao"* ]]
+  [[ "$output" == *"default does not reach port 8443 of openbao"* ]]
+}
+
+@test "network-policy:verify probes every consumer of every provider, and the default namespace once per provider port" {
+  printf '#!/usr/bin/env bash\ncat <<JSON\n{"namespaces":{"db":{"mode":"full","provides":[{"capability":"sql","port":5432,"protocol":"TCP","consumers":["web","api"]}],"hostPorts":[]},"cache":{"mode":"full","provides":[{"capability":"kv","port":6379,"protocol":"TCP","consumers":["web"]}],"hostPorts":[]}}}\nJSON\n' >"$stubs/cue"
+  chmod +x "$stubs/cue"
+  printf '{"items":[{"status":{"podIP":"10.0.0.6","hostIP":"192.168.0.2"}}]}' >"$BATS_TEST_TMPDIR/pods.json"
+  PODS="$BATS_TEST_TMPDIR/pods.json" run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok: web reaches port 5432 of db"* ]]
+  [[ "$output" == *"ok: api reaches port 5432 of db"* ]]
+  [[ "$output" == *"ok: web reaches port 6379 of cache"* ]]
+  [ "$(grep -c -- '-n default run .*nc -z' "$CALLS")" -eq 2 ]
+}
+
+@test "network-policy:verify fails when no namespace has a consumer" {
+  printf '#!/usr/bin/env bash\necho "{\\"namespaces\\":{}}"\n' >"$stubs/cue"
+  chmod +x "$stubs/cue"
+  run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"nothing to check"* ]]
 }
 
 @test "network-policy:verify checks that the default namespace is blocked from a tenant pod and a tenant pod from the API server" {
@@ -2354,11 +2375,18 @@ mode_of() {
   [[ "$output" == *"not blocked from the API server"* ]]
 }
 
-@test "network-policy:verify fails when the pod outside the allowed namespace reaches OpenBao" {
+@test "network-policy:verify fails when the default namespace pod fails for another reason than a blocked connection" {
   record_contracts
-  NP_DENIED='{"initialized":true}exit=0' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  NP_PROVIDER_DENIED='error: pod did not start' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"default namespace reached OpenBao"* ]]
+  [[ "$output" == *"failed for another reason than a blocked connection"* ]]
+}
+
+@test "network-policy:verify fails when the pod outside the allowed namespace reaches the provider" {
+  record_contracts
+  NP_PROVIDER_DENIED='exit=0' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"default namespace reached port 8443 of openbao"* ]]
 }
 
 @test "network-policy:verify fails when a pod in the default namespace cannot resolve names" {
@@ -2370,7 +2398,7 @@ mode_of() {
 
 @test "network-policy:verify fails when the consumer cannot reach OpenBao" {
   record_contracts
-  NP_ALLOWED='wget: download timed out exit=1' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  NP_ALLOWED='exit=1' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"did not reach OpenBao"* ]]
+  [[ "$output" == *"did not reach port 8443 of openbao"* ]]
 }

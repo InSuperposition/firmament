@@ -20,6 +20,9 @@
 # apply` fails with $K0SCTL_APPLY_ERROR or sleeps $K0SCTL_APPLY_SLEEP seconds
 # when set, and `k0sctl kubeconfig` prints a kubeconfig, or half of one and
 # fails with $K0SCTL_KUBECONFIG_ERROR when set.
+# `kubectl run ... nc -z` in a consumer namespace prints
+# $NP_ALLOWED (default exit=0), and in default $NP_PROVIDER_DENIED (default
+# exit=1); the openbao namespace has one pod-network pod, 10.0.0.5.
 # `kubectl run ... nslookup` prints $NP_RESOLVED (default exit=0); a pod-network
 # hubble-relay pod has IP 10.0.0.7. A pod in the tenant namespace cv has IP
 # 10.0.0.9, and `kubectl run` there prints $NP_TENANT_API (default: timed out).
@@ -126,6 +129,7 @@ case "\$*" in
     if [[ "\$*" == *"--verdict \${NP_NO_FLOW:-none} "* ]]; then exit 0; fi
     printf '%s\\n' 'Oct 10 10:53:20.425: probe -> target FLOW' ;;
   *"get pods -l k8s-app=hubble-relay"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.7","hostIP":"192.168.0.2"}}]}' ;;
+  *"-n openbao get pods"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.5","hostIP":"192.168.0.2"}}]}' ;;
   *"-n cv get pods"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.9","hostIP":"192.168.0.2"}}]}' ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;
   *"get charts.helm.k0sproject.io"*)
@@ -135,10 +139,10 @@ case "\$*" in
   *" port-forward "*) local_port="\${*: -1}"; exec nc -l 127.0.0.1 "\${local_port%%:*}" >/dev/null ;;
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
   *" -n default run "*"nslookup"*) printf '%s\\n' "\${NP_RESOLVED:-exit=0}" ;;
-  *" -n cert-manager run "*)
-    printf '%s\\n' "\${NP_ALLOWED:-{\"initialized\":true,\"sealed\":false\}exit=0}" ;;
   *" -n cv run "*)
     printf '%s\\n' "\${NP_TENANT_API:-wget: download timed out exit=1}" ;;
+  *" -n default run "*"nc -z"*) printf '%s\\n' "\${NP_PROVIDER_DENIED:-exit=1}" ;;
+  *" run "*"nc -z"*) printf '%s\\n' "\${NP_ALLOWED:-exit=0}" ;;
   *" -n default run "*)
     printf '%s\\n' "\${NP_DENIED:-wget: can\'t connect to remote host: Operation timed out exit=1}" ;;
   *"get configmap cilium-values-policy "*) printf '%s' "\${CILIUM_VALUES_POLICY:-}" ;;

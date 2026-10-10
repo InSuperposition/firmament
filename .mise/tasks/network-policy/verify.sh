@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Check the network policy on the cluster, each probe against the verdict Hubble recorded for it: a pod in the namespace of a package that requires secrets reaches OpenBao, and a pod in a namespace nothing allows does not; a pod in the default namespace resolves names but cannot reach a port of an ingress-denied platform namespace, nor a tenant namespace; a tenant pod cannot reach the API server (starts short-lived pods)"
+#MISE description="Check the network policy on the cluster, each probe against the verdict Hubble recorded for it: every consumer of a capability reaches its provider's port, and a pod in the default namespace does not; a pod in the default namespace resolves names but cannot reach a port of an ingress-denied platform namespace, nor a tenant namespace; a tenant pod cannot reach the API server (starts short-lived pods)"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
@@ -7,16 +7,15 @@ environment=$(require_environment) || exit
 kubeconfig=$(environment_kubeconfig) || exit
 cluster=$(cluster_directory) || exit
 
-# The provider and the first consumer come from the same resolution that
+# The providers and their consumers come from the same resolution that
 # rendered the policies, so this checks what was rendered.
 policy=$(cd "$MISE_PROJECT_ROOT" && cue export .:inputs -e "policy.$environment" --out json) ||
   fail "cannot resolve the network policy of environment $environment" || exit
-provider=$(jq -r '[.namespaces | to_entries[] | select(any(.value.provides[]; (.consumers | length) > 0))] | first | .key // empty' <<<"$policy")
-[[ -n "$provider" ]] || fail "no namespace provides a capability that another namespace requires; nothing to check" || exit
-consumer=$(jq -r --arg ns "$provider" '.namespaces[$ns].provides[0].consumers[0]' <<<"$policy")
-service_port=$(yq -r '.server.service.port' "$cluster/values/openbao.yaml") || exit
+# One line per allowed edge: provider namespace, port, consumer namespace.
+edges=$(jq -r '.namespaces | to_entries[] | .key as $provider | .value.provides[]? | .port as $port | .consumers[]? | [$provider, $port, .] | @tsv' <<<"$policy")
+[[ -n "$edges" ]] || fail "no namespace provides a capability that another namespace requires; nothing to check" || exit
+# The probe image carries nc, which opens a connection and reports it in its exit status.
 image=$(yq -r '.storage.init_image' "$cluster/openbao.yaml") || exit
-url="https://openbao.$provider.svc:$service_port/v1/sys/health"
 
 # Runs one short-lived pod, named $2, in namespace $1 and prints what the shell
 # command $3 printed.
@@ -48,22 +47,46 @@ expect_flow() {
   fail "Hubble recorded no $verdict flow from $namespace/$pod ${*:+(filtered by $*)}; it saw:"$'\n'"${seen:-no flows}"
 }
 
-pod=$(probe_name)
-allowed=$(probe "$consumer" "$pod" "wget -T 8 -qO- --no-check-certificate '$url'; echo exit=\$?")
-if [[ "$allowed" != *'"initialized":true'* ]]; then
-  fail "a pod in $consumer, which requires secrets, did not reach OpenBao at $url: $allowed" || exit
-fi
-expect_flow "$consumer" "$pod" FORWARDED --to-namespace "$provider" || exit
-pod=$(probe_name)
-denied=$(probe default "$pod" "wget -T 8 -qO- --no-check-certificate '$url'; echo exit=\$?")
-if [[ "$denied" == *'"initialized"'* ]]; then
-  fail "a pod in the default namespace reached OpenBao at $url, which nothing allows" || exit
-fi
-if [[ "$denied" != *'exit=1'* ]]; then
-  fail "the pod in the default namespace failed for another reason than a blocked connection: $denied" || exit
-fi
-expect_flow default "$pod" DROPPED --to-namespace "$provider" || exit
-printf 'ok: %s reaches OpenBao in %s; default does not\n' "$consumer" "$provider"
+# Prints the pod-network pod IPs of a namespace, one per line.
+pod_addresses() {
+  kubectl --kubeconfig "$kubeconfig" -n "$1" get pods -o json |
+    jq -r '.items[] | select(.status.podIP != .status.hostIP) | .status.podIP'
+}
+
+# Runs a pod in namespace $1 that tries port $3 of every address in $2 and
+# prints exit=0 when any of them accepts the connection, exit=1 when none does.
+connect_probe() {
+  local pod="$4"
+  probe "$1" "$pod" "reached=1; for address in $2; do nc -z -w 8 \$address $3 && reached=0; done; echo exit=\$reached"
+}
+
+while IFS=$'\t' read -r provider port consumer; do
+  addresses=$(pod_addresses "$provider" | paste -sd' ' -)
+  [[ -n "$addresses" ]] || fail "no pod-network pod in $provider to probe" || exit
+  pod=$(probe_name)
+  allowed=$(connect_probe "$consumer" "$addresses" "$port" "$pod")
+  if [[ "$allowed" != *'exit=0'* ]]; then
+    fail "a pod in $consumer, which requires a capability of $provider, did not reach port $port of $provider: $allowed" || exit
+  fi
+  expect_flow "$consumer" "$pod" FORWARDED --to-namespace "$provider" || exit
+  printf 'ok: %s reaches port %s of %s\n' "$consumer" "$port" "$provider"
+done <<<"$edges"
+
+# Nothing but a consumer may reach a provider's port: the default namespace is
+# in nobody's list.
+while IFS=$'\t' read -r provider port; do
+  addresses=$(pod_addresses "$provider" | paste -sd' ' -)
+  pod=$(probe_name)
+  denied=$(connect_probe default "$addresses" "$port" "$pod")
+  if [[ "$denied" == *'exit=0'* ]]; then
+    fail "a pod in the default namespace reached port $port of $provider, which nothing allows" || exit
+  fi
+  if [[ "$denied" != *'exit=1'* ]]; then
+    fail "the pod in the default namespace failed for another reason than a blocked connection: $denied" || exit
+  fi
+  expect_flow default "$pod" DROPPED --to-namespace "$provider" || exit
+  printf 'ok: default does not reach port %s of %s\n' "$port" "$provider"
+done < <(cut -f1,2 <<<"$edges" | sort -u)
 
 # The platform namespaces that deny ingress only: every pod may use DNS and
 # nothing else of theirs is reachable without an allow.
