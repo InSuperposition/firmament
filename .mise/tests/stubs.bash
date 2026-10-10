@@ -40,6 +40,9 @@
 # `kubectl get gateway platform` prints $GATEWAY_JSON (default: one address and
 # listener port 8880), and `kubectl run` in default with `wget -T 8 -S` prints
 # $GATEWAY_ANSWER (default: HTTP/1.1 200 OK exit=0).
+# `nc -z -w 5` (the Mac connecting to the Gateway) fails when
+# $GATEWAY_PORT_ERROR is set, and `kubectl get gateway platform
+# --ignore-not-found` prints nothing when $GATEWAY_ABSENT is set.
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -204,6 +207,11 @@ case "\$*" in
   *"hubble port-forward"*) exec nc -l 127.0.0.1 "\${@: -1}" >/dev/null ;;
   *" port-forward "*) local_port="\${*: -1}"; exec nc -l 127.0.0.1 "\${local_port%%:*}" >/dev/null ;;
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
+  "-z -w 5 "*)
+    if [[ -n "\${GATEWAY_PORT_ERROR:-}" ]]; then exit 1; fi ;;
+  *"get gateway platform "*"--ignore-not-found"*)
+    if [[ -n "\${GATEWAY_ABSENT:-}" ]]; then exit 0; fi
+    if [[ -n "\${GATEWAY_JSON:-}" ]]; then printf '%s\\n' "\$GATEWAY_JSON"; else printf '%s\\n' '{"status":{"addresses":[{"value":"192.0.2.10"}]},"spec":{"listeners":[{"port":8880}]}}'; fi ;;
   *"get gateway platform "*)
     if [[ -n "\${GATEWAY_JSON:-}" ]]; then printf '%s\\n' "\$GATEWAY_JSON"; else printf '%s\\n' '{"status":{"addresses":[{"value":"192.0.2.10"}]},"spec":{"listeners":[{"port":8880}]}}'; fi ;;
   *" -n default run "*"wget -T 8 -S"*)

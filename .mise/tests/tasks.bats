@@ -1795,6 +1795,9 @@ run_doctor() {
   local contract="$FIRMAMENT_STATE_HOME/environments/local/cluster-access.yaml"
   local kubeconfig="$BATS_TEST_TMPDIR/admin.kubeconfig"
   : >"$kubeconfig"
+  # Only the doctor's connection to the Gateway is stubbed: other tests wait
+  # on a real listener with the real nc.
+  stub nc
   if [[ -f "$contract" ]]; then
     yq -i ".kubeconfig_path = \"${DOCTOR_KUBECONFIG:-$kubeconfig}\"" "$contract"
   fi
@@ -1929,6 +1932,30 @@ STUB
   output=${output//$'\r'/}
   [[ "$output" == *"ok    machine dns: firmament resolves host.orb.internal"* ]] || fail "$output"
   [[ "$output" == *"ok    machine dns: firmament resolves ghcr.io"* ]] || fail "$output"
+}
+
+@test "env:doctor connects to the Gateway the way a browser does" {
+  local_state
+  run_doctor
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok    gateway: the Mac connects to 192.0.2.10:8880"* ]]
+  grep -q '^nc -z -w 5 192.0.2.10 8880' "$CALLS"
+}
+
+@test "env:doctor reports a Gateway port the Mac cannot connect to" {
+  local_state
+  GATEWAY_PORT_ERROR=1 run_doctor
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL  gateway: the Mac cannot connect to 192.0.2.10:8880, where the Gateway listens"* ]]
+  [[ "$output" == *"next: mise run gateway:verify"* ]]
+}
+
+@test "env:doctor skips the Gateway while the cluster has none" {
+  local_state
+  GATEWAY_ABSENT=1 run_doctor
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"skip  gateway: no Gateway with an address and a listener port yet"* ]]
+  ! grep -q '^nc ' "$CALLS"
 }
 
 @test "env:doctor treats a missing machine-hosts contract as no machine" {
