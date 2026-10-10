@@ -5,8 +5,6 @@ kind: Gateway
 metadata:
   name: platform
   namespace: kube-system
-  annotations:
-    kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
   gatewayClassName: cilium
   listeners:

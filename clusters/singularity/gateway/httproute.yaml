@@ -4,18 +4,12 @@ kind: HTTPRoute
 metadata:
   name: cv
   namespace: cv
-  annotations:
-    kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
   parentRefs:
     - name: platform
       namespace: kube-system
       sectionName: http
   rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
-      backendRefs:
+    - backendRefs:
         - name: cv
           port: 80
