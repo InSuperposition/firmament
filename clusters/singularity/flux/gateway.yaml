@@ -1,6 +1,7 @@
 # Applies the Gateway and the routes, and the values that switch Cilium's
 # Gateway controller on. It waits for the definitions, and for the rendered
-# Kustomization, whose namespaces hold the routes.
+# Kustomization, whose namespaces hold the routes. It is Ready only when
+# Cilium has programmed the Gateway and the route is accepted.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -18,3 +19,13 @@ spec:
     kind: OCIRepository
     name: payload
   path: ./clusters/singularity/gateway
+  wait: true
+  healthCheckExprs:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      current: status.conditions.filter(e, e.type == 'Programmed').all(e, e.status == 'True')
+      failed: status.conditions.filter(e, e.type == 'Programmed').exists(e, e.status == 'False')
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      current: status.parents.all(p, p.conditions.filter(e, e.type == 'Accepted').all(e, e.status == 'True') && p.conditions.filter(e, e.type == 'ResolvedRefs').all(e, e.status == 'True'))
+      failed: status.parents.exists(p, p.conditions.filter(e, e.status == 'False').size() > 0)

@@ -752,10 +752,11 @@ cilium_values_deployed() {
     -o jsonpath='{.data.values\.yaml}') || return
   # The network policy and the gateway each add an optional values source,
   # in the order of the HelmRelease's valuesFrom; the release runs them
-  # merged, each over the ones before it.
+  # merged, each over the ones before it. An absent overlay adds nothing; an
+  # API error is not an absent overlay.
   for overlay in cilium-values-policy cilium-values-gateway; do
     extra=$(kubectl --kubeconfig "$kubeconfig" -n flux-system get configmap "$overlay" \
-      -o jsonpath='{.data.values\.yaml}' 2>/dev/null) || extra=""
+      --ignore-not-found -o jsonpath='{.data.values\.yaml}') || return
     if [[ -n "$extra" ]]; then
       # shellcheck disable=SC2016 # a yq expression, not shell
       wanted=$(yq eval-all '. as $item ireduce ({}; . * $item)' <(printf '%s\n' "$wanted") <(printf '%s\n' "$extra")) || return

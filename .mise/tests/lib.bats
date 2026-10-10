@@ -227,6 +227,12 @@ setup() {
   [[ "$output" == *"the cilium release does not run the values in the cilium-values ConfigMap after 0s"* ]]
 }
 
+@test "never counts an overlay it could not read as absent" {
+  CILIUM_VALUES='a: 1' RELEASE_VALUES='a: 1' CILIUM_VALUES_GATEWAY_ERROR='connection refused' \
+    run cilium_values_deployed /kubeconfig
+  [ "$status" -ne 0 ]
+}
+
 @test "never counts an empty cilium-values ConfigMap as deployed" {
   CILIUM_VALUES='' RELEASE_VALUES='' run cilium_values_deployed /kubeconfig
   [ "$status" -ne 0 ]

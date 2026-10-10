@@ -1,13 +1,15 @@
 # The Gateway API custom resource definitions Cilium's Gateway controller needs,
 # vendored from the upstream release (see README.md). Removing one deletes
-# every Gateway, Route and policy of its kind, so none is ever pruned.
+# every Gateway, Route and policy of its kind, so none is ever pruned. The
+# upstream safe-upgrades policy and its binding guard those definitions, so
+# they are kept with them.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - crds.yaml
 patches:
   - target:
-      kind: CustomResourceDefinition
+      kind: CustomResourceDefinition|ValidatingAdmissionPolicy|ValidatingAdmissionPolicyBinding
     patch: |-
       - op: add
         path: /metadata/annotations/kustomize.toolkit.fluxcd.io~1prune
