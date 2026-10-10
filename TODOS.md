@@ -123,3 +123,65 @@
 **Effort:** M
 **Priority:** P3
 **Depends on:** the first-tenant slice
+
+## Gateway
+
+### Serve the Gateway over TLS
+
+**What:** An HTTPS listener on the platform Gateway with a certificate cert-manager issues, and a redirect from the HTTP listener.
+
+**Why:** The Gateway serves plain HTTP on the node, which is acceptable on the local machine only. Anything beyond it sends requests and cookies in the clear.
+
+**Context:** cert-manager and its OpenBao-backed issuer exist. The Gateway needs a `certificateRefs` Secret in `kube-system`, a name to put on the certificate (the local environment has none), and a route that matches the host. Trigger: an environment other than the local machine.
+
+**Effort:** M
+**Priority:** P2
+**Depends on:** a host name for the site
+
+### Give the Gateway an address of its own
+
+**What:** Replace host-network mode with a Gateway Service that gets its address from Cilium LB-IPAM, announced by L2 announcements or BGP.
+
+**Why:** Host-network mode makes Envoy listen on the node's own address and a port above 1023. A second Gateway or listener competes for node ports, and the address is the node's.
+
+**Context:** `packages/cilium/README.md` lists the limits. Trigger: a second cluster, a real network, or a need for port 80 or 443. Changes `gatewayAPI.hostNetwork` in `clusters/singularity/gateway/cilium-values-gateway.yaml`.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** a network that can announce addresses
+
+### Pin host-network Envoy to the nodes that should serve
+
+**What:** A node selector for the Envoy that Cilium runs in host-network mode, and a decision about which address `gateway:verify` and the doctor use.
+
+**Why:** On two or more nodes every node listens on the port, and the Gateway reports one address, so the address in `status` is not the only one that answers.
+
+**Context:** Single node today. Check the Cilium 1.20 chart for the setting (`gatewayAPI.hostNetwork.nodes.matchLabels`) before adding it.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** a second node
+
+### Declare a tenant's route in its package
+
+**What:** A `routes` field in `package.yaml` that renders the HTTPRoute and adds the namespace to the Gateway's `allowedRoutes`.
+
+**Why:** The `cv` route and the Gateway's namespace selector are platform YAML in `clusters/singularity/gateway/`. A tenant package declares its pod ports (`ingress_ports`) but not its route, so adding a site means editing two places.
+
+**Context:** One tenant today, so hand-written YAML is the smaller part. Trigger: a second route.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** a second routed tenant
+
+### Upgrade Gateway API with Cilium
+
+**What:** A routine for moving `packages/gateway-api` to the version a new Cilium minor documents.
+
+**Why:** `crds.yaml` is vendored at v1.6.1 for Cilium 1.20. A Cilium minor may require another version, and the definitions are never pruned, so a change has to be a deliberate upgrade.
+
+**Context:** Read the Cilium upgrade notes for the Gateway API version, replace `crds.yaml`, update the URL and SHA-256 in `packages/gateway-api/README.md`, and run `mise run gateway:check-crds`. The upstream `safe-upgrades` policy refuses older versions and experimental definitions over standard ones.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** a Cilium minor upgrade

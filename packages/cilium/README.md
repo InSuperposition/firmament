@@ -96,6 +96,38 @@ the tests run still do. The Cilium bug report is in [BUGS.md](BUGS.md), and
 the OrbStack kernel request is in
 [vm-orb/BUGS.md](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy).
 
+## Gateway API
+
+The platform serves HTTP through Cilium's Gateway API controller, in
+host-network mode: Envoy listens on the node's own address, so the cluster
+needs no load balancer. Flux switches it on in two steps, so the bootstrap
+installs Cilium with the Gateway off:
+
+1. The `gateway-api-crds` Kustomization applies the definitions in
+   `packages/gateway-api` and waits until the API server serves them,
+   because the controller looks for them when it starts.
+2. The `gateway` Kustomization (`clusters/singularity/gateway`) adds the
+   `cilium-values-gateway` ConfigMap, the third optional `valuesFrom` of the
+   HelmRelease, with `gatewayAPI.enabled` and `gatewayAPI.hostNetwork.enabled`.
+   It also applies the `platform` Gateway and the routes, and is Ready only
+   when the Gateway is Programmed and each route Accepted.
+
+Limits of host-network mode:
+
+- The listener port must be above 1023 and free on the node (8880 here).
+  Another Gateway or listener needs another port.
+- The Gateway's address is the node's. With two or more nodes every node
+  listens and the Gateway reports one address; see `TODOS.md`.
+- Envoy runs in the `reserved:ingress` identity, which carries no namespace
+  label. The clusterwide `tenant-default-deny` selects with `NotIn` plus
+  `Exists` on the namespace label so it leaves that endpoint alone; a
+  tenant opens its pod ports to it with `ingress_ports` in `package.yaml`
+  (`fromEntities: [ingress]`).
+- HTTP only; TLS and other address options are in `TODOS.md`.
+
+`mise run gateway:verify` checks the path from a pod, and `env:doctor` checks
+the port from the Mac.
+
 ## Commands
 
 Run from the repo root:
