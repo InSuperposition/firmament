@@ -2580,3 +2580,67 @@ mode_of() {
   [[ "$output" == *"has no address or listener port yet"* ]]
   ! grep -q -- ' run ' "$CALLS"
 }
+
+# gateway:check-crds works on a copy of the repository whose crds.yaml and
+# README the test controls; the curl stand-in answers with $UPSTREAM_CRDS.
+setup_gateway_crds_repository() {
+  rm "$stubs/kubectl"
+  cat >"$stubs/curl" <<'STUB'
+#!/usr/bin/env bash
+printf 'curl %s\n' "$*" >>"$CALLS"
+while (($#)); do
+  if [[ "$1" == -o ]]; then cp "$UPSTREAM_CRDS" "$2"; fi
+  shift
+done
+STUB
+  chmod +x "$stubs/curl"
+  repository="$BATS_TEST_TMPDIR/gateway-crds-repository"
+  mkdir -p "$repository/.mise" "$repository/packages"
+  cp -R "$root_directory/.mise/tasks" "$root_directory/.mise/lib.sh" "$repository/.mise/"
+  cp -R "$root_directory/packages/gateway-api" "$repository/packages/"
+  UPSTREAM_CRDS="$repository/packages/gateway-api/crds.yaml"
+  export UPSTREAM_CRDS
+}
+
+@test "gateway:check-crds passes when the file and the upstream release match the recorded checksum" {
+  setup_gateway_crds_repository
+  MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/gateway/check-crds.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ok: crds.yaml and https://github.com/kubernetes-sigs/gateway-api/releases/download/"*"/standard-install.yaml match"* ]]
+  run grep -c '^curl -fsSL https://github.com/kubernetes-sigs/gateway-api/releases/download/' "$CALLS"
+  [ "$output" = 1 ]
+}
+
+@test "gateway:check-crds fails without downloading when the vendored file was edited" {
+  setup_gateway_crds_repository
+  printf '# edited\n' >>"$repository/packages/gateway-api/crds.yaml"
+  MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/gateway/check-crds.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the file is edited or the record is stale"* ]]
+  ! grep -qs '^curl' "$CALLS"
+}
+
+@test "gateway:check-crds fails when the upstream release differs from the record" {
+  setup_gateway_crds_repository
+  UPSTREAM_CRDS="$BATS_TEST_TMPDIR/upstream.yaml"
+  printf 'another release\n' >"$UPSTREAM_CRDS"
+  MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/gateway/check-crds.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the release changed or the record is wrong"* ]]
+}
+
+@test "gateway:check-crds fails when the download fails" {
+  setup_gateway_crds_repository
+  printf '#!/usr/bin/env bash\nexit 22\n' >"$stubs/curl"
+  MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/gateway/check-crds.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot download https://github.com/"* ]]
+}
+
+@test "gateway:check-crds fails when the README records no checksum" {
+  setup_gateway_crds_repository
+  sed -i.bak '/SHA-256 of/d' "$repository/packages/gateway-api/README.md"
+  MISE_PROJECT_ROOT="$repository" run "$repository/.mise/tasks/gateway/check-crds.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"records no SHA-256 of crds.yaml"* ]]
+}
