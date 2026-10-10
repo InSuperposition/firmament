@@ -16,7 +16,7 @@ render() {
   ENVIRONMENT="${1:-local}" timoni bundle build -f bundle.cue --runtime-from-env --output-dir "$2"
 }
 
-# Binds a tenant package `site` to the namespace cv: it lists host port 44100
+# Binds a tenant package `site` to the namespace shop: it lists host port 44100
 # and requires secrets.
 bind_site() {
   mkdir -p packages/site
@@ -35,7 +35,7 @@ host_ports:
     protocol: TCP
 YAML
   printf '{}\n' >clusters/singularity/values/site.yaml
-  printf -- '- package: site\n  namespace: cv\n  tenant: apps\n' >>clusters/singularity/packages.yaml
+  printf -- '- package: site\n  namespace: shop\n  tenant: apps\n' >>clusters/singularity/packages.yaml
 }
 
 @test "the data files pass cue vet -c" {
@@ -260,13 +260,13 @@ YAML
   bind_site
   render local "$BATS_TEST_TMPDIR/out"
   policy="$BATS_TEST_TMPDIR/out/cilium-policy/cilium.io_v2_ciliumclusterwidenetworkpolicy_tenant-default-deny.yaml"
-  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | contains(["cv"])' "$policy")" = false ]
+  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | contains(["shop"])' "$policy")" = false ]
 }
 
 @test "a tenant namespace gets only its allows: the node on its host port, its provider on the pod port, no API server" {
   bind_site
   render local "$BATS_TEST_TMPDIR/out"
-  policy="$BATS_TEST_TMPDIR/out/cilium-policy/cv_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
+  policy="$BATS_TEST_TMPDIR/out/cilium-policy/shop_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
   [ "$(yq -r '.spec.ingress | length' "$policy")" -eq 2 ]
   [ "$(yq -r '.spec.ingress[] | select(.fromEntities[0] == "host") | .toPorts[0].ports[0].port' "$policy")" = 44100 ]
   [ "$(yq -r '.spec.ingress[] | select(.fromEndpoints[0].matchLabels["k8s:k8s-app"] == "konnectivity-agent") | .toPorts[0].ports[0].port' "$policy")" = 44100 ]
@@ -279,7 +279,7 @@ YAML
   bind_site
   yq -i 'del(.requires) | del(.host_ports)' packages/site/package.yaml
   render local "$BATS_TEST_TMPDIR/out"
-  [ ! -e "$BATS_TEST_TMPDIR/out/cilium-policy/cv_cilium.io_v2_ciliumnetworkpolicy_platform.yaml" ]
+  [ ! -e "$BATS_TEST_TMPDIR/out/cilium-policy/shop_cilium.io_v2_ciliumnetworkpolicy_platform.yaml" ]
   grep -q 'tenant-default-deny' "$BATS_TEST_TMPDIR/out/cilium-policy/cilium.io_v2_ciliumclusterwidenetworkpolicy_tenant-default-deny.yaml"
 }
 
@@ -334,6 +334,16 @@ YAML
   render local "$BATS_TEST_TMPDIR/out"
   grep -q 'defaultRequest:' "$BATS_TEST_TMPDIR/out/namespace/kube-system_v1_limitrange_tenant-defaults.yaml"
   grep -q 'defaultRequest:' "$BATS_TEST_TMPDIR/out/namespace/flux-system_v1_limitrange_tenant-defaults.yaml"
+}
+
+@test "the cv site installs into its own namespace of the apps tenant, from a chart whose signer Flux checks" {
+  render local "$BATS_TEST_TMPDIR/out"
+  chart="$BATS_TEST_TMPDIR/out/cv"
+  [ "$(yq -r '.spec.ref.digest' "$chart/source.toolkit.fluxcd.io_v1_ocirepository_cv.yaml")" = "$(yq -r '.pin.digest' packages/cv/package.yaml)" ]
+  [ "$(yq -r '.spec.verify.provider' "$chart/source.toolkit.fluxcd.io_v1_ocirepository_cv.yaml")" = cosign ]
+  [ "$(yq -r '.spec.targetNamespace' "$chart/helm.toolkit.fluxcd.io_v2_helmrelease_cv.yaml")" = cv ]
+  [ "$(yq -r '.data["values.yaml"] | from_yaml | .image.digest' "$chart/v1_configmap_cv-values.yaml")" = "$(yq -r '.image.digest' clusters/singularity/values/cv.yaml)" ]
+  grep -q 'firmament.dev/tenant: apps' "$BATS_TEST_TMPDIR/out/namespace/v1_namespace_cv.yaml"
 }
 
 @test "each chart package renders its source pinned by digest, its values and its release" {

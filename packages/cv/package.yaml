@@ -1,0 +1,15 @@
+name: cv
+layer: app
+pin:
+  source: oci://ghcr.io/insuperposition/charts/cv
+  version: 0.1.0
+  digest: sha256:e462d64a1702c2e5650a4bb001a58052b5be15bd66703b0af2c3904781ceaeab
+# Flux installs the chart only when it carries a keyless cosign signature from
+# the cv repository's publish workflow on a release tag.
+verify:
+  issuer: ^https://token\.actions\.githubusercontent\.com$
+  identity: ^https://github\.com/InSuperposition/cv/\.github/workflows/publish\.yaml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$
+# The pod port the node's probes reach.
+host_ports:
+  - port: 44100
+    protocol: TCP

@@ -10,3 +10,6 @@
 - package: openbao
   namespace: openbao
   tenant: platform
+- package: cv
+  namespace: cv
+  tenant: apps
