@@ -2447,3 +2447,32 @@ mode_of() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"nothing to check"* ]]
 }
+
+@test "tenant:verify checks that a namespace no binding names stays denied, with a Hubble drop" {
+  run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok: a namespace no binding names stays denied: default cannot reach port 8080 of test-retained-"* ]]
+  grep -q -- 'create namespace test-retained-' "$CALLS"
+  grep -q -- 'label namespace test-retained-.* firmament.test/tenant-verify=true' "$CALLS"
+  grep -q -- 'hubble observe --from-pod default/policy-probe-[0-9]* --verdict DROPPED --to-ip 10.0.0.12 --to-port 8080' "$CALLS"
+  [ "$(grep -c 'delete namespaces -l firmament.test/tenant-verify' "$CALLS")" -eq 2 ]
+}
+
+@test "tenant:verify fails when the default namespace reaches a namespace no binding names" {
+  NP_PROVIDER_DENIED='exit=0' run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"reached port 8080 of test-retained-"* ]]
+}
+
+@test "tenant:verify fails when the pod in the unbound namespace does not listen, so a refusal cannot be an empty port" {
+  TV_LISTENING='exit=1' run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not listen on port 8080"* ]]
+}
+
+@test "tenant:verify fails when a blocked connection to the unbound namespace has no dropped flow" {
+  stub_sleep
+  NP_NO_FLOW=DROPPED run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Hubble recorded no DROPPED flow from default/policy-probe-"* ]]
+}
