@@ -48,6 +48,9 @@ local slow = new Mapping<String, Step> {
   }
   ["test"] {
     glob = List("**/*.tf", "**/*.tftest.hcl", "**/*.sh", "**/*.bash", "**/*.bats", "**/mise.toml", "clusters/*/tests/cluster/**/*.yaml", "packages/**", "clusters/*/flux/**", ".mise/flux-test-values.env", "environments/**", ".mise/tests/fortio/**", ".mise/traffic/**")
+    // Markdown never changes a test result. A test that reads a Markdown file
+    // must remove this exclude.
+    exclude = List("**/*.md")
     check = "mise run test"
     exclusive = true
   }
