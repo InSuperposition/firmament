@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Start traffic that a Cilium agent restart must not break, for cilium:traffic-check to measure: cilium-cli conn-disrupt connections held open, and fortio opening 100 new connections a second through a ClusterIP Service (deploys test workloads)"
+#MISE description="Start traffic that a Cilium agent restart must not break, for cilium:traffic-check to measure: cilium-cli conn-disrupt connections held open, and fortio opening 100 new connections a second through a ClusterIP Service (deploys test workloads and a test-owned clusterwide policy that lets them run under the tenant default deny)"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
@@ -21,6 +21,12 @@ traffic=$(traffic_directory)
 rm -rf "$traffic"
 mkdir -p "$traffic"
 
+# The fixtures run under the clusterwide default deny only with a test-owned
+# allow, which must exist before their namespaces do. A permit an earlier run
+# left behind is replaced.
+remove_traffic_permit "$kubeconfig"
+kubectl --kubeconfig "$kubeconfig" apply -f "$MISE_PROJECT_ROOT/.mise/traffic/permit.yaml"
+
 # A fortio run from an earlier traffic-start that stopped before writing
 # its state keeps sending until stopped; a new namespace starts without it.
 kubectl --kubeconfig "$kubeconfig" delete namespace traffic-probe --ignore-not-found --timeout=2m
@@ -34,6 +40,10 @@ kubectl --kubeconfig "$kubeconfig" -n traffic-probe rollout status \
 cilium --kubeconfig "$kubeconfig" connectivity test --conn-disrupt-test-setup --include-conn-disrupt-test \
   --conn-disrupt-client-timeout 1s --conn-disrupt-test-restarts-path "$traffic/conn-disrupt-restarts" \
   --test no-interrupted-connections
+# The permit names cilium-test-1; a cilium-cli that deploys elsewhere would
+# leave its workloads denied.
+kubectl --kubeconfig "$kubeconfig" get namespace cilium-test-1 >/dev/null ||
+  fail "the cilium-cli did not deploy into cilium-test-1, the namespace the traffic permit names"
 
 # A run fortio may have started, but that is not recorded in fortio-run,
 # keeps sending with nothing to stop it. A traffic-start that fails after
@@ -45,7 +55,16 @@ stop_unrecorded_run() {
     fortio_rest "$kubeconfig" "rest/stop?runid=0" >/dev/null || true
   fi
 }
-trap stop_unrecorded_run EXIT
+# A start that fails also removes the permit; the workloads it leaves are
+# replaced by the next start.
+started=false
+cleanup_failed_start() {
+  stop_unrecorded_run
+  if [[ "$started" != true ]]; then
+    remove_traffic_permit "$kubeconfig" >/dev/null || true
+  fi
+}
+trap cleanup_failed_start EXIT
 
 # 100 requests a second, each on a new connection with a 1 s timeout, until
 # cilium:traffic-check stops the run. The REST API reads string values only.
@@ -74,4 +93,5 @@ cilium_agent_identities "$kubeconfig" >"$traffic/agent-before"
 # started run only from this file.
 printf '%s\n' "$run_id" >"$traffic/fortio-run.partial"
 mv "$traffic/fortio-run.partial" "$traffic/fortio-run"
+started=true
 printf 'Traffic is running (fortio run %s). Measure it with: mise run cilium:traffic-check\n' "$run_id"

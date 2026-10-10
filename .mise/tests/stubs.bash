@@ -33,6 +33,8 @@
 # $BATS_TEST_TMPDIR/applied. `kubectl wait` on a chart source fails when its
 # arguments contain $TV_FAIL. The holder pod of the temporary namespace has IP
 # 10.0.0.12, and `kubectl exec holder` prints $TV_LISTENING (default exit=0).
+# `kubectl get` of the traffic permit fails when $PERMIT_MISSING is set, and of
+# the namespace cilium-test-1 when $CILIUM_TEST_NAMESPACE_MISSING is set.
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -134,6 +136,10 @@ case "\$*" in
     printf '%s\\n' '{"apiVersion":"source.toolkit.fluxcd.io/v1","kind":"OCIRepository","metadata":{"name":"cv","namespace":"flux-system","uid":"u"},"spec":{"url":"oci://registry.test/cv","ref":{"digest":"sha256:aaa"},"verify":{"provider":"cosign","matchOIDCIdentity":[{"issuer":"issuer","subject":"subject"}]}},"status":{}}' ;;
   *"get ocirepositories.source.toolkit.fluxcd.io -l"*)
     if [[ -n "\${OCI_SOURCES:-}" ]]; then printf '%s\\n' "\$OCI_SOURCES"; else printf '%s\\n' '{"items":[{"metadata":{"name":"cv"},"spec":{"verify":{}}}]}'; fi ;;
+  *"get ciliumclusterwidenetworkpolicies.cilium.io traffic-fixtures-permit"*)
+    if [[ -n "\${PERMIT_MISSING:-}" ]]; then exit 1; fi ;;
+  *"get namespace cilium-test-1"*)
+    if [[ -n "\${CILIUM_TEST_NAMESPACE_MISSING:-}" ]]; then exit 1; fi ;;
   *" get pod holder "*) printf '%s\\n' 10.0.0.12 ;;
   *" exec holder "*) printf '%s\\n' "\${TV_LISTENING:-exit=0}" ;;
   *" apply -f -"*) cat >>"\$BATS_TEST_TMPDIR/applied" ;;

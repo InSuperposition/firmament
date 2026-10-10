@@ -688,6 +688,18 @@ traffic_directory() {
   printf '%s/traffic\n' "$TF_VAR_state_directory"
 }
 
+# The test-owned policy that lets the traffic fixtures run under the
+# clusterwide default deny, and the label that finds it (.mise/traffic/permit.yaml).
+# shellcheck disable=SC2034 # read by cilium:traffic-check
+readonly TRAFFIC_PERMIT_NAME=traffic-fixtures-permit
+readonly TRAFFIC_PERMIT_LABEL=firmament.test/traffic-fixtures
+
+# Deletes every traffic permit, also one a crashed run left behind. $1 is the
+# kubeconfig.
+remove_traffic_permit() {
+  kubectl --kubeconfig "$1" delete ciliumclusterwidenetworkpolicies.cilium.io -l "$TRAFFIC_PERMIT_LABEL" --ignore-not-found
+}
+
 # Sends one request to the fortio REST API in the traffic-probe client pod
 # and prints the reply body. The last argument is the path under /fortio/,
 # the ones before it go to `fortio curl`. fortio curl writes the reply

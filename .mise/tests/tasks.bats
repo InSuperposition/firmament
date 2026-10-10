@@ -586,16 +586,19 @@ traffic_directory_of_local() {
   traffic=$(traffic_directory_of_local)
   [[ "$output" == *"Traffic is running (fortio run 3). Measure it with: mise run cilium:traffic-check"* ]]
   run grep -E '^(kubectl|cilium) ' "$CALLS"
-  [ "${#lines[@]}" -eq 7 ]
-  [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig delete namespace traffic-probe --ignore-not-found --timeout=2m "* ]]
-  [[ "${lines[1]}" == "kubectl --kubeconfig /state/admin.kubeconfig apply -f $MISE_PROJECT_ROOT/.mise/traffic/fortio.yaml "* ]]
-  [[ "${lines[2]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n traffic-probe rollout status deployment/fortio-server deployment/fortio-client --timeout=3m "* ]]
-  [[ "${lines[3]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --conn-disrupt-test-setup --include-conn-disrupt-test --conn-disrupt-client-timeout 1s --conn-disrupt-test-restarts-path $traffic/conn-disrupt-restarts --test no-interrupted-connections "* ]]
-  [[ "${lines[4]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n traffic-probe exec deployment/fortio-client -- fortio curl -quiet -timeout 30s -payload "*" http://localhost:8080/fortio/rest/run "* ]]
-  [[ "${lines[5]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/rest/status?runid=3 "* ]]
-  [[ "${lines[6]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system get pods -l k8s-app=cilium -o json "* ]]
+  [ "${#lines[@]}" -eq 10 ]
+  [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig delete ciliumclusterwidenetworkpolicies.cilium.io -l firmament.test/traffic-fixtures --ignore-not-found "* ]]
+  [[ "${lines[1]}" == "kubectl --kubeconfig /state/admin.kubeconfig apply -f $MISE_PROJECT_ROOT/.mise/traffic/permit.yaml "* ]]
+  [[ "${lines[2]}" == "kubectl --kubeconfig /state/admin.kubeconfig delete namespace traffic-probe --ignore-not-found --timeout=2m "* ]]
+  [[ "${lines[3]}" == "kubectl --kubeconfig /state/admin.kubeconfig apply -f $MISE_PROJECT_ROOT/.mise/traffic/fortio.yaml "* ]]
+  [[ "${lines[4]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n traffic-probe rollout status deployment/fortio-server deployment/fortio-client --timeout=3m "* ]]
+  [[ "${lines[5]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --conn-disrupt-test-setup --include-conn-disrupt-test --conn-disrupt-client-timeout 1s --conn-disrupt-test-restarts-path $traffic/conn-disrupt-restarts --test no-interrupted-connections "* ]]
+  [[ "${lines[6]}" == "kubectl --kubeconfig /state/admin.kubeconfig get namespace cilium-test-1 "* ]]
+  [[ "${lines[7]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n traffic-probe exec deployment/fortio-client -- fortio curl -quiet -timeout 30s -payload "*" http://localhost:8080/fortio/rest/run "* ]]
+  [[ "${lines[8]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/rest/status?runid=3 "* ]]
+  [[ "${lines[9]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system get pods -l k8s-app=cilium -o json "* ]]
   local payload
-  payload=$(sed -n 's/.* -payload \({.*}\) http:.*/\1/p' <<<"${lines[4]}")
+  payload=$(sed -n 's/.* -payload \({.*}\) http:.*/\1/p' <<<"${lines[7]}")
   [ "$(jq -c . <<<"$payload")" = '{"url":"http://fortio-server:8080/echo","qps":"100","t":"on","timeout":"1s","connection-reuse":"1:1","c":"4","async":"on","save":"on"}' ]
   [ "$(cat "$traffic/fortio-run")" = 3 ]
   grep -q uid-agent "$traffic/agent-before"
@@ -712,14 +715,16 @@ fortio_result() {
   [[ "$output" == *"fortio: 2000 of 2000 requests answered 200 over 20s; the slowest took 1006 ms"* ]]
   [ "${lines[-1]}" = "traffic held across the Cilium agent restart" ]
   run grep -E '^(kubectl|cilium) ' "$CALLS"
-  [ "${#lines[@]}" -eq 7 ]
-  [[ "${lines[0]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/rest/status?runid=3 "* ]]
-  [[ "${lines[1]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --include-conn-disrupt-test --conn-disrupt-test-restarts-path $traffic/conn-disrupt-restarts --test no-interrupted-connections "* ]]
-  [[ "${lines[2]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/rest/stop?runid=3&wait=on "* ]]
-  [[ "${lines[3]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system get pods -l k8s-app=cilium -o json "* ]]
-  [[ "${lines[4]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/data/2026-09-25-130545_3.json "* ]]
-  [[ "${lines[5]}" == "kubectl --kubeconfig /state/admin.kubeconfig delete namespace traffic-probe --timeout=2m "* ]]
-  [[ "${lines[6]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --cleanup "* ]]
+  [ "${#lines[@]}" -eq 9 ]
+  [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig get ciliumclusterwidenetworkpolicies.cilium.io traffic-fixtures-permit "* ]]
+  [[ "${lines[1]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/rest/status?runid=3 "* ]]
+  [[ "${lines[2]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --include-conn-disrupt-test --conn-disrupt-test-restarts-path $traffic/conn-disrupt-restarts --test no-interrupted-connections "* ]]
+  [[ "${lines[3]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/rest/stop?runid=3&wait=on "* ]]
+  [[ "${lines[4]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system get pods -l k8s-app=cilium -o json "* ]]
+  [[ "${lines[5]}" == *" fortio curl -quiet -timeout 30s http://localhost:8080/fortio/data/2026-09-25-130545_3.json "* ]]
+  [[ "${lines[6]}" == "kubectl --kubeconfig /state/admin.kubeconfig delete namespace traffic-probe --timeout=2m "* ]]
+  [[ "${lines[7]}" == "cilium --kubeconfig /state/admin.kubeconfig connectivity test --cleanup "* ]]
+  [[ "${lines[8]}" == "kubectl --kubeconfig /state/admin.kubeconfig delete ciliumclusterwidenetworkpolicies.cilium.io -l firmament.test/traffic-fixtures --ignore-not-found "* ]]
   [ ! -e "$traffic" ]
 }
 
@@ -2475,4 +2480,57 @@ mode_of() {
   NP_NO_FLOW=DROPPED run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"Hubble recorded no DROPPED flow from default/policy-probe-"* ]]
+}
+
+@test "the traffic permit is a labelled clusterwide policy that opens exactly the two fixture namespaces" {
+  local permit="$root_directory/.mise/traffic/permit.yaml"
+  [ "$(yq -r '.kind' "$permit")" = CiliumClusterwideNetworkPolicy ]
+  [ "$(yq -r '.metadata.name' "$permit")" = "$(sed -n 's/^readonly TRAFFIC_PERMIT_NAME=//p' "$root_directory/.mise/lib.sh")" ]
+  [ "$(yq -r '.metadata.labels["firmament.test/traffic-fixtures"]' "$permit")" = true ]
+  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | sort | join(",")' "$permit")" = "cilium-test-1,traffic-probe" ]
+  [ "$(yq -r '.spec.ingress[0].fromEntities[0] + " " + .spec.egress[0].toEntities[0]' "$permit")" = "all all" ]
+}
+
+@test "cilium:traffic-start removes the permit when the start fails, so a crashed run leaves none" {
+  export PODS="$BATS_TEST_TMPDIR/pods.json"
+  pods uid-agent >"$PODS"
+  printf '{"Statuses":null}\n' >"$BATS_TEST_TMPDIR/none.json"
+  FORTIO_STATUS="$BATS_TEST_TMPDIR/none.json" FIRMAMENT_FORTIO_START_TIMEOUT=1 run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
+  [ "$status" -ne 0 ]
+  [ "$(grep -c 'delete ciliumclusterwidenetworkpolicies.cilium.io -l firmament.test/traffic-fixtures' "$CALLS")" -eq 2 ]
+}
+
+@test "cilium:traffic-start keeps the permit when the start succeeds" {
+  export PODS="$BATS_TEST_TMPDIR/pods.json"
+  pods uid-agent >"$PODS"
+  run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'delete ciliumclusterwidenetworkpolicies' "$CALLS")" -eq 1 ]
+}
+
+@test "cilium:traffic-start fails when the cilium-cli did not deploy into the namespace the permit names" {
+  export PODS="$BATS_TEST_TMPDIR/pods.json"
+  pods uid-agent >"$PODS"
+  CILIUM_TEST_NAMESPACE_MISSING=1 run_task "$root_directory/.mise/tasks/cilium/traffic-start.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"did not deploy into cilium-test-1, the namespace the traffic permit names"* ]]
+  ! grep -q 'fortio/rest/run' "$CALLS"
+}
+
+@test "cilium:traffic-check fails, naming the denied namespaces, when the traffic permit is gone" {
+  started_traffic
+  PERMIT_MISSING=1 run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the traffic permit traffic-fixtures-permit is gone, so the clusterwide default deny blocks traffic-probe and cilium-test-1"* ]]
+  ! grep -q '^cilium ' "$CALLS"
+  ! grep -q '/fortio/rest/stop' "$CALLS"
+}
+
+@test "cilium:traffic-check keeps the permit when the traffic did not survive" {
+  started_traffic
+  export FORTIO_RESULT="$BATS_TEST_TMPDIR/bad.json"
+  fortio_result '.RetCodes = {"200": 1990, "-1": 10}' >"$FORTIO_RESULT"
+  run_task "$root_directory/.mise/tasks/cilium/traffic-check.sh" local
+  [ "$status" -ne 0 ]
+  ! grep -q 'delete ciliumclusterwidenetworkpolicies' "$CALLS"
 }

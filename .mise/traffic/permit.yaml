@@ -1,0 +1,22 @@
+# Lets the upgrade traffic fixtures run under the clusterwide default deny:
+# fortio in traffic-probe and the cilium-cli connection-disruption workloads in
+# cilium-test-1 get all ingress and egress, the node's probes included. The
+# deny and this allow add up. cilium:traffic-start creates it before the
+# namespaces exist, because the cilium-cli recreates its namespace on each run;
+# cilium:traffic-check deletes it, and so does the next traffic-start.
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: traffic-fixtures-permit
+  labels:
+    firmament.test/traffic-fixtures: "true"
+spec:
+  endpointSelector:
+    matchExpressions:
+      - key: io.kubernetes.pod.namespace
+        operator: In
+        values: [traffic-probe, cilium-test-1]
+  ingress:
+    - fromEntities: [all]
+  egress:
+    - toEntities: [all]
