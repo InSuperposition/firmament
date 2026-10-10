@@ -15,10 +15,15 @@ package templates
 		annotations: "kustomize.toolkit.fluxcd.io/prune": "disabled"
 	}
 	spec: {
+		// NotIn alone also matches an endpoint without the key, such as the
+		// reserved ingress endpoint of the Gateway; Exists keeps it out.
 		endpointSelector: matchExpressions: [{
 			key:      "io.kubernetes.pod.namespace"
 			operator: "NotIn"
 			values:   _config.excluded
+		}, {
+			key:      "io.kubernetes.pod.namespace"
+			operator: "Exists"
 		}]
 		enableDefaultDeny: {ingress: true, egress: true}
 		ingress: [{}]

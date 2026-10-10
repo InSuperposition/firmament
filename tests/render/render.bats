@@ -249,6 +249,7 @@ YAML
   policy="$BATS_TEST_TMPDIR/out/cilium-policy/cilium.io_v2_ciliumclusterwidenetworkpolicy_tenant-default-deny.yaml"
   [ "$(yq -r '.spec.endpointSelector.matchExpressions[0] | [.key, .operator] | join(" ")' "$policy")" = "io.kubernetes.pod.namespace NotIn" ]
   [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | join(",")' "$policy")" = cert-manager,default,flux-system,kube-node-lease,kube-public,kube-system,openbao ]
+  [ "$(yq -r '.spec.endpointSelector.matchExpressions[1] | [.key, .operator] | join(" ")' "$policy")" = "io.kubernetes.pod.namespace Exists" ]
   [ "$(yq -r '.spec.enableDefaultDeny | [.ingress, .egress] | join(",")' "$policy")" = true,true ]
   [ "$(yq -r '.spec.ingress | length' "$policy")" -eq 1 ]
   [ "$(yq -r '.spec.ingress[0] | length' "$policy")" -eq 0 ]
