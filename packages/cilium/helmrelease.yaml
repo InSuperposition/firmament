@@ -27,6 +27,13 @@ spec:
       name: cilium-values-policy
       valuesKey: values.yaml
       optional: true
+    # Added by the gateway Kustomization once the Gateway API definitions
+    # exist, which Cilium's Gateway controller needs when it starts; absent
+    # until then, so the bootstrap installs Cilium with the controller off.
+    - kind: ConfigMap
+      name: cilium-values-gateway
+      valuesKey: values.yaml
+      optional: true
   # The chart's hubble-generate-certs Job cannot be recreated in place, so
   # upgrades patch instead of forcing.
   upgrade:

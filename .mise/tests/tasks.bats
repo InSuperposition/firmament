@@ -478,9 +478,10 @@ record_pinned_commit() {
   run grep -E '^(kubectl|helm|cilium) ' "$CALLS"
   [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values "* ]]
   [[ "${lines[1]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values-policy "* ]]
-  [[ "${lines[2]}" == "helm --kubeconfig /state/admin.kubeconfig -n kube-system get values cilium -o yaml "* ]]
-  [[ "${lines[3]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system rollout status daemonset/cilium --timeout=10m "* ]]
-  [[ "${lines[4]}" == "cilium --kubeconfig /state/admin.kubeconfig status --wait --interactive=false "* ]]
+  [[ "${lines[2]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values-gateway "* ]]
+  [[ "${lines[3]}" == "helm --kubeconfig /state/admin.kubeconfig -n kube-system get values cilium -o yaml "* ]]
+  [[ "${lines[4]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system rollout status daemonset/cilium --timeout=10m "* ]]
+  [[ "${lines[5]}" == "cilium --kubeconfig /state/admin.kubeconfig status --wait --interactive=false "* ]]
 }
 
 @test "cilium:restart-agent restarts the agent DaemonSet, then waits for the rollout and for Cilium" {
@@ -2089,7 +2090,7 @@ expect_planted_value_refused() {
 @test "the Flux root lists no package, and its source is verified against the publish workflow" {
   local flux="$root_directory/clusters/singularity/flux"
   run yq -r '.resources[]' "$flux/kustomization.yaml"
-  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml\nrendered.yaml\nissuers.yaml\ngateway-api-crds.yaml')" ] || fail "$output"
+  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml\nrendered.yaml\nissuers.yaml\ngateway-api-crds.yaml\ngateway.yaml')" ] || fail "$output"
   [ "$(yq -r '.spec.verify.provider' "$flux/ocirepository.yaml")" = cosign ]
   [ "$(yq -r '.spec.ref.tag' "$flux/ocirepository.yaml")" = '${git_commit}' ]
   [[ "$(yq -r '.spec.verify.matchOIDCIdentity[0].subject' "$flux/ocirepository.yaml")" == *'workflows/publish\.yaml@refs/heads/'* ]]

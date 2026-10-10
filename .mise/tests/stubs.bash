@@ -206,6 +206,7 @@ case "\$*" in
   *" run "*"nc -z"*) printf '%s\\n' "\${NP_ALLOWED:-exit=0}" ;;
   *" -n default run "*)
     printf '%s\\n' "\${NP_DENIED:-wget: can\'t connect to remote host: Operation timed out exit=1}" ;;
+  *"get configmap cilium-values-gateway "*) printf '%s' "\${CILIUM_VALUES_GATEWAY:-}" ;;
   *"get configmap cilium-values-policy "*) printf '%s' "\${CILIUM_VALUES_POLICY:-}" ;;
   *"get configmap cilium-values "*) printf '%s\\n' "\${CILIUM_VALUES-a: 1}" ;;
   *"get values cilium "*) printf '%s\\n' "\${RELEASE_VALUES-a: 1}" ;;

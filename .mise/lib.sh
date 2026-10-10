@@ -747,17 +747,20 @@ canonical_values() {
 # cilium-values ConfigMap, as Flux last applied it. A HelmRelease reports
 # Ready for its previous values until helm-controller notices the change.
 cilium_values_deployed() {
-  local kubeconfig="$1" wanted deployed extra
+  local kubeconfig="$1" wanted deployed overlay extra
   wanted=$(kubectl --kubeconfig "$kubeconfig" -n flux-system get configmap cilium-values \
     -o jsonpath='{.data.values\.yaml}') || return
-  # The network policy adds an optional second values source; the release
-  # runs the two merged, the second over the first.
-  extra=$(kubectl --kubeconfig "$kubeconfig" -n flux-system get configmap cilium-values-policy \
-    -o jsonpath='{.data.values\.yaml}' 2>/dev/null) || extra=""
-  if [[ -n "$extra" ]]; then
-    # shellcheck disable=SC2016 # a yq expression, not shell
-    wanted=$(yq eval-all '. as $item ireduce ({}; . * $item)' <(printf '%s\n' "$wanted") <(printf '%s\n' "$extra")) || return
-  fi
+  # The network policy and the gateway each add an optional values source,
+  # in the order of the HelmRelease's valuesFrom; the release runs them
+  # merged, each over the ones before it.
+  for overlay in cilium-values-policy cilium-values-gateway; do
+    extra=$(kubectl --kubeconfig "$kubeconfig" -n flux-system get configmap "$overlay" \
+      -o jsonpath='{.data.values\.yaml}' 2>/dev/null) || extra=""
+    if [[ -n "$extra" ]]; then
+      # shellcheck disable=SC2016 # a yq expression, not shell
+      wanted=$(yq eval-all '. as $item ireduce ({}; . * $item)' <(printf '%s\n' "$wanted") <(printf '%s\n' "$extra")) || return
+    fi
+  done
   wanted=$(canonical_values <<<"$wanted") || return
   deployed=$(helm --kubeconfig "$kubeconfig" -n kube-system get values cilium -o yaml | canonical_values) || return
   [[ -n "$wanted" && "$wanted" != null && "$wanted" == "$deployed" ]]

@@ -200,6 +200,21 @@ setup() {
   [ "$status" -eq 0 ] || fail "$output"
 }
 
+@test "counts the cilium release current when it runs the gateway's values merged over the policy's and the ConfigMap's" {
+  CILIUM_VALUES=$'a: "1.20"\nextraConfig:\n  keep: yes' \
+    CILIUM_VALUES_POLICY=$'extraConfig:\n  allow-localhost: policy' \
+    CILIUM_VALUES_GATEWAY=$'gatewayAPI:\n  enabled: true\n  hostNetwork:\n    enabled: true' \
+    RELEASE_VALUES=$'a: "1.20"\nextraConfig:\n  allow-localhost: policy\n  keep: yes\ngatewayAPI:\n  enabled: true\n  hostNetwork:\n    enabled: true' \
+    run wait_for_cilium_values /kubeconfig 0 0
+  [ "$status" -eq 0 ] || fail "$output"
+}
+
+@test "waits while the cilium release lacks the gateway's values" {
+  CILIUM_VALUES='a: 1' CILIUM_VALUES_GATEWAY=$'gatewayAPI:\n  enabled: true' RELEASE_VALUES='a: 1' \
+    run wait_for_cilium_values /kubeconfig 0 0
+  [ "$status" -ne 0 ]
+}
+
 @test "waits while the cilium release lacks the network policy's values" {
   CILIUM_VALUES='a: 1' CILIUM_VALUES_POLICY=$'extraConfig:\n  allow-localhost: policy' RELEASE_VALUES='a: 1' \
     run wait_for_cilium_values /kubeconfig 0 0
