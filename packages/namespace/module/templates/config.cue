@@ -34,7 +34,7 @@ import (
 				_config: name: nsName
 			}
 			"resourcequota-\(nsName)": #ResourceQuota & {
-				_config: {name: nsName, quota: config.tenants[tenantName].quota}
+				_config: {name: nsName, quota: config.tenants[tenantName].namespace_quota}
 			}
 		}
 	}

@@ -29,6 +29,18 @@ package packagespec
 	// workload's. The network policy allows the cluster entity on exactly
 	// these.
 	cluster_ports?: [...#HostPort]
+	// Who must have signed the chart, checked keyless with cosign by Flux
+	// before the chart is used. Absent: the digest pin is the only check.
+	verify?: #Verify
+})
+
+// Both fields are regular expressions Flux matches against the signing
+// certificate. They must be anchored, so a partial match cannot pass.
+#Verify: close({
+	// The OIDC issuer of the signing certificate.
+	issuer!: =~"^\\^.+\\$$"
+	// The identity (the certificate subject) that signed the chart.
+	identity!: =~"^\\^.+\\$$"
 })
 
 #HostPort: close({

@@ -207,8 +207,8 @@ Major distribution and platform kernels already enable it:
 
 ### Notes for this repo (not part of the issue)
 
-- Once this ships, remove `--log-check-only-test-time` from
-  `cilium:conformance` (`.mise/tasks/cilium/conformance.sh`), reconsider
+- Once this ships, stop passing `--log-check-only-test-time` to manual
+  `cilium connectivity test` runs, reconsider
   `socketLB.hostNamespaceOnly` in `packages/cilium`, and update the
   socket termination section in
   [packages/cilium/README.md](../../packages/cilium/README.md#socket-termination).
@@ -217,7 +217,7 @@ Major distribution and platform kernels already enable it:
   sends a destroy request.
 - `socketLB.hostNamespaceOnly: true`, the workaround this request would
   remove, also shapes how Hubble reports Service replies. It is not the
-  cause of the `cilium:conformance` flow-validation failures, which are a
+  cause of the `cilium connectivity test` flow-validation failures, which are a
   cilium-cli bug on any platform; see
   [cilium/BUGS.md](../../packages/cilium/BUGS.md#flow-validation-never-matches-reverse-nated-service-replies).
   No OrbStack issue mentions Cilium, Hubble or netkit tracing (searched

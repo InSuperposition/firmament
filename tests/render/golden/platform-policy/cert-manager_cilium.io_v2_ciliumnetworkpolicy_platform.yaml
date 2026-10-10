@@ -1,0 +1,52 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+  name: platform
+  namespace: cert-manager
+spec:
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s:k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+      - port: "53"
+        protocol: TCP
+  - toEntities:
+    - kube-apiserver
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: openbao
+    toPorts:
+    - ports:
+      - port: "8443"
+        protocol: TCP
+  endpointSelector: {}
+  ingress:
+  - fromEntities:
+    - host
+    toPorts:
+    - ports:
+      - port: "9403"
+        protocol: TCP
+      - port: "6080"
+        protocol: TCP
+      - port: "10250"
+        protocol: TCP
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s:k8s-app: konnectivity-agent
+    toPorts:
+    - ports:
+      - port: "9403"
+        protocol: TCP
+      - port: "6080"
+        protocol: TCP
+      - port: "10250"
+        protocol: TCP

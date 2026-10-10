@@ -2,6 +2,7 @@
 package inputs
 
 import (
+	"list"
 	"strings"
 
 	bindingsspec "firmament.dev/firmament/contracts/bindings-spec:bindingsspec"
@@ -187,6 +188,22 @@ _hostPortPackages: {
 	}
 }
 
+// The namespaces the tenant-wide default-deny leaves alone, by environment:
+// the platform tenant's and the Kubernetes system namespaces.
+_untouchedNamespaces: {[string]: {[string]: true}}
+_untouchedNamespaces: {
+	for envName, env in environments {
+		(envName): {
+			"default":         true
+			"kube-public":     true
+			"kube-node-lease": true
+			for binding in bindings[env.cluster] if tenants[envName][binding.tenant].kind == "platform" {
+				(binding.namespace): true
+			}
+		}
+	}
+}
+
 // The namespaces the network policy covers, and what it renders for each. A
 // namespace of a trust-layer package is in full mode: default-deny both ways
 // and every allow (D1 of the network-policy review). A namespace of a
@@ -194,14 +211,18 @@ _hostPortPackages: {
 // k0s's and must keep reaching the API server and the internet. A namespace of
 // another package that lists host ports gets only the allow for the node,
 // because the node's access to pods is closed cluster-wide and its probes
-// must still pass.
-policy: {[string]: {namespaces: {[string]: {...}}}}
+// must still pass. A namespace of a tenant that is not the platform tenant is
+// in allow mode: the tenant-wide default-deny denies it and its policy holds
+// only what its packages allow.
+policy: {[string]: {namespaces: {[string]: {...}}, excludedNamespaces: [...string]}}
 policy: {
 	for envName, env in environments {
+		(envName): excludedNamespaces: list.SortStrings([for namespace, _ in _untouchedNamespaces[envName] {namespace}])
 		(envName): namespaces: {
-			for binding in bindings[env.cluster] if packages[binding.package].layer == "trust" || packages[binding.package].layer == "network" || _hostPortPackages[binding.package] != _|_ {
+			for binding in bindings[env.cluster] if tenants[envName][binding.tenant].kind != "platform" || packages[binding.package].layer == "trust" || packages[binding.package].layer == "network" || _hostPortPackages[binding.package] != _|_ {
 				(binding.namespace): {
 					mode: [
+						if tenants[envName][binding.tenant].kind != "platform" {"allow"},
 						if len([for member in bindings[env.cluster] if member.namespace == binding.namespace if packages[member.package].layer == "trust" {member}]) > 0 {"full"},
 						if len([for member in bindings[env.cluster] if member.namespace == binding.namespace if packages[member.package].layer == "network" {member}]) > 0 {"ingress"},
 						"host",

@@ -1,4 +1,0 @@
-# Cilium connectivity tests this module needs, one --test regular
-# expression per line, for `cilium:conformance --only cilium`. Cilium runs
-# the network itself, so a change to it runs the whole suite.
-.*

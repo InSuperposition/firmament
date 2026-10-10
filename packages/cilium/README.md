@@ -90,9 +90,9 @@ came from the new pod on the same socket, with no timeout or error.
 Processes in the host network namespace still use socket-level load
 balancing and keep the gap.
 
-`cilium:conformance` passes `--log-check-only-test-time`, so this
-start-up error does not fail the suite; agent errors logged while the
-tests run still do. The Cilium bug report is in [BUGS.md](BUGS.md), and
+Run `cilium connectivity test` by hand with `--log-check-only-test-time`,
+so this start-up error does not fail the suite; agent errors logged while
+the tests run still do. The Cilium bug report is in [BUGS.md](BUGS.md), and
 the OrbStack kernel request is in
 [vm-orb/BUGS.md](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy).
 
@@ -104,7 +104,6 @@ Run from the repo root:
 | --- | --- |
 | `mise run cilium:test` | Run `tests/values.bats`: renders `values.yaml` with `flux envsubst --strict` and checks the release, source and values, no cluster |
 | `mise run cilium:verify` | Wait for the Cilium agent, operator, Hubble Relay and Hubble UI |
-| `mise run cilium:conformance` | Run Cilium's connectivity test suite against the live cluster, checking only logs written during the tests, with Hubble flow logs for failed actions through a Relay port-forward (`--hubble-port`, default 4245; fails if that port is taken or Relay is unreachable; flow validation is disabled until cilium-cli can match these flows, see [BUGS.md](BUGS.md#flow-validation-never-matches-reverse-nated-service-replies)), then remove its test workloads; a failed run keeps them for debugging (slow, manual only) |
 | `mise run cilium:traffic-start` | Start traffic for `cilium:traffic-check`: cilium-cli conn-disrupt connections held open, and fortio opening 100 new connections a second through a ClusterIP Service (deploys test workloads) |
 | `mise run cilium:traffic-check` | Measure that traffic: fails on a broken connection, a failed request or a rate under 90% of the one requested, and ends with whether the traffic crossed a Cilium agent restart; removes the test workloads when it passes |
 

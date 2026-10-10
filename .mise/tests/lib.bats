@@ -334,12 +334,13 @@ setup() {
 @test "lists the cluster's own suite, then each deployed package's suite" {
   run cluster_suites
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 5 ]
+  [ "${#lines[@]}" -eq 6 ]
   [ "${lines[0]}" = "$root_directory/clusters/singularity/tests/cluster" ]
   [ "${lines[1]}" = "$root_directory/packages/cilium/tests/cluster" ]
   [ "${lines[2]}" = "$root_directory/packages/flux/tests/cluster" ]
   [ "${lines[3]}" = "$root_directory/packages/cert-manager/tests/cluster" ]
   [ "${lines[4]}" = "$root_directory/packages/openbao/tests/cluster" ]
+  [ "${lines[5]}" = "$root_directory/packages/cv/tests/cluster" ]
 }
 
 @test "lists only the cluster's own suite when it has no Flux build" {
@@ -375,33 +376,6 @@ setup() {
   [[ "$output" == *"unknown package 'kyverno' for environment 'local'; choose from: cilium flux cert-manager openbao"* ]]
 }
 
-@test "lists the conformance tests the chosen packages need" {
-  run conformance_patterns cilium
-  [ "$status" -eq 0 ]
-  [ "$output" = ".*" ]
-  run conformance_patterns flux
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
-
-@test "reads conformance tests without comments or blank lines, from every package when none is chosen" {
-  MISE_PROJECT_ROOT=$(make_repository environments/x/environment.yaml clusters/singularity/payload/kustomization.yaml \
-    packages/net-a/tests/conformance packages/net-b/tests/conformance)
-  printf 'resources:\n  - ../../../packages/net-a\n  - ../../../packages/net-b\n' \
-    >"$MISE_PROJECT_ROOT/clusters/singularity/payload/kustomization.yaml"
-  printf '# policy tests\n\nclient-egress\n  # indented comment\n' >"$MISE_PROJECT_ROOT/packages/net-a/tests/conformance"
-  printf 'to-fqdns\n' >"$MISE_PROJECT_ROOT/packages/net-b/tests/conformance"
-  MISE_ENV=x run conformance_patterns
-  [ "$status" -eq 0 ]
-  [ "$output" = $'client-egress\nto-fqdns' ]
-}
-
-@test "refuses conformance tests for a package the environment does not deploy" {
-  run conformance_patterns nope
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown package 'nope'"* ]]
-}
-
 @test "names an env:e2e step after the task it runs, or its first word" {
   [ "$(step_label mise run --yes env:destroy local)" = env:destroy ]
   [ "$(step_label env -u MISE_PROJECT_ROOT FIRMAMENT_GIT_BRANCH=main mise --cd /w run env:apply local)" = env:apply ]
@@ -410,12 +384,12 @@ setup() {
 
 @test "reports each step's time and its change since the earlier run" {
   printf 'env:destroy\t30\nenv:apply\t379\n' >"$BATS_TEST_TMPDIR/before"
-  printf 'env:destroy\t28\nenv:apply\t420\nconformance\t416\n' >"$BATS_TEST_TMPDIR/now"
+  printf 'env:destroy\t28\nenv:apply\t420\nverify\t416\n' >"$BATS_TEST_TMPDIR/now"
   run step_time_report "$BATS_TEST_TMPDIR/before" "$BATS_TEST_TMPDIR/now"
   [ "$status" -eq 0 ]
   [[ "${lines[0]}" =~ ^\ +env:destroy\ +28\ s\ +\(-2\ s\)$ ]]
   [[ "${lines[1]}" =~ ^\ +env:apply\ +420\ s\ +\(\+41\ s\)$ ]]
-  [[ "${lines[2]}" =~ ^\ +conformance\ +416\ s\ +\(new\)$ ]]
+  [[ "${lines[2]}" =~ ^\ +verify\ +416\ s\ +\(new\)$ ]]
   [[ "${lines[3]}" =~ ^\ +total\ +864\ s$ ]]
 }
 
@@ -450,7 +424,7 @@ branch_repository() {
   printf 'x\n' >>"$MISE_PROJECT_ROOT/packages/flux/fluxinstance.yaml"
   git -C "$MISE_PROJECT_ROOT" -c user.name=t -c user.email=t@example.test commit -qam flux
   mkdir -p "$MISE_PROJECT_ROOT/packages/cilium/tests"
-  : >"$MISE_PROJECT_ROOT/packages/cilium/tests/conformance"
+  : >"$MISE_PROJECT_ROOT/packages/cilium/tests/cluster"
   printf 'y\n' >>"$MISE_PROJECT_ROOT/packages/flux/fluxinstance.yaml"
   MISE_ENV=x run changed_packages
   [ "$status" -eq 0 ]

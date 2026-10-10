@@ -20,8 +20,14 @@
 # apply` fails with $K0SCTL_APPLY_ERROR or sleeps $K0SCTL_APPLY_SLEEP seconds
 # when set, and `k0sctl kubeconfig` prints a kubeconfig, or half of one and
 # fails with $K0SCTL_KUBECONFIG_ERROR when set.
+# `kubectl run ... nc -z` in a consumer namespace prints
+# $NP_ALLOWED (default exit=0), and in default $NP_PROVIDER_DENIED (default
+# exit=1); the openbao namespace has one pod-network pod, 10.0.0.5.
 # `kubectl run ... nslookup` prints $NP_RESOLVED (default exit=0); a pod-network
-# hubble-relay pod has IP 10.0.0.7.
+# hubble-relay pod has IP 10.0.0.7. A pod in the tenant namespace cv has IP
+# 10.0.0.9, and `kubectl run` there prints $NP_TENANT_API (default: timed out).
+# `kubectl exec ... hubble observe` prints one flow, or nothing for the verdict
+# named in $NP_NO_FLOW (DROPPED or FORWARDED).
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -119,7 +125,12 @@ stub() {
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
   *" state list"*) printf '%s' "\${TOFU_STATE_LIST:-}" ;;
+  *" exec "*"hubble observe"*)
+    if [[ "\$*" == *"--verdict \${NP_NO_FLOW:-none} "* ]]; then exit 0; fi
+    printf '%s\\n' 'Oct 10 10:53:20.425: probe -> target FLOW' ;;
   *"get pods -l k8s-app=hubble-relay"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.7","hostIP":"192.168.0.2"}}]}' ;;
+  *"-n openbao get pods"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.5","hostIP":"192.168.0.2"}}]}' ;;
+  *"-n cv get pods"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.9","hostIP":"192.168.0.2"}}]}' ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;
   *"get charts.helm.k0sproject.io"*)
     if [[ -n "\${K0S_CHARTS_ERROR:-}" ]]; then printf '%s\\n' "\$K0S_CHARTS_ERROR" >&2; exit 1; fi
@@ -128,8 +139,10 @@ case "\$*" in
   *" port-forward "*) local_port="\${*: -1}"; exec nc -l 127.0.0.1 "\${local_port%%:*}" >/dev/null ;;
   *"get nodes -o name"*) printf '%s' "\${NODES:-}" ;;
   *" -n default run "*"nslookup"*) printf '%s\\n' "\${NP_RESOLVED:-exit=0}" ;;
-  *" -n cert-manager run "*)
-    printf '%s\\n' "\${NP_ALLOWED:-{\"initialized\":true,\"sealed\":false\}exit=0}" ;;
+  *" -n cv run "*)
+    printf '%s\\n' "\${NP_TENANT_API:-wget: download timed out exit=1}" ;;
+  *" -n default run "*"nc -z"*) printf '%s\\n' "\${NP_PROVIDER_DENIED:-exit=1}" ;;
+  *" run "*"nc -z"*) printf '%s\\n' "\${NP_ALLOWED:-exit=0}" ;;
   *" -n default run "*)
     printf '%s\\n' "\${NP_DENIED:-wget: can\'t connect to remote host: Operation timed out exit=1}" ;;
   *"get configmap cilium-values-policy "*) printf '%s' "\${CILIUM_VALUES_POLICY:-}" ;;
@@ -158,6 +171,13 @@ esac
 exit 0
 STUB
   chmod +x "$stubs/$1"
+}
+
+# Makes sleep return at once, for a test that waits for something a stand-in
+# never provides.
+stub_sleep() {
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$stubs/sleep"
+  chmod +x "$stubs/sleep"
 }
 
 # Builds a stand-in repository holding the real .mise directory and an empty

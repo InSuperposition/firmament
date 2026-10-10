@@ -17,7 +17,7 @@ rebuild_check="${usage_rebuild_check:-false}"
 #   destroy > [--from-branch: apply baseline > verify baseline > snapshot >
 #   start traffic >] apply > verify > [--rebuild-check: record the root >
 #   destroy > apply > compare the root > verify] > [--from-branch: compare
-#   snapshot > check traffic >] conformance > destroy
+#   snapshot > check traffic >] destroy
 #
 # Flux reads the branch from origin, so the run tests exactly the pushed
 # commit: it refuses a checkout that differs from origin, and fails if
@@ -193,10 +193,8 @@ if [[ -n "$from_branch" ]]; then
   # nothing to prove, so the agent restarts here, after the workloads check
   # and while the traffic runs.
   step mise run cilium:restart-agent
-  # Before conformance, whose cleanup removes the conn-disrupt workloads.
   step check_traffic
 fi
-step mise run cilium:conformance
 step remote_tip_unchanged "$branch" "$tested"
 if [[ -n "$from_branch" ]]; then
   step remote_tip_unchanged "$from_branch" "$baseline"

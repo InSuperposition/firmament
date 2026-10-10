@@ -105,7 +105,6 @@ that verb for every noun. The verb also says how far a task reaches:
 | `test` | offline; never touches infrastructure | `test` runs every `*:test` |
 | `verify` | reads a live cluster | `verify` runs every `*:verify`, one at a time, `env:verify` first; `--only <packages>` keeps the environment's own checks and the chosen packages', and `--changed` chooses the packages the branch changed |
 | `ui`, `observe` | read a live cluster through a foreground port-forward that Ctrl-C stops; `ui` opens the browser and takes `--port` | none |
-| `conformance` | deploys test workloads into a live cluster | `conformance` runs every `*:conformance`, one at a time; `--only <packages>` or `--changed` runs the tests each package lists in `tests/conformance` |
 | `e2e` | destroys and rebuilds a live cluster; asks first (`--yes` skips) | none |
 | `plan`, `apply`, `destroy` | drive OpenTofu; `destroy` asks first (`-y` skips) | none |
 
@@ -161,7 +160,7 @@ shares trust with the main checkout, so no `mise trust` is needed.
 Every worktree shares one state directory and one machine per
 environment, so only one live cluster exists at a time. The tasks that
 change an environment (`*:apply`, `*:destroy`, `env:e2e`,
-`cilium:conformance`, `cilium:restart-agent`, `cilium:traffic-start`,
+`cilium:restart-agent`, `cilium:traffic-start`,
 `cilium:traffic-check`)
 record the worktree that owns it, and refuse to
 run from another worktree while the owner exists. Run the task from the

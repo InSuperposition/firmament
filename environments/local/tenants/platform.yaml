@@ -1,5 +1,5 @@
 kind: platform
-quota:
+namespace_quota:
   cpu: "16"
   memory: 32Gi
 administrators:

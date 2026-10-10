@@ -1,0 +1,20 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+  name: platform
+  namespace: flux-system
+spec:
+  endpointSelector: {}
+  ingress:
+  - fromEntities:
+    - host
+    toPorts:
+    - ports:
+      - port: "8081"
+        protocol: TCP
+      - port: "9090"
+        protocol: TCP
+      - port: "9440"
+        protocol: TCP

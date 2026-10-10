@@ -16,6 +16,28 @@ render() {
   ENVIRONMENT="${1:-local}" timoni bundle build -f bundle.cue --runtime-from-env --output-dir "$2"
 }
 
+# Binds a tenant package `site` to the namespace shop: it lists host port 44100
+# and requires secrets.
+bind_site() {
+  mkdir -p packages/site
+  cat >packages/site/package.yaml <<'YAML'
+name: site
+layer: app
+pin:
+  source: oci://ghcr.io/example/charts/site
+  version: 1.0.0
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+requires:
+  - capability: secrets
+    scope: cluster
+host_ports:
+  - port: 44100
+    protocol: TCP
+YAML
+  printf '{}\n' >clusters/singularity/values/site.yaml
+  printf -- '- package: site\n  namespace: shop\n  tenant: apps\n' >>clusters/singularity/packages.yaml
+}
+
 @test "the data files pass cue vet -c" {
   run cue vet -c .:inputs
   [ "$status" -eq 0 ]
@@ -206,6 +228,61 @@ render() {
   [ "$(yq -r '[.spec.ingress[] | select(.fromEntities and .fromEndpoints)] | length' "$policy")" -eq 0 ]
 }
 
+@test "the policies of the platform namespaces stay byte-identical to the recorded render" {
+  render local "$BATS_TEST_TMPDIR/out"
+  for golden in "$root_directory"/tests/render/golden/platform-policy/*; do
+    diff "$golden" "$BATS_TEST_TMPDIR/out/cilium-policy/$(basename "$golden")"
+  done
+}
+
+@test "binding a tenant namespace that requires nothing leaves the policies of the platform namespaces byte-identical" {
+  bind_site
+  yq -i 'del(.requires)' packages/site/package.yaml
+  render local "$BATS_TEST_TMPDIR/out"
+  for golden in "$root_directory"/tests/render/golden/platform-policy/*; do
+    diff "$golden" "$BATS_TEST_TMPDIR/out/cilium-policy/$(basename "$golden")"
+  done
+}
+
+@test "one clusterwide policy denies both directions everywhere but the platform and system namespaces" {
+  render local "$BATS_TEST_TMPDIR/out"
+  policy="$BATS_TEST_TMPDIR/out/cilium-policy/cilium.io_v2_ciliumclusterwidenetworkpolicy_tenant-default-deny.yaml"
+  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0] | [.key, .operator] | join(" ")' "$policy")" = "io.kubernetes.pod.namespace NotIn" ]
+  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | join(",")' "$policy")" = cert-manager,default,flux-system,kube-node-lease,kube-public,kube-system,openbao ]
+  [ "$(yq -r '.spec.enableDefaultDeny | [.ingress, .egress] | join(",")' "$policy")" = true,true ]
+  [ "$(yq -r '.spec.ingress | length' "$policy")" -eq 1 ]
+  [ "$(yq -r '.spec.ingress[0] | length' "$policy")" -eq 0 ]
+  [ "$(yq -r '.spec.egress | length' "$policy")" -eq 1 ]
+  [ "$(yq -r '.spec.egress[0].toEndpoints[0].matchLabels["k8s:k8s-app"]' "$policy")" = kube-dns ]
+}
+
+@test "a tenant namespace is not excluded from the clusterwide policy" {
+  bind_site
+  render local "$BATS_TEST_TMPDIR/out"
+  policy="$BATS_TEST_TMPDIR/out/cilium-policy/cilium.io_v2_ciliumclusterwidenetworkpolicy_tenant-default-deny.yaml"
+  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | contains(["shop"])' "$policy")" = false ]
+}
+
+@test "a tenant namespace gets only its allows: the node on its host port, its provider on the pod port, no API server" {
+  bind_site
+  render local "$BATS_TEST_TMPDIR/out"
+  policy="$BATS_TEST_TMPDIR/out/cilium-policy/shop_cilium.io_v2_ciliumnetworkpolicy_platform.yaml"
+  [ "$(yq -r '.spec.ingress | length' "$policy")" -eq 2 ]
+  [ "$(yq -r '.spec.ingress[] | select(.fromEntities[0] == "host") | .toPorts[0].ports[0].port' "$policy")" = 44100 ]
+  [ "$(yq -r '.spec.ingress[] | select(.fromEndpoints[0].matchLabels["k8s:k8s-app"] == "konnectivity-agent") | .toPorts[0].ports[0].port' "$policy")" = 44100 ]
+  [ "$(yq -r '.spec.egress | length' "$policy")" -eq 1 ]
+  [ "$(yq -r '.spec.egress[0].toEndpoints[0].matchLabels["k8s:io.kubernetes.pod.namespace"]' "$policy")" = openbao ]
+  [ "$(yq -r '[.spec.egress[] | select(.toEntities)] | length' "$policy")" -eq 0 ]
+}
+
+@test "a tenant namespace whose packages allow nothing gets no policy of its own" {
+  bind_site
+  yq -i 'del(.requires) | del(.host_ports)' packages/site/package.yaml
+  render local "$BATS_TEST_TMPDIR/out"
+  [ ! -e "$BATS_TEST_TMPDIR/out/cilium-policy/shop_cilium.io_v2_ciliumnetworkpolicy_platform.yaml" ]
+  grep -q 'tenant-default-deny' "$BATS_TEST_TMPDIR/out/cilium-policy/cilium.io_v2_ciliumclusterwidenetworkpolicy_tenant-default-deny.yaml"
+}
+
 @test "the release of Cilium reads the network policy's values as an optional second source" {
   render local "$BATS_TEST_TMPDIR/out"
   config="$BATS_TEST_TMPDIR/out/cilium-policy/flux-system_v1_configmap_cilium-values-policy.yaml"
@@ -226,6 +303,13 @@ render() {
   run cue vet -c .:inputs
   [ "$status" -ne 0 ]
   [[ "$output" == *cpu* ]]
+}
+
+@test "a tenant still using the old quota field is refused, naming it" {
+  sed -i.bak 's/^namespace_quota:/quota:/' environments/local/tenants/apps.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *quota* ]]
 }
 
 @test "an environment the data does not define fails the render, naming it" {
@@ -252,6 +336,16 @@ render() {
   grep -q 'defaultRequest:' "$BATS_TEST_TMPDIR/out/namespace/flux-system_v1_limitrange_tenant-defaults.yaml"
 }
 
+@test "the cv site installs into its own namespace of the apps tenant, from a chart whose signer Flux checks" {
+  render local "$BATS_TEST_TMPDIR/out"
+  chart="$BATS_TEST_TMPDIR/out/cv"
+  [ "$(yq -r '.spec.ref.digest' "$chart/source.toolkit.fluxcd.io_v1_ocirepository_cv.yaml")" = "$(yq -r '.pin.digest' packages/cv/package.yaml)" ]
+  [ "$(yq -r '.spec.verify.provider' "$chart/source.toolkit.fluxcd.io_v1_ocirepository_cv.yaml")" = cosign ]
+  [ "$(yq -r '.spec.targetNamespace' "$chart/helm.toolkit.fluxcd.io_v2_helmrelease_cv.yaml")" = cv ]
+  [ "$(yq -r '.data["values.yaml"] | from_yaml | .image.digest' "$chart/v1_configmap_cv-values.yaml")" = "$(yq -r '.image.digest' clusters/singularity/values/cv.yaml)" ]
+  grep -q 'firmament.dev/tenant: apps' "$BATS_TEST_TMPDIR/out/namespace/v1_namespace_cv.yaml"
+}
+
 @test "each chart package renders its source pinned by digest, its values and its release" {
   render local "$BATS_TEST_TMPDIR/out"
   chart="$BATS_TEST_TMPDIR/out/cert-manager"
@@ -262,6 +356,42 @@ render() {
   [ "$(yq -r '.spec.targetNamespace' "$release")" = cert-manager ]
   [ "$(yq -r '.spec.valuesFrom[0].name' "$release")" = cert-manager-values ]
   [ "$(yq -r '.metadata.annotations["kustomize.toolkit.fluxcd.io/prune"]' "$release")" = disabled ]
+}
+
+@test "a chart package with a verify block renders the source with keyless cosign verification" {
+  yq -i '.verify.issuer = "^https://issuer\\.example$" | .verify.identity = "^https://example/signer$"' packages/cert-manager/package.yaml
+  render local "$BATS_TEST_TMPDIR/out"
+  source="$BATS_TEST_TMPDIR/out/cert-manager/source.toolkit.fluxcd.io_v1_ocirepository_cert-manager.yaml"
+  [ "$(yq -r '.spec.verify.provider' "$source")" = cosign ]
+  [ "$(yq -r '.spec.verify.matchOIDCIdentity | length' "$source")" -eq 1 ]
+  [ "$(yq -r '.spec.verify.matchOIDCIdentity[0].issuer' "$source")" = '^https://issuer\.example$' ]
+  [ "$(yq -r '.spec.verify.matchOIDCIdentity[0].subject' "$source")" = '^https://example/signer$' ]
+}
+
+@test "a chart package without a verify block renders no verification" {
+  render local "$BATS_TEST_TMPDIR/out"
+  [ "$(yq -r '.spec | has("verify")' "$BATS_TEST_TMPDIR/out/cert-manager/source.toolkit.fluxcd.io_v1_ocirepository_cert-manager.yaml")" = false ]
+}
+
+@test "an empty verify block is refused, naming the missing field" {
+  yq -i '.verify = {}' packages/cert-manager/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *issuer* ]]
+}
+
+@test "a verify block with an unknown key is refused, naming it" {
+  yq -i '.verify.issuer = "^a$" | .verify.identity = "^b$" | .verify.keyless = true' packages/cert-manager/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *keyless* ]]
+}
+
+@test "a verify identity that is not anchored is refused, naming the field" {
+  yq -i '.verify.issuer = "^a$" | .verify.identity = "signer"' packages/cert-manager/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *identity* ]]
 }
 
 @test "the bootstrap packages stay plain: the render holds no instance for them" {
