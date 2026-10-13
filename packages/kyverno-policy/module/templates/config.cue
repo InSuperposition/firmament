@@ -33,5 +33,6 @@ package templates
 			platformTenants: config.platformTenants
 			signer:          config.signer
 		}}
+		"deny-ephemeral-containers": #DenyEphemeralContainers & {_config: platformTenants: config.platformTenants}
 	}
 }

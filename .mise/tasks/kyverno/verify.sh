@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Check admission in the cluster with server-side dry-run pods, which create nothing: the signed cv image is admitted in cv, an unsigned image and a privileged pod are refused there, and an unsigned image is admitted in default"
+#MISE description="Check admission in the cluster with server-side dry-run pods, which create nothing: the signed cv image is admitted in cv, an unsigned image and a privileged pod and an ephemeral container are refused there, and an unsigned image is admitted in default"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
@@ -29,6 +29,16 @@ output=$(dry_run_pod "$tenant_namespace" "$signed_image" "$overrides") &&
   { fail "a privileged pod was admitted in $tenant_namespace: $output" || exit; }
 [[ "$output" == *PodSecurity* ]] ||
   fail "the privileged pod was refused for another reason: $output" || exit
+# An ephemeral container is added through the pod's own subresource; the dry
+# run attaches nothing, and an ephemeral container cannot be removed once added.
+pod_json=$(kubectl --kubeconfig "$kubeconfig" -n "$tenant_namespace" get pods -o json | jq '.items[0]') || exit
+pod_name=$(jq -r '.metadata.name // empty' <<<"$pod_json")
+[[ -n "$pod_name" ]] || fail "no pod in $tenant_namespace to attach an ephemeral container to" || exit
+output=$(jq --arg image "$unsigned_image" '.spec.ephemeralContainers = [{name: "admission-probe", image: $image}]' <<<"$pod_json" |
+  kubectl --kubeconfig "$kubeconfig" replace --raw "/api/v1/namespaces/$tenant_namespace/pods/$pod_name/ephemeralcontainers?dryRun=All" -f - 2>&1) &&
+  { fail "an ephemeral container was admitted in $tenant_namespace: $output" || exit; }
+[[ "$output" == *"ephemeral containers are not allowed"* ]] ||
+  fail "the ephemeral container was refused for another reason: $output" || exit
 output=$(dry_run_pod "$untouched_namespace" "$unsigned_image") ||
   fail "an unsigned image was refused in $untouched_namespace, which the policy must leave alone: $output" || exit
-printf 'ok: the signed cv image is admitted, an unsigned image and a privileged pod are refused in %s, and %s is untouched\n' "$tenant_namespace" "$untouched_namespace"
+printf 'ok: the signed cv image is admitted, an unsigned image and a privileged pod and an ephemeral container are refused in %s, and %s is untouched\n' "$tenant_namespace" "$untouched_namespace"

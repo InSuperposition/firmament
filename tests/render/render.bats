@@ -384,6 +384,14 @@ admission_render() {
   [ "$(yq -r '.spec.attestors[0].cosign.keyless.identities[0].subjectRegExp' "$policy")" = "$(yq -r '.verify.identity' packages/cv/package.yaml)" ]
 }
 
+@test "ephemeral containers are denied in the tenant namespaces the image policy covers, and the subresource is named" {
+  admission_render
+  ephemeral="$BATS_TEST_TMPDIR/admission/kyverno-policy/policies.kyverno.io_v1_validatingpolicy_deny-ephemeral-containers.yaml"
+  [ "$(yq -r '.spec.validationActions | join(",")' "$ephemeral")" = Deny ]
+  [ "$(yq -r '.spec.matchConstraints.resourceRules[0].resources | join(",")' "$ephemeral")" = pods,pods/ephemeralcontainers ]
+  [ "$(yq -o json -I=0 '.spec.matchConstraints.namespaceSelector' "$ephemeral")" = "$(yq -o json -I=0 '.spec.matchConstraints.namespaceSelector' "$policy")" ]
+}
+
 @test "the signed-image policy leaves exactly the tenants of kind platform alone, as the tenant files name them" {
   declare_stage_environment
   yq -i '.kind = "platform"' environments/local/tenants/apps.yaml
