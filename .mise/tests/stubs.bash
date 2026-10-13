@@ -59,6 +59,9 @@
 # $REFUSE_UNTOUCHED turn those behaviours around.
 # `kubectl replace --raw` of a pod's ephemeralcontainers is refused by the
 # policy, or admitted when $ADMIT_EPHEMERAL is set.
+# `kubectl auth can-i create deployments -n cv` answers yes and every other
+# can-i answers no, except the questions named in $CAN_I_YES (a pattern); $CAN_I_OWN_NO makes the
+# installer's own namespace answer no too.
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -204,6 +207,8 @@ case "\$*" in
     if [[ -n "\${ADMIT_EPHEMERAL:-}" ]]; then printf '%s\\n' '{"kind":"Pod"}'; else
       printf '%s\\n' 'Error from server: admission webhook "vpol.validate.kyverno.svc-fail" denied the request: Policy deny-ephemeral-containers failed: ephemeral containers are not allowed in tenant namespaces'; exit 1
     fi ;;
+  *" auth can-i "*)
+    if [[ -z "\${CAN_I_OWN_NO:-}" && "\$*" == *"create deployments -n cv "* || ( -n "\${CAN_I_YES:-}" && "\$*" == *"\$CAN_I_YES"* ) ]]; then printf '%s\\n' yes; else printf '%s\\n' no; exit 1; fi ;;
   *" run admission-probe "*)
     if [[ "\$*" == *"-n cv "* && "\$*" == *'"privileged":true'* && -z "\${ADMIT_PRIVILEGED:-}" ]]; then
       printf '%s\\n' 'Error from server (Forbidden): pods "admission-probe" is forbidden: violates PodSecurity "baseline:latest": privileged'; exit 1

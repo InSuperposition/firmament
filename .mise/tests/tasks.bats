@@ -2713,6 +2713,31 @@ retire_cv() {
   [[ "$output" == *"ok: every retired binding of local is torn down"* ]]
 }
 
+@test "installer:verify passes when the installer acts in its namespace and nowhere else" {
+  run_task "$root_directory/.mise/tasks/installer/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok: the installer installer-cv acts in cv and nowhere else"* ]]
+  grep -q -- '--as=system:serviceaccount:flux-system:installer-cv' "$CALLS"
+}
+
+@test "installer:verify fails when the installer can create cluster roles" {
+  CAN_I_YES='create clusterroles' run_task "$root_directory/.mise/tasks/installer/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"can create clusterroles, which is outside cv"* ]]
+}
+
+@test "installer:verify fails when the installer can create deployments in kube-system" {
+  CAN_I_YES='create deployments -n kube-system' run_task "$root_directory/.mise/tasks/installer/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"can create deployments -n kube-system, which is outside cv"* ]]
+}
+
+@test "installer:verify fails when the installer cannot act in its own namespace" {
+  CAN_I_OWN_NO=1 run_task "$root_directory/.mise/tasks/installer/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot create deployments in cv, its own namespace"* ]]
+}
+
 @test "kyverno:verify passes when cv admits its signed image and refuses an unsigned image and a privileged pod" {
   run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
   [ "$status" -eq 0 ] || fail "$output"
