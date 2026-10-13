@@ -139,14 +139,41 @@ _bootstrapPackages: {
 	}
 }
 
+// A retired binding keeps its namespace, quota and network policy but installs
+// no chart. A field that is optional in a binding cannot be referenced, so
+// the retired bindings are collected by iterating the fields.
+_isRetired: {[string]: {[string]: {[string]: true}}}
+_isRetired: {
+	for envName, env in environments for binding in bindings[env.cluster] for key, value in binding if key == "retired" && value == true {
+		(envName): (binding.namespace): (binding.package): true
+	}
+}
+
+// The bootstrap installs a bootstrap package once and Flux adopts it, so no
+// binding can retire one. The refusal names the package.
+bootstrapPackageRetired: {
+	for envName, env in environments for binding in bindings[env.cluster] if _bootstrapPackages[binding.package] != _|_ && _isRetired[envName][binding.namespace][binding.package] != _|_ {
+		(envName): (binding.package): "bootstrap packages cannot be retired" & "retired"
+	}
+}
+
+// The retired bindings of each environment, for the check that exposes the
+// chart objects a retirement leaves behind.
+retired: {[string]: [...{package: string, namespace: string}]}
+retired: {
+	for envName, env in environments {
+		(envName): [for binding in bindings[env.cluster] if _isRetired[envName][binding.namespace][binding.package] != _|_ {package: binding.package, namespace: binding.namespace}]
+	}
+}
+
 // The chart packages each environment installs: every bound package the
-// bootstrap does not install. A chart package needs a values file, even an
+// bootstrap does not install, unless its binding is retired. A chart package needs a values file, even an
 // empty one, so a missing file is an error that names the package.
 charts: {[string]: {[string]: {package: packagespec.#Package, targetNamespace: string, values: {...}, serviceAccountName?: string}}}
 charts: {
 	for envName, env in environments {
 		(envName): {
-			for binding in bindings[env.cluster] if _bootstrapPackages[binding.package] == _|_ {
+			for binding in bindings[env.cluster] if _bootstrapPackages[binding.package] == _|_ && _isRetired[envName][binding.namespace][binding.package] == _|_ {
 				(binding.package): {
 					package:         packages[binding.package]
 					targetNamespace: binding.namespace

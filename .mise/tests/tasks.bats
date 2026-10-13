@@ -2657,6 +2657,42 @@ mode_of() {
   ! grep -q -- ' run ' "$CALLS"
 }
 
+# bindings:verify reads the retired bindings from the repository data, so the
+# tests run it on a copy whose cv binding is retired.
+retire_cv() {
+  repository="$BATS_TEST_TMPDIR/bindings-repository"
+  mkdir -p "$repository"
+  cp -R "$root_directory"/{.mise,cue.mod,inputs.cue,contracts,packages,clusters,environments} "$repository"
+  yq -i '(.[] | select(.package == "cv")).retired = true' "$repository/clusters/singularity/packages.yaml"
+  export MISE_PROJECT_ROOT="$repository"
+}
+
+@test "bindings:verify passes when the environment retires no binding" {
+  run_task "$root_directory/.mise/tasks/bindings/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok: environment local retires no binding"* ]]
+  ! grep -q '^kubectl ' "$CALLS" 2>/dev/null
+}
+
+@test "bindings:verify names the chart objects and workloads a retired binding leaves behind" {
+  retire_cv
+  CHART_OBJECTS=$'helmrelease.helm.toolkit.fluxcd.io/cv\nconfigmap/cv-values\nconfigmap/other' \
+    RETIRED_WORKLOADS=$'deployment.apps/cv' \
+    run_task "$repository/.mise/tasks/bindings/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"helmrelease.helm.toolkit.fluxcd.io/cv (flux-system) of retired cv"* ]]
+  [[ "$output" == *"configmap/cv-values (flux-system) of retired cv"* ]]
+  [[ "$output" == *"deployment.apps/cv (cv) of retired cv"* ]]
+  [[ "$output" != *"configmap/other"* ]]
+}
+
+@test "bindings:verify passes once the retired binding's objects and workloads are gone" {
+  retire_cv
+  CHART_OBJECTS='configmap/other' run_task "$repository/.mise/tasks/bindings/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok: every retired binding of local is torn down"* ]]
+}
+
 # gateway:check-crds works on a copy of the repository whose crds.yaml and
 # README the test controls; the curl stand-in answers with $UPSTREAM_CRDS.
 setup_gateway_crds_repository() {

@@ -346,6 +346,30 @@ YAML
   done
 }
 
+@test "a retired binding installs no chart and keeps its namespace, quota, installer and policy" {
+  render local "$BATS_TEST_TMPDIR/before"
+  yq -i '(.[] | select(.package == "cv")).retired = true' clusters/singularity/packages.yaml
+  render local "$BATS_TEST_TMPDIR/after"
+  [ ! -e "$BATS_TEST_TMPDIR/after/cv" ]
+  diff -r "$BATS_TEST_TMPDIR/before/namespace" "$BATS_TEST_TMPDIR/after/namespace"
+  diff -r "$BATS_TEST_TMPDIR/before/cilium-policy" "$BATS_TEST_TMPDIR/after/cilium-policy"
+  [ "$(cue export .:inputs -e 'retired.local' --out json | jq -c .)" = '[{"package":"cv","namespace":"cv"}]' ]
+}
+
+@test "a bootstrap package marked retired is refused, naming it" {
+  yq -i '(.[] | select(.package == "cilium")).retired = true' clusters/singularity/packages.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *cilium* ]]
+}
+
+@test "a binding that sets retired to false is refused, naming the field" {
+  yq -i '(.[] | select(.package == "cv")).retired = false' clusters/singularity/packages.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *retired* ]]
+}
+
 @test "a tenant without a kind is refused, naming the field" {
   sed -i.bak '/^kind:/d' environments/local/tenants/platform.yaml
   run cue vet -c .:inputs
