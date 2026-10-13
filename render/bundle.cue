@@ -23,6 +23,7 @@ bundle: {
 					package:         chart.package
 					targetNamespace: chart.targetNamespace
 					values:          chart.values
+					for key, value in chart if key == "serviceAccountName" {serviceAccountName: value}
 				}
 			}
 		}
@@ -44,6 +45,7 @@ bundle: {
 				environment: _environment
 				tenants:     inputs.tenants[_environment]
 				namespaces:  inputs.namespaces[_environment]
+				installers:  inputs.installers[_environment]
 			}
 		}
 	}

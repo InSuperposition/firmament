@@ -10,7 +10,7 @@ setup() {
   cp -R "$root_directory"/{cue.mod,inputs.cue,render,contracts,packages,clusters,environments} "$work"
   mkdir -p "$work/.mise/tasks"
   cp "$root_directory/.mise/tasks/render.sh" "$work/.mise/tasks"
-  rm -rf "$work/clusters/singularity/rendered"
+  rm -rf "$work/clusters/singularity/rendered" "$work/clusters/singularity/admission"
   cd "$work"
 }
 
@@ -260,7 +260,7 @@ YAML
   render local "$BATS_TEST_TMPDIR/out"
   policy="$BATS_TEST_TMPDIR/out/cilium-policy/cilium.io_v2_ciliumclusterwidenetworkpolicy_tenant-default-deny.yaml"
   [ "$(yq -r '.spec.endpointSelector.matchExpressions[0] | [.key, .operator] | join(" ")' "$policy")" = "io.kubernetes.pod.namespace NotIn" ]
-  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | join(",")' "$policy")" = cert-manager,default,flux-system,kube-node-lease,kube-public,kube-system,openbao ]
+  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | join(",")' "$policy")" = cert-manager,default,flux-system,kube-node-lease,kube-public,kube-system,kyverno,openbao ]
   [ "$(yq -r '.spec.endpointSelector.matchExpressions[1] | [.key, .operator] | join(" ")' "$policy")" = "io.kubernetes.pod.namespace Exists" ]
   [ "$(yq -r '.spec.enableDefaultDeny | [.ingress, .egress] | join(",")' "$policy")" = true,true ]
   [ "$(yq -r '.spec.ingress | length' "$policy")" -eq 1 ]
@@ -318,6 +318,97 @@ YAML
   [ "$(yq -r '.data["values.yaml"] | from_yaml | .extraConfig["allow-localhost"]' "$config")" = policy ]
   [ "$(yq -r '.metadata.labels["reconcile.fluxcd.io/watch"]' "$config")" = Enabled ]
   [ "$(yq -r '.spec.valuesFrom[1] | [.name, .optional] | join(",")' "$root_directory/packages/cilium/helmrelease.yaml")" = cilium-values-policy,true ]
+}
+
+@test "a tenant namespace gets an installer account in flux-system and the admin role in its own namespace only" {
+  render local "$BATS_TEST_TMPDIR/out"
+  account="$BATS_TEST_TMPDIR/out/namespace/flux-system_v1_serviceaccount_installer-cv.yaml"
+  binding="$BATS_TEST_TMPDIR/out/namespace/cv_rbac.authorization.k8s.io_v1_rolebinding_installer-cv.yaml"
+  [ "$(yq -r '.metadata.namespace' "$account")" = flux-system ]
+  [ "$(yq -r '[.roleRef.kind, .roleRef.name] | join(",")' "$binding")" = ClusterRole,admin ]
+  [ "$(yq -r '.subjects[0] | [.kind, .name, .namespace] | join(",")' "$binding")" = ServiceAccount,installer-cv,flux-system ]
+  [ "$(find "$BATS_TEST_TMPDIR/out/namespace" -name '*installer*' | wc -l | tr -d ' ')" -eq 2 ]
+}
+
+@test "a tenant chart installs as its installer account and a platform chart keeps the controller's authority" {
+  render local "$BATS_TEST_TMPDIR/out"
+  [ "$(yq -r '.spec.serviceAccountName' "$BATS_TEST_TMPDIR/out/cv/helm.toolkit.fluxcd.io_v2_helmrelease_cv.yaml")" = installer-cv ]
+  for package in cert-manager openbao; do
+    [ "$(yq -r '.spec | has("serviceAccountName")' "$BATS_TEST_TMPDIR/out/$package/helm.toolkit.fluxcd.io_v2_helmrelease_$package.yaml")" = false ]
+  done
+}
+
+@test "a tenant namespace enforces the baseline Pod Security Standard and a platform namespace carries no such label" {
+  render local "$BATS_TEST_TMPDIR/out"
+  [ "$(yq -r '.metadata.labels["pod-security.kubernetes.io/enforce"]' "$BATS_TEST_TMPDIR/out/namespace/v1_namespace_cv.yaml")" = baseline ]
+  for ns in cert-manager openbao flux-system kube-system; do
+    [ "$(yq -r '.metadata.labels | has("pod-security.kubernetes.io/enforce")' "$BATS_TEST_TMPDIR/out/namespace/v1_namespace_$ns.yaml")" = false ]
+  done
+}
+
+@test "a retired binding installs no chart and keeps its namespace, quota, installer and policy" {
+  render local "$BATS_TEST_TMPDIR/before"
+  yq -i '(.[] | select(.package == "cv")).retired = true' clusters/singularity/packages.yaml
+  render local "$BATS_TEST_TMPDIR/after"
+  [ ! -e "$BATS_TEST_TMPDIR/after/cv" ]
+  diff -r "$BATS_TEST_TMPDIR/before/namespace" "$BATS_TEST_TMPDIR/after/namespace"
+  diff -r "$BATS_TEST_TMPDIR/before/cilium-policy" "$BATS_TEST_TMPDIR/after/cilium-policy"
+  [ "$(cue export .:inputs -e 'retired.local' --out json | jq -c .)" = '[{"package":"cv","namespace":"cv"}]' ]
+}
+
+@test "a bootstrap package marked retired is refused, naming it" {
+  yq -i '(.[] | select(.package == "cilium")).retired = true' clusters/singularity/packages.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *cilium* ]]
+}
+
+@test "a binding that sets retired to false is refused, naming the field" {
+  yq -i '(.[] | select(.package == "cv")).retired = false' clusters/singularity/packages.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *retired* ]]
+}
+
+admission_render() {
+  ENVIRONMENT=local timoni bundle build -f render/admission-bundle.cue --runtime-from-env --output-dir "$BATS_TEST_TMPDIR/admission"
+  policy="$BATS_TEST_TMPDIR/admission/kyverno-policy/policies.kyverno.io_v1_imagevalidatingpolicy_require-signed-images.yaml"
+}
+
+@test "the signed-image policy covers tenant namespaces by label, names every image and denies" {
+  admission_render
+  [ "$(yq -r '.spec.matchConstraints.namespaceSelector.matchExpressions | map(.key + " " + .operator) | join(",")' "$policy")" = "firmament.dev/tenant Exists,firmament.dev/tenant NotIn" ]
+  [ "$(yq -r '.spec.matchImageReferences | map(.glob) | join(",")' "$policy")" = '*' ]
+  [ "$(yq -r '.spec.validationActions | join(",")' "$policy")" = Deny ]
+  [ "$(yq -r '.spec.webhookConfiguration.timeoutSeconds' "$policy")" = 30 ]
+  [ "$(yq -r '.spec.attestors[0].cosign.keyless.identities[0].subjectRegExp' "$policy")" = "$(yq -r '.verify.identity' packages/cv/package.yaml)" ]
+}
+
+@test "ephemeral containers are denied in the tenant namespaces the image policy covers, and the subresource is named" {
+  admission_render
+  ephemeral="$BATS_TEST_TMPDIR/admission/kyverno-policy/policies.kyverno.io_v1_validatingpolicy_deny-ephemeral-containers.yaml"
+  [ "$(yq -r '.spec.validationActions | join(",")' "$ephemeral")" = Deny ]
+  [ "$(yq -r '.spec.matchConstraints.resourceRules[0].resources | join(",")' "$ephemeral")" = pods,pods/ephemeralcontainers ]
+  [ "$(yq -o json -I=0 '.spec.matchConstraints.namespaceSelector' "$ephemeral")" = "$(yq -o json -I=0 '.spec.matchConstraints.namespaceSelector' "$policy")" ]
+}
+
+@test "the signed-image policy leaves exactly the tenants of kind platform alone, as the tenant files name them" {
+  declare_stage_environment
+  yq -i '.kind = "platform"' environments/local/tenants/apps.yaml
+  admission_render
+  [ "$(yq -r '.spec.matchConstraints.namespaceSelector.matchExpressions[1].values | join(",")' "$policy")" = apps,platform ]
+}
+
+@test "the admission policies render apart from the namespaces and the releases" {
+  render_all
+  [ -e clusters/singularity/admission/local/kyverno-policy/policies.kyverno.io_v1_imagevalidatingpolicy_require-signed-images.yaml ]
+  [ -z "$(find clusters/singularity/rendered -name '*imagevalidatingpolicy*')" ]
+}
+
+@test "the Kyverno namespace gets no network policy of its own and is excluded from the clusterwide deny" {
+  render local "$BATS_TEST_TMPDIR/out"
+  [ ! -e "$BATS_TEST_TMPDIR/out/cilium-policy/kyverno_cilium.io_v2_ciliumnetworkpolicy_platform.yaml" ]
+  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | contains(["kyverno"])' "$BATS_TEST_TMPDIR/out/cilium-policy/cilium.io_v2_ciliumclusterwidenetworkpolicy_tenant-default-deny.yaml")" = true ]
 }
 
 @test "a tenant without a kind is refused, naming the field" {

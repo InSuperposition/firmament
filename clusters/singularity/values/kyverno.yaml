@@ -1,0 +1,3 @@
+# The Kyverno chart's values on this cluster. The chart's defaults install its
+# CRDs and the admission, background, cleanup and reports controllers.
+{}

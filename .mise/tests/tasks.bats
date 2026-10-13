@@ -2122,7 +2122,7 @@ expect_planted_value_refused() {
 @test "the Flux root lists no package, and its source is verified against the publish workflow" {
   local flux="$root_directory/clusters/singularity/flux"
   run yq -r '.resources[]' "$flux/kustomization.yaml"
-  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml\nrendered.yaml\nissuers.yaml\ngateway-api-crds.yaml\ngateway.yaml')" ] || fail "$output"
+  [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml\nrendered.yaml\nkyverno-policy.yaml\nissuers.yaml\ngateway-api-crds.yaml\ngateway.yaml')" ] || fail "$output"
   [ "$(yq -r '.spec.verify.provider' "$flux/ocirepository.yaml")" = cosign ]
   [ "$(yq -r '.spec.ref.tag' "$flux/ocirepository.yaml")" = '${git_commit}' ]
   [ "$(yq -r '.spec.url' "$flux/ocirepository.yaml")" = 'oci://${artifact_source}' ]
@@ -2398,13 +2398,13 @@ mode_of() {
   [[ "$output" == *"nothing to check"* ]]
 }
 
-@test "network-policy:verify checks that the default namespace is blocked from a tenant pod and a tenant pod from the API server" {
+@test "network-policy:verify checks that the default namespace is blocked from a tenant pod and that the policies leave a tenant pod no egress to the API server" {
   record_contracts
   run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
   [ "$status" -eq 0 ] || fail "$output"
-  grep -q -- '-n cv run' "$CALLS"
+  ! grep -q -- '-n cv run' "$CALLS"
   [[ "$output" == *"default is blocked from the cv pod 10.0.0.9 on port 44100"* ]]
-  [[ "$output" == *"a pod in cv cannot reach the API server"* ]]
+  [[ "$output" == *"the policies leave a pod in cv no egress to the API server"* ]]
 }
 
 @test "network-policy:verify asks Hubble for the verdict of every probe" {
@@ -2415,7 +2415,7 @@ mode_of() {
   grep -q -- 'hubble observe --from-pod default/policy-probe-[0-9]* --verdict DROPPED --to-namespace openbao' "$CALLS"
   grep -q -- 'hubble observe --from-pod default/policy-probe-[0-9]* --verdict FORWARDED --to-port 53' "$CALLS"
   grep -q -- 'hubble observe --from-pod default/policy-probe-[0-9]* --verdict DROPPED --to-ip 10.0.0.9 --to-port 44100' "$CALLS"
-  grep -q -- 'hubble observe --from-pod cv/policy-probe-[0-9]* --verdict DROPPED' "$CALLS"
+  ! grep -q -- 'hubble observe --from-pod cv/' "$CALLS"
 }
 
 @test "network-policy:verify fails when a blocked probe has no dropped flow, so a routing fault cannot pass for a policy drop" {
@@ -2450,11 +2450,18 @@ mode_of() {
   [[ "$output" == *"Hubble recorded no FORWARDED flow from cert-manager/policy-probe-"* ]]
 }
 
-@test "network-policy:verify fails when a tenant pod reaches the API server" {
+@test "network-policy:verify fails when the policy of a tenant namespace allows an entity" {
   record_contracts
-  NP_TENANT_API='{"major":"1"}exit=0' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  NP_TENANT_POLICY_JSON='{"spec":{"egress":[{"toEntities":["kube-apiserver"]}]}}' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
   [ "$status" -ne 0 ]
-  [[ "$output" == *"not blocked from the API server"* ]]
+  [[ "$output" == *"allows egress to an entity"* ]]
+}
+
+@test "network-policy:verify fails when the clusterwide deny excludes the tenant namespace" {
+  record_contracts
+  NP_DENY_JSON='{"spec":{"enableDefaultDeny":{"egress":true},"endpointSelector":{"matchExpressions":[{"operator":"NotIn","values":["cv"]}]},"egress":[{"toEndpoints":[{}]}]}}' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not deny egress from cv to everything but DNS"* ]]
 }
 
 @test "network-policy:verify fails when the default namespace pod fails for another reason than a blocked connection" {
@@ -2655,6 +2662,74 @@ mode_of() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"has no address or listener port yet"* ]]
   ! grep -q -- ' run ' "$CALLS"
+}
+
+# bindings:verify reads the retired bindings from the repository data, so the
+# tests run it on a copy whose cv binding is retired.
+retire_cv() {
+  repository="$BATS_TEST_TMPDIR/bindings-repository"
+  mkdir -p "$repository"
+  cp -R "$root_directory"/{.mise,cue.mod,inputs.cue,contracts,packages,clusters,environments} "$repository"
+  yq -i '(.[] | select(.package == "cv")).retired = true' "$repository/clusters/singularity/packages.yaml"
+  export MISE_PROJECT_ROOT="$repository"
+}
+
+@test "bindings:verify passes when the environment retires no binding" {
+  run_task "$root_directory/.mise/tasks/bindings/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok: environment local retires no binding"* ]]
+  ! grep -q '^kubectl ' "$CALLS" 2>/dev/null
+}
+
+@test "bindings:verify names the chart objects and workloads a retired binding leaves behind" {
+  retire_cv
+  CHART_OBJECTS=$'helmrelease.helm.toolkit.fluxcd.io/cv\nconfigmap/cv-values\nconfigmap/other' \
+    RETIRED_WORKLOADS=$'deployment.apps/cv' \
+    run_task "$repository/.mise/tasks/bindings/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"helmrelease.helm.toolkit.fluxcd.io/cv (flux-system) of retired cv"* ]]
+  [[ "$output" == *"configmap/cv-values (flux-system) of retired cv"* ]]
+  [[ "$output" == *"deployment.apps/cv (cv) of retired cv"* ]]
+  [[ "$output" != *"configmap/other"* ]]
+}
+
+@test "bindings:verify passes once the retired binding's objects and workloads are gone" {
+  retire_cv
+  CHART_OBJECTS='configmap/other' run_task "$repository/.mise/tasks/bindings/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok: every retired binding of local is torn down"* ]]
+}
+
+@test "kyverno:verify passes when cv admits its signed image and refuses an unsigned image and a privileged pod" {
+  run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok: the signed cv image is admitted"* ]]
+  grep -q -- '--dry-run=server' "$CALLS"
+  ! grep -q -- ' run .*--dry-run=client' "$CALLS"
+}
+
+@test "kyverno:verify fails when an unsigned image is admitted in a tenant namespace" {
+  ADMIT_UNSIGNED=1 run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"an unsigned image was admitted in cv"* ]]
+}
+
+@test "kyverno:verify fails when a privileged pod is admitted in a tenant namespace" {
+  ADMIT_PRIVILEGED=1 run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"a privileged pod was admitted in cv"* ]]
+}
+
+@test "kyverno:verify fails when an ephemeral container is admitted in a tenant namespace" {
+  ADMIT_EPHEMERAL=1 run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"an ephemeral container was admitted in cv"* ]]
+}
+
+@test "kyverno:verify fails when the policy reaches into a namespace of no tenant" {
+  REFUSE_UNTOUCHED=1 run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"which the policy must leave alone"* ]]
 }
 
 # gateway:check-crds works on a copy of the repository whose crds.yaml and

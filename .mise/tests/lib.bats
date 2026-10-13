@@ -406,13 +406,14 @@ cilium_release_listing() {
 @test "lists the cluster's own suite, then each deployed package's suite" {
   run cluster_suites
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 6 ]
+  [ "${#lines[@]}" -eq 7 ]
   [ "${lines[0]}" = "$root_directory/clusters/singularity/tests/cluster" ]
   [ "${lines[1]}" = "$root_directory/packages/cilium/tests/cluster" ]
   [ "${lines[2]}" = "$root_directory/packages/flux/tests/cluster" ]
   [ "${lines[3]}" = "$root_directory/packages/cert-manager/tests/cluster" ]
   [ "${lines[4]}" = "$root_directory/packages/openbao/tests/cluster" ]
   [ "${lines[5]}" = "$root_directory/packages/cv/tests/cluster" ]
+  [ "${lines[6]}" = "$root_directory/packages/kyverno/tests/cluster" ]
 }
 
 @test "lists only the cluster's own suite when it has no Flux build" {
@@ -443,9 +444,9 @@ cilium_release_listing() {
 }
 
 @test "refuses a package the environment does not deploy, naming the ones it does" {
-  run cluster_suites cilium,kyverno
+  run cluster_suites cilium,ghost
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown package 'kyverno' for environment 'local'; choose from: cilium flux cert-manager openbao"* ]]
+  [[ "$output" == *"unknown package 'ghost' for environment 'local'; choose from: cilium flux cert-manager openbao cv kyverno"* ]]
 }
 
 @test "names an env:e2e step after the task it runs, or its first word" {

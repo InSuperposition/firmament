@@ -9,3 +9,4 @@ crash.log
 
 # What CI renders from the data files; never tracked, packaged in the artifact.
 clusters/*/rendered/
+clusters/*/admission/

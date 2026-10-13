@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Check the network policy on the cluster, each probe against the verdict Hubble recorded for it: every consumer of a capability reaches its provider's port, and a pod in the default namespace does not; a pod in the default namespace resolves names but cannot reach a port of an ingress-denied platform namespace, nor a tenant namespace; a tenant pod cannot reach the API server (starts short-lived pods)"
+#MISE description="Check the network policy on the cluster, each probe against the verdict Hubble recorded for it: every consumer of a capability reaches its provider's port, and a pod in the default namespace does not; a pod in the default namespace resolves names but cannot reach a port of an ingress-denied platform namespace, nor a tenant namespace; the policies leave a tenant pod no egress to the API server (reads the policies; starts short-lived pods in default)"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
@@ -83,9 +83,21 @@ if [[ -n "$tenant" ]]; then
   [[ "$blocked" == *'timed out'* ]] || fail "a pod in the default namespace was not blocked from $tenant ($target:$port): $blocked" || exit
   expect_flow default "$pod" DROPPED --to-ip "$target" --to-port "$port" || exit
   printf 'ok: default is blocked from the %s pod %s on port %s\n' "$tenant" "$target" "$port"
-  pod=$(probe_name)
-  api=$(probe "$tenant" "$pod" "wget -T 8 -qO- --no-check-certificate https://kubernetes.default.svc/version; echo exit=\$?")
-  [[ "$api" == *'timed out'* ]] || fail "a pod in $tenant was not blocked from the API server: $api" || exit
-  expect_flow "$tenant" "$pod" DROPPED || exit
-  printf 'ok: a pod in %s cannot reach the API server\n' "$tenant"
+  # The signed-image policy refuses an unsigned probe pod in a tenant
+  # namespace, and an ephemeral container is refused there too, so the API
+  # server's denial is read from the policies instead: the clusterwide deny
+  # covers the namespace, keeps egress off, and opens DNS only, and the
+  # namespace's own policy opens no entity.
+  deny=$(kubectl --kubeconfig "$kubeconfig" get ciliumclusterwidenetworkpolicies.cilium.io tenant-default-deny -o json) ||
+    fail "cannot read the clusterwide policy tenant-default-deny" || exit
+  jq -e --arg ns "$tenant" '
+    .spec.enableDefaultDeny.egress == true
+    and ([.spec.endpointSelector.matchExpressions[] | select(.operator == "NotIn") | .values[]] | index($ns) | not)
+    and ([.spec.egress[] | (.toEntities // [])[]] | length == 0)' <<<"$deny" >/dev/null ||
+    fail "the clusterwide policy tenant-default-deny does not deny egress from $tenant to everything but DNS" || exit
+  allowed=$(kubectl --kubeconfig "$kubeconfig" -n "$tenant" get ciliumnetworkpolicies.cilium.io platform -o json) ||
+    fail "cannot read the policy of $tenant" || exit
+  jq -e '[(.spec.egress // [])[] | (.toEntities // [])[]] | length == 0' <<<"$allowed" >/dev/null ||
+    fail "the policy of $tenant allows egress to an entity, which includes the API server: $(jq -c '.spec.egress' <<<"$allowed")" || exit
+  printf 'ok: the policies leave a pod in %s no egress to the API server\n' "$tenant"
 fi

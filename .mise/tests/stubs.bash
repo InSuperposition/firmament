@@ -29,7 +29,7 @@
 # exit=1); the openbao namespace has one pod-network pod, 10.0.0.5.
 # `kubectl run ... nslookup` prints $NP_RESOLVED (default exit=0); a pod-network
 # hubble-relay pod has IP 10.0.0.7. A pod in the tenant namespace cv has IP
-# 10.0.0.9, and `kubectl run` there prints $NP_TENANT_API (default: timed out).
+# 10.0.0.9, and `kubectl run` there prints nothing. `kubectl get` of the clusterwide policy tenant-default-deny prints $NP_DENY_JSON and of a namespace's policy platform prints $NP_TENANT_POLICY_JSON (defaults: egress denied, no entity allowed).
 # `kubectl exec ... hubble observe` prints one flow, or nothing for the verdict
 # named in $NP_NO_FLOW (DROPPED or FORWARDED). With $HUBBLE_FAULT=exec it fails
 # with an error message; with $HUBBLE_FAULT=text it exits 0 and prints an error
@@ -49,6 +49,15 @@
 # `nc -z -w 5` (the Mac connecting to the Gateway) fails when
 # $GATEWAY_PORT_ERROR is set, and `kubectl get gateway platform
 # --ignore-not-found` prints nothing when $GATEWAY_ABSENT is set.
+# `kubectl get helmreleases,ocirepositories,configmaps` in flux-system prints
+# $CHART_OBJECTS, and `kubectl get deployments,statefulsets,daemonsets` prints
+# $RETIRED_WORKLOADS (default: nothing).
+# `kubectl run admission-probe --dry-run=server` admits the pod, except that in
+# cv an image other than the cv digest is refused as unsigned and a privileged
+# pod is refused by Pod Security; $ADMIT_UNSIGNED, $ADMIT_PRIVILEGED and
+# $REFUSE_UNTOUCHED turn those behaviours around.
+# `kubectl replace --raw` of a pod's ephemeralcontainers is refused by the
+# policy, or admitted when $ADMIT_EPHEMERAL is set.
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -187,6 +196,22 @@ stub() {
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
   *" state list"*) printf '%s' "\${TOFU_STATE_LIST:-}" ;;
+  *" replace --raw "*"/ephemeralcontainers"*)
+    cat >/dev/null
+    if [[ -n "\${ADMIT_EPHEMERAL:-}" ]]; then printf '%s\\n' '{"kind":"Pod"}'; else
+      printf '%s\\n' 'Error from server: admission webhook "vpol.validate.kyverno.svc-fail" denied the request: Policy deny-ephemeral-containers failed: ephemeral containers are not allowed in tenant namespaces'; exit 1
+    fi ;;
+  *" run admission-probe "*)
+    if [[ "\$*" == *"-n cv "* && "\$*" == *'"privileged":true'* && -z "\${ADMIT_PRIVILEGED:-}" ]]; then
+      printf '%s\\n' 'Error from server (Forbidden): pods "admission-probe" is forbidden: violates PodSecurity "baseline:latest": privileged'; exit 1
+    elif [[ "\$*" == *"-n cv "* && "\$*" != *"ghcr.io/insuperposition/cv@"* && -z "\${ADMIT_UNSIGNED:-}" ]]; then
+      printf '%s\\n' 'Error from server: admission webhook "ivpol.validate.kyverno.svc-fail" denied the request: every container image must be signed by the signer'; exit 1
+    elif [[ "\$*" == *"-n default "* && -n "\${REFUSE_UNTOUCHED:-}" ]]; then
+      printf '%s\\n' 'Error from server: denied'; exit 1
+    fi
+    printf '%s\\n' 'pod/admission-probe created (server dry run)' ;;
+  *" get helmreleases.helm.toolkit.fluxcd.io,ocirepositories"*) printf '%s' "\${CHART_OBJECTS:-}" ;;
+  *" get deployments,statefulsets,daemonsets "*) printf '%s' "\${RETIRED_WORKLOADS:-}" ;;
   *"get ocirepositories.source.toolkit.fluxcd.io test-wrong-signer-"*"[?(@.type"*)
     printf '%s\\n' "\${TV_WRONG_MESSAGE:-failed to verify the signature using provider 'cosign keyless': no matching attestations: failed to verify certificate identity: no matching CertificateIdentity found, last error: expected SAN value to match regex x, got y}" ;;
   *"get ocirepositories.source.toolkit.fluxcd.io test-unsigned-"*"[?(@.type"*)
@@ -213,7 +238,7 @@ case "\$*" in
     printf '%s\\n' 'Oct 10 10:53:20.425: 10.0.0.1:41042 (ID:11) -> 10.0.0.2:8080 (ID:22) to-endpoint FORWARDED (TCP Flags: SYN)' ;;
   *"get pods -l k8s-app=hubble-relay"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.7","hostIP":"192.168.0.2"}}]}' ;;
   *"-n openbao get pods"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.5","hostIP":"192.168.0.2"}}]}' ;;
-  *"-n cv get pods"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.9","hostIP":"192.168.0.2"}}]}' ;;
+  *"-n cv get pods"*) printf '%s\\n' '{"items":[{"metadata":{"name":"cv-0"},"status":{"podIP":"10.0.0.9","hostIP":"192.168.0.2"}}]}' ;;
   *" get pods "*) cat "\${PODS:-/dev/null}" ;;
   *"get charts.helm.k0sproject.io"*)
     if [[ -n "\${K0S_CHARTS_ERROR:-}" ]]; then printf '%s\\n' "\$K0S_CHARTS_ERROR" >&2; exit 1; fi
@@ -231,8 +256,10 @@ case "\$*" in
   *" -n default run "*"wget -T 8 -S"*)
     printf '%s\\n' "\${GATEWAY_ANSWER:-  HTTP/1.1 200 OK exit=0}" ;;
   *" -n default run "*"nslookup"*) printf '%s\\n' "\${NP_RESOLVED:-exit=0}" ;;
-  *" -n cv run "*)
-    printf '%s\\n' "\${NP_TENANT_API:-wget: download timed out exit=1}" ;;
+  *"get ciliumclusterwidenetworkpolicies.cilium.io tenant-default-deny"*)
+    if [[ -n "\${NP_DENY_JSON:-}" ]]; then printf '%s\\n' "\$NP_DENY_JSON"; else printf '%s\\n' '{"spec":{"enableDefaultDeny":{"egress":true},"endpointSelector":{"matchExpressions":[{"operator":"NotIn","values":["kube-system"]},{"operator":"Exists"}]},"egress":[{"toEndpoints":[{}]}]}}'; fi ;;
+  *" get ciliumnetworkpolicies.cilium.io platform "*)
+    if [[ -n "\${NP_TENANT_POLICY_JSON:-}" ]]; then printf '%s\\n' "\$NP_TENANT_POLICY_JSON"; else printf '%s\\n' '{"spec":{"ingress":[{}]}}'; fi ;;
   *" -n default run "*"nc -z"*) printf '%s\\n' "\${NP_PROVIDER_DENIED:-exit=1}" ;;
   *" run "*"nc -z"*) printf '%s\\n' "\${NP_ALLOWED:-exit=0}" ;;
   *" -n default run "*)

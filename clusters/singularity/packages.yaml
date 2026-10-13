@@ -13,3 +13,6 @@
 - package: cv
   namespace: cv
   tenant: apps
+- package: kyverno
+  namespace: kyverno
+  tenant: platform

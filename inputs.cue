@@ -69,6 +69,20 @@ namespaces: {
 	}
 }
 
+// The account the charts of each tenant namespace install as, by environment.
+// A platform tenant's charts keep the controller's authority: they install
+// CRDs and cluster-scoped objects by design.
+installers: {[string]: {[string]: string}}
+installers: {
+	for envName, env in environments {
+		(envName): {
+			for binding in bindings[env.cluster] if tenants[envName][binding.tenant].kind != "platform" {
+				(binding.namespace): "installer-\(binding.namespace)"
+			}
+		}
+	}
+}
+
 // A cluster's chart values: clusters/<cluster>/values/<package>.yaml.
 chartValues: {[string]: {[string]: {...}}}
 chartValues: {
@@ -125,18 +139,46 @@ _bootstrapPackages: {
 	}
 }
 
+// A retired binding keeps its namespace, quota and network policy but installs
+// no chart. A field that is optional in a binding cannot be referenced, so
+// the retired bindings are collected by iterating the fields.
+_isRetired: {[string]: {[string]: {[string]: true}}}
+_isRetired: {
+	for envName, env in environments for binding in bindings[env.cluster] for key, value in binding if key == "retired" && value == true {
+		(envName): (binding.namespace): (binding.package): true
+	}
+}
+
+// The bootstrap installs a bootstrap package once and Flux adopts it, so no
+// binding can retire one. The refusal names the package.
+bootstrapPackageRetired: {
+	for envName, env in environments for binding in bindings[env.cluster] if _bootstrapPackages[binding.package] != _|_ && _isRetired[envName][binding.namespace][binding.package] != _|_ {
+		(envName): (binding.package): "bootstrap packages cannot be retired" & "retired"
+	}
+}
+
+// The retired bindings of each environment, for the check that exposes the
+// chart objects a retirement leaves behind.
+retired: {[string]: [...{package: string, namespace: string}]}
+retired: {
+	for envName, env in environments {
+		(envName): [for binding in bindings[env.cluster] if _isRetired[envName][binding.namespace][binding.package] != _|_ {package: binding.package, namespace: binding.namespace}]
+	}
+}
+
 // The chart packages each environment installs: every bound package the
-// bootstrap does not install. A chart package needs a values file, even an
+// bootstrap does not install, unless its binding is retired. A chart package needs a values file, even an
 // empty one, so a missing file is an error that names the package.
-charts: {[string]: {[string]: {package: packagespec.#Package, targetNamespace: string, values: {...}}}}
+charts: {[string]: {[string]: {package: packagespec.#Package, targetNamespace: string, values: {...}, serviceAccountName?: string}}}
 charts: {
 	for envName, env in environments {
 		(envName): {
-			for binding in bindings[env.cluster] if _bootstrapPackages[binding.package] == _|_ {
+			for binding in bindings[env.cluster] if _bootstrapPackages[binding.package] == _|_ && _isRetired[envName][binding.namespace][binding.package] == _|_ {
 				(binding.package): {
 					package:         packages[binding.package]
 					targetNamespace: binding.namespace
 					values:          chartValues[env.cluster][binding.package] & _generatedValues[envName][binding.package]
+					if installers[envName][binding.namespace] != _|_ {serviceAccountName: installers[envName][binding.namespace]}
 				}
 			}
 		}
@@ -261,6 +303,27 @@ policy: {
 						for ingressPort in value {ingressPort},
 					]
 				}
+			}
+		}
+	}
+}
+
+// ---- admission ------------------------------------------------------------
+
+// What the admission policies of each environment need. The platform tenants
+// are generated from the tenant files, never typed by hand. The signer starts
+// as the one that signs the cv chart and image, and is widened when a second
+// publisher exists. Deny refuses an unsigned image; the refusal was proven live
+// on 2026-10-13.
+admission: {[string]: {mode: "Audit" | "Deny", platformTenants: [...string], signer: {issuer: string, identity: string}}}
+admission: {
+	for envName, env in environments {
+		(envName): {
+			mode: "Deny"
+			platformTenants: list.SortStrings([for name, tenant in tenants[envName] if tenant.kind == "platform" {name}])
+			signer: {
+				issuer:   packages.cv.verify.issuer
+				identity: packages.cv.verify.identity
 			}
 		}
 	}
