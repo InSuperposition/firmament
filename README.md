@@ -67,6 +67,8 @@ contracts/machine-hosts/, cluster-access/, environment/
                       the data files that cross roots and tasks: closed
                       schemas, checked offline by contracts:lint and by
                       the root that reads each file
+render/                the CUE bundle that renders each environment's
+                      namespaces from inputs.cue
 contracts/package-spec/, cluster-spec/, bindings-spec/, tenant-spec/, delta-spec/
                       the formats of the files authors write; the Timoni
                       modules that read them check them again

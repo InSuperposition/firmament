@@ -10,7 +10,7 @@ package layout
 	must_never!:    [...string & !=""]
 })
 
-#FolderName: "contracts" | "packages" | "modules" | "roots" | "clusters" | "environments"
+#FolderName: "contracts" | "packages" | "modules" | "roots" | "clusters" | "environments" | "render"
 
 #Layout: close({
 	folders!: close({[#FolderName]: #Folder}) & {
@@ -20,6 +20,7 @@ package layout
 		roots!:        _
 		clusters!:     _
 		environments!: _
+		render!:       _
 	}
 	cluster_name_places!: [_, ...string & !=""]
 	reference_notes?: [...string & !=""]
