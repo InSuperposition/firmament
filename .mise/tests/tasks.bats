@@ -2504,6 +2504,19 @@ mode_of() {
   [[ "$output" == *"source test-unsigned-"*"never had SourceVerified=False"* ]]
 }
 
+@test "tenant:verify fails when the wrong-signer copy is refused as unsigned, so the cause is the identity" {
+  TV_WRONG_MESSAGE="failed to verify the signature using provider 'cosign keyless': no signatures found" run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"source test-wrong-signer-"*"not because of 'no matching CertificateIdentity'"* ]]
+  [[ "$output" == *"no signatures found"* ]]
+}
+
+@test "tenant:verify fails when the unsigned copy is refused for its identity, so the fixture is shown to be unsigned" {
+  TV_UNSIGNED_MESSAGE="failed to verify the signature using provider 'cosign keyless': no matching CertificateIdentity found" run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"source test-unsigned-"*"not because of 'no signatures found'"* ]]
+}
+
 @test "tenant:verify deletes the temporary sources before it starts and after it fails" {
   TV_FAIL='SourceVerified=True' run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
   [ "$status" -ne 0 ]
@@ -2530,6 +2543,12 @@ mode_of() {
   NP_PROVIDER_DENIED='exit=0' run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"reached port 8080 of test-retained-"* ]]
+}
+
+@test "tenant:verify fails when the pod in the default namespace fails for another reason than a blocked connection" {
+  NP_PROVIDER_DENIED='error: pod failed to start' run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"failed for another reason than a blocked connection: error: pod failed to start"* ]]
 }
 
 @test "tenant:verify fails when the pod in the unbound namespace does not listen, so a refusal cannot be an empty port" {

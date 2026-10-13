@@ -41,13 +41,20 @@ create_copy() {
     flux_kubectl apply -f - >/dev/null
 }
 
-# Fails unless the source $1 gets its SourceVerified condition with status $2.
+# Fails unless the source $1 gets its SourceVerified condition with status $2
+# and, when $3 is given, a condition message that contains $3. A refusal has the
+# same reason whatever the cause (VerificationError), so the message tells a
+# wrong signer ("no matching CertificateIdentity") from an unsigned chart
+# ("no signatures found").
 expect_verified() {
-  local name="$1" status="$2"
+  local name="$1" status="$2" cause="${3:-}" message
   flux_kubectl wait --for=create "ocirepositories.source.toolkit.fluxcd.io/$name" --timeout=60s >/dev/null || return
   if ! flux_kubectl wait "--for=condition=SourceVerified=$status" "ocirepositories.source.toolkit.fluxcd.io/$name" --timeout=180s >/dev/null; then
-    fail "source $name never had SourceVerified=$status; its conditions:"$'\n'"$(flux_kubectl get ocirepositories.source.toolkit.fluxcd.io "$name" -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}')"
+    fail "source $name never had SourceVerified=$status; its conditions:"$'\n'"$(flux_kubectl get ocirepositories.source.toolkit.fluxcd.io "$name" -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}')" || return
   fi
+  [[ -n "$cause" ]] || return 0
+  message=$(flux_kubectl get ocirepositories.source.toolkit.fluxcd.io "$name" -o jsonpath='{.status.conditions[?(@.type=="SourceVerified")].message}') || return
+  [[ "$message" == *"$cause"* ]] || fail "source $name was refused, but not because of '$cause'; its message:"$'\n'"$message"
 }
 
 sources=$(flux_kubectl get ocirepositories.source.toolkit.fluxcd.io -l "!$marker" -o json |
@@ -65,9 +72,9 @@ while IFS= read -r original; do
   create_copy "$original" "$control" '.' || exit
   expect_verified "$control" True || exit
   create_copy "$original" "$wrong" '.verify.matchOIDCIdentity[0].subject = $subject' --arg subject "$wrong_subject" || exit
-  expect_verified "$wrong" False || exit
+  expect_verified "$wrong" False 'no matching CertificateIdentity' || exit
   create_copy "$original" "$unsigned" '.url = $source | .ref.digest = $digest' --arg source "$unsigned_source" --arg digest "$unsigned_digest" || exit
-  expect_verified "$unsigned" False || exit
+  expect_verified "$unsigned" False 'no signatures found' || exit
   printf 'ok: Flux verifies %s, refuses it when another signer is required, and refuses an unsigned chart under the same check\n' "$original"
 done <<<"$sources"
 

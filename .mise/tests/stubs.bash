@@ -35,7 +35,9 @@
 # `kubectl get ocirepositories` lists $OCI_SOURCES (default: one signed source
 # named cv), and `kubectl apply -f -` appends what it reads to
 # $BATS_TEST_TMPDIR/applied. `kubectl wait` on a chart source fails when its
-# arguments contain $TV_FAIL. The holder pod of the temporary namespace has IP
+# arguments contain $TV_FAIL. The SourceVerified message of the wrong-signer copy is
+# $TV_WRONG_MESSAGE and of the unsigned copy $TV_UNSIGNED_MESSAGE (defaults: the
+# messages Flux gives for those causes). The holder pod of the temporary namespace has IP
 # 10.0.0.12, and `kubectl exec holder` prints $TV_LISTENING (default exit=0).
 # `kubectl get` of the traffic permit fails when $PERMIT_MISSING is set, and of
 # the namespace cilium-test-1 when $CILIUM_TEST_NAMESPACE_MISSING is set.
@@ -183,6 +185,10 @@ stub() {
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
   *" state list"*) printf '%s' "\${TOFU_STATE_LIST:-}" ;;
+  *"get ocirepositories.source.toolkit.fluxcd.io test-wrong-signer-"*"[?(@.type"*)
+    printf '%s\\n' "\${TV_WRONG_MESSAGE:-failed to verify the signature using provider 'cosign keyless': no matching attestations: failed to verify certificate identity: no matching CertificateIdentity found, last error: expected SAN value to match regex x, got y}" ;;
+  *"get ocirepositories.source.toolkit.fluxcd.io test-unsigned-"*"[?(@.type"*)
+    printf '%s\\n' "\${TV_UNSIGNED_MESSAGE:-failed to verify the signature using provider 'cosign keyless': no signatures found}" ;;
   *"get ocirepositories.source.toolkit.fluxcd.io cv "*)
     printf '%s\\n' '{"apiVersion":"source.toolkit.fluxcd.io/v1","kind":"OCIRepository","metadata":{"name":"cv","namespace":"flux-system","uid":"u"},"spec":{"url":"oci://registry.test/cv","ref":{"digest":"sha256:aaa"},"verify":{"provider":"cosign","matchOIDCIdentity":[{"issuer":"issuer","subject":"subject"}]}},"status":{}}' ;;
   *"get ocirepositories.source.toolkit.fluxcd.io -l"*)
