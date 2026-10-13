@@ -1995,12 +1995,11 @@ STUB
 }
 
 # A stand-in git repository holding a copy of every contract, added to the
-# index as contracts:lint reads only the files git lists. The CUE module
-# file is copied too: the inventory schema imports other contracts.
+# index as contracts:lint reads only the files git lists.
 contract_repository() {
   local repository
   repository=$(make_repository)
-  cp -R "$root_directory/contracts" "$root_directory/cue.mod" "$repository/"
+  cp -R "$root_directory/contracts" "$repository/"
   git -C "$repository" init -q
   git -C "$repository" add contracts
   printf '%s\n' "$repository"
