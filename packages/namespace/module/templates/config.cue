@@ -33,7 +33,7 @@ import (
 	objects: {
 		for nsName, tenantName in config.namespaces {
 			"namespace-\(nsName)": #Namespace & {
-				_config: {environment: config.environment, name: nsName, tenant: tenantName}
+				_config: {environment: config.environment, name: nsName, tenant: tenantName, kind: config.tenants[tenantName].kind}
 			}
 			"limitrange-\(nsName)": #LimitRange & {
 				_config: name: nsName

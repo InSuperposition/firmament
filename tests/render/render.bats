@@ -338,6 +338,14 @@ YAML
   done
 }
 
+@test "a tenant namespace enforces the baseline Pod Security Standard and a platform namespace carries no such label" {
+  render local "$BATS_TEST_TMPDIR/out"
+  [ "$(yq -r '.metadata.labels["pod-security.kubernetes.io/enforce"]' "$BATS_TEST_TMPDIR/out/namespace/v1_namespace_cv.yaml")" = baseline ]
+  for ns in cert-manager openbao flux-system kube-system; do
+    [ "$(yq -r '.metadata.labels | has("pod-security.kubernetes.io/enforce")' "$BATS_TEST_TMPDIR/out/namespace/v1_namespace_$ns.yaml")" = false ]
+  done
+}
+
 @test "a tenant without a kind is refused, naming the field" {
   sed -i.bak '/^kind:/d' environments/local/tenants/platform.yaml
   run cue vet -c .:inputs
