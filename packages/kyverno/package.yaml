@@ -1,0 +1,6 @@
+name: kyverno
+layer: engine
+pin:
+  source: oci://ghcr.io/kyverno/charts/kyverno
+  version: 3.9.1
+  digest: sha256:720542b97bdbc2633535c2297332690d21cfbb944053eb1ec1f0dbe8e3895444

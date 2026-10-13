@@ -1,0 +1,72 @@
+# Read-only assertions on a running cluster where Flux installs Kyverno.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: kyverno
+  labels:
+    component: kyverno
+spec:
+  namespace: kube-system
+  steps:
+    - name: Flux installs the pinned chart
+      timeouts:
+        assert: 10m
+      try:
+        - assert:
+            resource:
+              apiVersion: source.toolkit.fluxcd.io/v1
+              kind: OCIRepository
+              metadata:
+                name: kyverno
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: helm.toolkit.fluxcd.io/v2
+              kind: HelmRelease
+              metadata:
+                name: kyverno
+                namespace: flux-system
+              status:
+                (conditions[?type == 'Ready'] | [0].status): "True"
+    - name: The four controllers are available
+      timeouts:
+        assert: 5m
+      try:
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: kyverno-admission-controller
+                namespace: kyverno
+              status:
+                (conditions[?type == 'Available'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: kyverno-background-controller
+                namespace: kyverno
+              status:
+                (conditions[?type == 'Available'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: kyverno-cleanup-controller
+                namespace: kyverno
+              status:
+                (conditions[?type == 'Available'] | [0].status): "True"
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: kyverno-reports-controller
+                namespace: kyverno
+              status:
+                (conditions[?type == 'Available'] | [0].status): "True"
