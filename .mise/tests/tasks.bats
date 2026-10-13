@@ -2719,3 +2719,20 @@ STUB
   [ "$status" -ne 0 ]
   [[ "$output" == *"records no SHA-256 of crds.yaml"* ]]
 }
+
+@test "the probe tasks run their pods from the one probe image, without any OpenBao setting" {
+  MISE_PROJECT_ROOT=$(make_repository environments/local/environment.yaml clusters/singularity/packages.yaml)
+  export MISE_PROJECT_ROOT
+  record_contracts
+  printf '#!/usr/bin/env bash\ncat <<JSON\n{"namespaces":{"db":{"mode":"full","provides":[{"capability":"sql","port":5432,"protocol":"TCP","consumers":["web"]}],"hostPorts":[]}}}\nJSON\n' >"$stubs/cue"
+  chmod +x "$stubs/cue"
+  printf '{"items":[{"status":{"podIP":"10.0.0.6","hostIP":"192.168.0.2"}}]}' >"$BATS_TEST_TMPDIR/pods.json"
+  probe_image=$(sed -n 's/^readonly image=//p' "$root_directory/.mise/lib-probe.sh")
+  [ -n "$probe_image" ]
+  for task in gateway network-policy tenant; do
+    : >"$CALLS"
+    PODS="$BATS_TEST_TMPDIR/pods.json" run_task "$root_directory/.mise/tasks/$task/verify.sh" local
+    [ "$status" -eq 0 ] || fail "$task: $output"
+    grep -q -- "--image=$probe_image" "$CALLS" || fail "$task did not run $probe_image"
+  done
+}

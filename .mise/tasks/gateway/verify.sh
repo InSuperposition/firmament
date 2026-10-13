@@ -7,9 +7,6 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 source "${MISE_PROJECT_ROOT}/.mise/lib-probe.sh"
 environment=$(require_environment) || exit
 kubeconfig=$(environment_kubeconfig) || exit
-cluster=$(cluster_directory) || exit
-# The probe image carries wget, which prints the response headers with -S.
-image=$(yq -r '.storage.init_image' "$cluster/openbao.yaml") || exit
 
 readonly gateway_namespace=kube-system gateway_name=platform
 gateway=$(kubectl --kubeconfig "$kubeconfig" -n "$gateway_namespace" get gateway "$gateway_name" -o json) ||

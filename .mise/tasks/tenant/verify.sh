@@ -7,9 +7,6 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 source "${MISE_PROJECT_ROOT}/.mise/lib-probe.sh"
 require_environment >/dev/null
 kubeconfig=$(environment_kubeconfig) || exit
-cluster=$(cluster_directory) || exit
-# The probe image carries nc, which opens a connection and reports it in its exit status.
-image=$(yq -r '.storage.init_image' "$cluster/openbao.yaml") || exit
 
 readonly flux_namespace=flux-system
 readonly marker=firmament.test/tenant-verify
