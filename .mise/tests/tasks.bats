@@ -476,12 +476,13 @@ record_pinned_commit() {
   run_task "$root_directory/.mise/tasks/cilium/verify.sh" local
   [ "$status" -eq 0 ]
   run grep -E '^(kubectl|helm|cilium) ' "$CALLS"
-  [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values "* ]]
-  [[ "${lines[1]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values-policy "* ]]
-  [[ "${lines[2]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values-gateway "* ]]
-  [[ "${lines[3]}" == "helm --kubeconfig /state/admin.kubeconfig -n kube-system get values cilium -o yaml "* ]]
-  [[ "${lines[4]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system rollout status daemonset/cilium --timeout=10m "* ]]
-  [[ "${lines[5]}" == "cilium --kubeconfig /state/admin.kubeconfig status --wait --interactive=false "* ]]
+  [[ "${lines[0]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get helmrelease cilium "* ]]
+  [[ "${lines[1]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values "* ]]
+  [[ "${lines[2]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values-policy "* ]]
+  [[ "${lines[3]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n flux-system get configmap cilium-values-gateway "* ]]
+  [[ "${lines[4]}" == "helm --kubeconfig /state/admin.kubeconfig -n kube-system get values cilium -o yaml "* ]]
+  [[ "${lines[5]}" == "kubectl --kubeconfig /state/admin.kubeconfig -n kube-system rollout status daemonset/cilium --timeout=10m "* ]]
+  [[ "${lines[6]}" == "cilium --kubeconfig /state/admin.kubeconfig status --wait --interactive=false "* ]]
 }
 
 @test "cilium:restart-agent restarts the agent DaemonSet, then waits for the rollout and for Cilium" {

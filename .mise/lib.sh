@@ -743,25 +743,41 @@ canonical_values() {
   yq -o=json -I=0 'sort_keys(..)'
 }
 
-# Succeeds when the deployed cilium release runs the values in the
-# cilium-values ConfigMap, as Flux last applied it. A HelmRelease reports
-# Ready for its previous values until helm-controller notices the change.
+# Prints the values sources of a HelmRelease's spec.valuesFrom on stdin, as one
+# line of JSON in the order the release merges them, with the defaults filled
+# in so two lists that mean the same print the same text.
+canonical_values_sources() {
+  yq -o=json -I=0 '[.[] | {"kind": .kind, "name": .name, "valuesKey": (.valuesKey // "values.yaml"), "optional": (.optional // false)}]'
+}
+
+# Succeeds when the deployed cilium release runs the values its
+# valuesFrom names, as Flux last applied them. A HelmRelease reports Ready for
+# its previous values until helm-controller notices the change. The list comes
+# from the repository's HelmRelease and must equal the live release's, so the
+# check never merges the sources of a release that is not the one deployed.
+# The sources merge in order, each over the ones before it. An absent optional
+# source adds nothing; an API error is not an absent source.
 cilium_values_deployed() {
-  local kubeconfig="$1" wanted deployed overlay extra
-  wanted=$(kubectl --kubeconfig "$kubeconfig" -n flux-system get configmap cilium-values \
-    -o jsonpath='{.data.values\.yaml}') || return
-  # The network policy and the gateway each add an optional values source,
-  # in the order of the HelmRelease's valuesFrom; the release runs them
-  # merged, each over the ones before it. An absent overlay adds nothing; an
-  # API error is not an absent overlay.
-  for overlay in cilium-values-policy cilium-values-gateway; do
-    extra=$(kubectl --kubeconfig "$kubeconfig" -n flux-system get configmap "$overlay" \
-      --ignore-not-found -o jsonpath='{.data.values\.yaml}') || return
-    if [[ -n "$extra" ]]; then
+  local kubeconfig="$1" sources live wanted deployed name optional extra
+  local -a ignore
+  sources=$(yq '.spec.valuesFrom' "${MISE_PROJECT_ROOT:?}/packages/cilium/helmrelease.yaml" | canonical_values_sources) || return
+  live=$(kubectl --kubeconfig "$kubeconfig" -n flux-system get helmrelease cilium -o jsonpath='{.spec.valuesFrom}' |
+    canonical_values_sources) || return
+  [[ "$sources" == "$live" ]] || return
+  yq -e 'all_c(.kind == "ConfigMap" and .valuesKey == "values.yaml")' <<<"$sources" >/dev/null || return
+  wanted=""
+  while IFS=$'\t' read -r name optional; do
+    ignore=()
+    [[ "$optional" == true ]] && ignore=(--ignore-not-found)
+    extra=$(kubectl --kubeconfig "$kubeconfig" -n flux-system get configmap "$name" \
+      "${ignore[@]}" -o jsonpath='{.data.values\.yaml}') || return
+    if [[ -z "$wanted" ]]; then
+      wanted=$extra
+    elif [[ -n "$extra" ]]; then
       # shellcheck disable=SC2016 # a yq expression, not shell
       wanted=$(yq eval-all '. as $item ireduce ({}; . * $item)' <(printf '%s\n' "$wanted") <(printf '%s\n' "$extra")) || return
     fi
-  done
+  done < <(yq -r '.[] | [.name, .optional] | @tsv' <<<"$sources")
   wanted=$(canonical_values <<<"$wanted") || return
   deployed=$(helm --kubeconfig "$kubeconfig" -n kube-system get values cilium -o yaml | canonical_values) || return
   [[ -n "$wanted" && "$wanted" != null && "$wanted" == "$deployed" ]]

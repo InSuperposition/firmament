@@ -227,6 +227,57 @@ setup() {
   [[ "$output" == *"the cilium release does not run the values in the cilium-values ConfigMap after 0s"* ]]
 }
 
+# Gives cilium_values_deployed a repository whose Cilium HelmRelease lists the
+# values sources in $1 (a YAML flow sequence), in that order.
+cilium_release_listing() {
+  MISE_PROJECT_ROOT="$BATS_TEST_TMPDIR/listing"
+  mkdir -p "$MISE_PROJECT_ROOT/packages/cilium"
+  printf 'spec:\n  valuesFrom: %s\n' "$1" >"$MISE_PROJECT_ROOT/packages/cilium/helmrelease.yaml"
+}
+
+@test "merges the values sources in the order the HelmRelease lists them" {
+  cilium_release_listing '[{kind: ConfigMap, name: cilium-values}, {kind: ConfigMap, name: cilium-values-gateway, optional: true}, {kind: ConfigMap, name: cilium-values-policy, optional: true}]'
+  HELMRELEASE_VALUES_FROM='[{"kind":"ConfigMap","name":"cilium-values","valuesKey":"values.yaml"},{"kind":"ConfigMap","name":"cilium-values-gateway","valuesKey":"values.yaml","optional":true},{"kind":"ConfigMap","name":"cilium-values-policy","valuesKey":"values.yaml","optional":true}]' \
+    CILIUM_VALUES='a: 1' CILIUM_VALUES_GATEWAY='who: gateway' CILIUM_VALUES_POLICY='who: policy' RELEASE_VALUES=$'a: 1\nwho: policy' \
+    run cilium_values_deployed /kubeconfig
+  [ "$status" -eq 0 ] || fail "$output"
+  HELMRELEASE_VALUES_FROM='[{"kind":"ConfigMap","name":"cilium-values","valuesKey":"values.yaml"},{"kind":"ConfigMap","name":"cilium-values-gateway","valuesKey":"values.yaml","optional":true},{"kind":"ConfigMap","name":"cilium-values-policy","valuesKey":"values.yaml","optional":true}]' \
+    CILIUM_VALUES='a: 1' CILIUM_VALUES_GATEWAY='who: gateway' CILIUM_VALUES_POLICY='who: policy' RELEASE_VALUES=$'a: 1\nwho: gateway' \
+    run cilium_values_deployed /kubeconfig
+  [ "$status" -ne 0 ]
+}
+
+@test "never counts the release current when the live HelmRelease lists other sources than the repository" {
+  HELMRELEASE_VALUES_FROM='[{"kind":"ConfigMap","name":"cilium-values","valuesKey":"values.yaml"}]' \
+    CILIUM_VALUES='a: 1' RELEASE_VALUES='a: 1' run cilium_values_deployed /kubeconfig
+  [ "$status" -ne 0 ]
+  HELMRELEASE_VALUES_FROM='[{"kind":"ConfigMap","name":"cilium-values-policy","valuesKey":"values.yaml","optional":true},{"kind":"ConfigMap","name":"cilium-values","valuesKey":"values.yaml"},{"kind":"ConfigMap","name":"cilium-values-gateway","valuesKey":"values.yaml","optional":true}]' \
+    CILIUM_VALUES='a: 1' RELEASE_VALUES='a: 1' run cilium_values_deployed /kubeconfig
+  [ "$status" -ne 0 ]
+}
+
+@test "never counts the release current when the HelmRelease cannot be read" {
+  CILIUM_VALUES='a: 1' RELEASE_VALUES='a: 1' HELMRELEASE_ERROR='connection refused' run cilium_values_deployed /kubeconfig
+  [ "$status" -ne 0 ]
+}
+
+@test "refuses a values source that is not a ConfigMap key values.yaml, even when the live release lists it too" {
+  cilium_release_listing '[{kind: ConfigMap, name: cilium-values}, {kind: Secret, name: cilium-values-policy, optional: true}]'
+  HELMRELEASE_VALUES_FROM='[{"kind":"ConfigMap","name":"cilium-values","valuesKey":"values.yaml"},{"kind":"Secret","name":"cilium-values-policy","valuesKey":"values.yaml","optional":true}]' \
+    CILIUM_VALUES='a: 1' RELEASE_VALUES='a: 1' run cilium_values_deployed /kubeconfig
+  [ "$status" -ne 0 ]
+  cilium_release_listing '[{kind: ConfigMap, name: cilium-values, valuesKey: other.yaml}]'
+  HELMRELEASE_VALUES_FROM='[{"kind":"ConfigMap","name":"cilium-values","valuesKey":"other.yaml"}]' \
+    CILIUM_VALUES='a: 1' RELEASE_VALUES='a: 1' run cilium_values_deployed /kubeconfig
+  [ "$status" -ne 0 ]
+}
+
+@test "counts the release current when the live HelmRelease spells the defaults out" {
+  HELMRELEASE_VALUES_FROM='[{"kind":"ConfigMap","name":"cilium-values","valuesKey":"values.yaml","optional":false},{"kind":"ConfigMap","name":"cilium-values-policy","valuesKey":"values.yaml","optional":true},{"kind":"ConfigMap","name":"cilium-values-gateway","valuesKey":"values.yaml","optional":true}]' \
+    CILIUM_VALUES='a: 1' RELEASE_VALUES='a: 1' run cilium_values_deployed /kubeconfig
+  [ "$status" -eq 0 ] || fail "$output"
+}
+
 @test "never counts an overlay it could not read as absent" {
   CILIUM_VALUES='a: 1' RELEASE_VALUES='a: 1' CILIUM_VALUES_GATEWAY_ERROR='connection refused' \
     run cilium_values_deployed /kubeconfig
