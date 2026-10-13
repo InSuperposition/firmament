@@ -380,6 +380,7 @@ admission_render() {
   [ "$(yq -r '.spec.matchConstraints.namespaceSelector.matchExpressions | map(.key + " " + .operator) | join(",")' "$policy")" = "firmament.dev/tenant Exists,firmament.dev/tenant NotIn" ]
   [ "$(yq -r '.spec.matchImageReferences | map(.glob) | join(",")' "$policy")" = '*' ]
   [ "$(yq -r '.spec.validationActions | join(",")' "$policy")" = Deny ]
+  [ "$(yq -r '.spec.webhookConfiguration.timeoutSeconds' "$policy")" = 30 ]
   [ "$(yq -r '.spec.attestors[0].cosign.keyless.identities[0].subjectRegExp' "$policy")" = "$(yq -r '.verify.identity' packages/cv/package.yaml)" ]
 }
 

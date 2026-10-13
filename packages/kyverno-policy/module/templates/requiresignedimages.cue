@@ -23,6 +23,11 @@ package templates
 	}
 	spec: {
 		validationActions: [_config.mode]
+		// Keyless verification of an image from a registry that has no
+		// cached result takes up to 12 s in a live run; the default 10 s
+		// timeout would fail the pod with an internal error instead of a
+		// refusal.
+		webhookConfiguration: timeoutSeconds: 30
 		matchConstraints: {
 			namespaceSelector: matchExpressions: [{
 				key:      "firmament.dev/tenant"
