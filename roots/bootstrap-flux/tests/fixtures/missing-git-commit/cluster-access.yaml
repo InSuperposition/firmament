@@ -8,3 +8,4 @@ runtime_info:
   environment: local
   cluster: singularity
   git_branch: main
+  artifact_source: ghcr.io/insuperposition/firmament

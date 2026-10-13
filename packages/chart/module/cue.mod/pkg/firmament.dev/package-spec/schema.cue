@@ -8,9 +8,14 @@ package packagespec
 
 #Name: =~"^[a-z][a-z0-9-]*$"
 
+// What a package is for. The network policy treats "trust" and "network"
+// differently (inputs.cue), so a layer is closed: a new one is added here,
+// in the vendored copy and in inputs.cue together.
+#Layer: "network" | "engine" | "trust" | "app"
+
 #Package: close({
 	name!:  #Name
-	layer!: #Name
+	layer!: #Layer
 	pin!: close({
 		source!:  string & !=""
 		version!: string & !=""

@@ -427,6 +427,13 @@ YAML
   diff "$work/contracts/tenant-spec/schema.cue" "$work/packages/namespace/module/cue.mod/pkg/firmament.dev/tenant-spec/schema.cue"
 }
 
+@test "a package.yaml whose layer is outside the closed set is refused, naming the field" {
+  sed -i.bak 's/^layer: trust$/layer: trsut/' packages/cert-manager/package.yaml
+  run cue vet -c .:inputs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *layer* ]]
+}
+
 @test "the vendored package schema equals its contract" {
   diff "$work/contracts/package-spec/schema.cue" "$work/packages/chart/module/cue.mod/pkg/firmament.dev/package-spec/schema.cue"
 }

@@ -10,7 +10,7 @@ the file check it again through a vendored copy of the schema.
 | Field | Type | Rule |
 | --- | --- | --- |
 | `name` | string | `^[a-z][a-z0-9-]*$` |
-| `layer` | string | same pattern; open until a third package shows the set of layers |
+| `layer` | string | `network`, `engine`, `trust` or `app`; the network policy treats `trust` and `network` specially, so a new layer is added to the schema, its vendored copy and `inputs.cue` together |
 | `pin.source` | string | not empty |
 | `pin.version` | string | not empty |
 | `pin.digest` | string | `sha256:` and 64 hex characters |

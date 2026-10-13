@@ -2110,6 +2110,10 @@ expect_planted_value_refused() {
   expect_planted_value_refused package-spec 'del(.pin.digest)' pin.digest
 }
 
+@test "contracts:lint refuses a layer outside the closed set in package-spec" {
+  expect_planted_value_refused package-spec '.layer = "trsut"' layer
+}
+
 @test "contracts:lint refuses a role in cluster-spec" {
   expect_planted_value_refused cluster-spec '.role = "workload"' role
 }
@@ -2120,6 +2124,7 @@ expect_planted_value_refused() {
   [ "$output" = "$(printf 'ocirepository.yaml\npayload.yaml\nrendered.yaml\nissuers.yaml\ngateway-api-crds.yaml\ngateway.yaml')" ] || fail "$output"
   [ "$(yq -r '.spec.verify.provider' "$flux/ocirepository.yaml")" = cosign ]
   [ "$(yq -r '.spec.ref.tag' "$flux/ocirepository.yaml")" = '${git_commit}' ]
+  [ "$(yq -r '.spec.url' "$flux/ocirepository.yaml")" = 'oci://${artifact_source}' ]
   [[ "$(yq -r '.spec.verify.matchOIDCIdentity[0].subject' "$flux/ocirepository.yaml")" == *'workflows/publish\.yaml@refs/heads/'* ]]
   [ "$(yq -r '.spec.path' "$flux/payload.yaml")" = ./clusters/singularity/payload ]
   [ "$(yq -r '.spec.path' "$flux/rendered.yaml")" = './clusters/singularity/rendered/${environment}' ]
@@ -2129,6 +2134,14 @@ expect_planted_value_refused() {
 
 @test "contracts:lint refuses a git_commit that is not 40 lowercase hex characters in cluster-access" {
   expect_planted_value_refused cluster-access '.runtime_info.git_commit = "abc123"' git_commit
+}
+
+@test "contracts:lint refuses a cluster-access contract without an artifact_source" {
+  expect_planted_value_refused cluster-access 'del(.runtime_info.artifact_source)' artifact_source
+}
+
+@test "contracts:lint refuses an artifact_source outside ghcr.io in cluster-access" {
+  expect_planted_value_refused cluster-access '.runtime_info.artifact_source = "docker.io/library/firmament"' artifact_source
 }
 
 @test "contracts:lint refuses a cluster-access contract without a git_commit" {
