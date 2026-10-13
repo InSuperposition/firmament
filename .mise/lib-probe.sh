@@ -5,8 +5,12 @@
 
 # The image every probe pod runs. It carries wget, which prints response
 # headers with -S, and nc, which reports a connection in its exit status. It
-# is test infrastructure, so no package or OpenBao setting names it.
-readonly image=quay.io/openbao/openbao:2.7.0
+# is test infrastructure, so no package or OpenBao setting names it. It is
+# the Docker official busybox image mirrored on Amazon ECR Public, not Docker
+# Hub, pinned by the digest of the multi-architecture index. The probes run in
+# default and the platform namespaces; the signed-image policy would refuse it
+# in a tenant namespace.
+readonly image=public.ecr.aws/docker/library/busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
 
 # Runs one short-lived pod, named $2, in namespace $1 and prints what the shell
 # command $3 printed.
