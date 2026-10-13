@@ -4,14 +4,14 @@ package templates
 
 // The admission policies of one environment.
 #Config: {
-	// The instance name and namespace Timoni supplies; a ClusterPolicy is cluster-scoped and ignores them.
+	// The instance name and namespace Timoni supplies; an ImageValidatingPolicy is cluster-scoped and ignores them.
 	metadata: {
 		name:      string
 		namespace: string
 	}
 
-	// Audit reports a violation; Enforce refuses the pod.
-	mode!: "Audit" | "Enforce"
+	// Audit reports a violation; Deny refuses the pod.
+	mode!: "Audit" | "Deny"
 
 	// The tenants whose namespaces the policies leave alone.
 	platformTenants!: [...#Name]

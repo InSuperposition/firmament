@@ -372,29 +372,28 @@ YAML
 
 admission_render() {
   ENVIRONMENT=local timoni bundle build -f render/admission-bundle.cue --runtime-from-env --output-dir "$BATS_TEST_TMPDIR/admission"
-  policy="$BATS_TEST_TMPDIR/admission/kyverno-policy/kyverno.io_v1_clusterpolicy_require-signed-images.yaml"
+  policy="$BATS_TEST_TMPDIR/admission/kyverno-policy/policies.kyverno.io_v1_imagevalidatingpolicy_require-signed-images.yaml"
 }
 
-@test "the signed-image policy covers tenant namespaces by label, names every image and audits until proven" {
+@test "the signed-image policy covers tenant namespaces by label, names every image and denies" {
   admission_render
-  rule='.spec.rules[0]'
-  [ "$(yq -r "$rule.match.any[0].resources.namespaceSelector.matchExpressions | map(.key + \" \" + .operator) | join(\",\")" "$policy")" = "firmament.dev/tenant Exists,firmament.dev/tenant NotIn" ]
-  [ "$(yq -r "$rule.verifyImages[0].imageReferences | join(\",\")" "$policy")" = '*' ]
-  [ "$(yq -r "$rule.verifyImages[0].failureAction" "$policy")" = Audit ]
-  [ "$(yq -r "$rule.verifyImages[0].attestors[0].entries[0].keyless.subjectRegExp" "$policy")" = "$(yq -r '.verify.identity' packages/cv/package.yaml)" ]
+  [ "$(yq -r '.spec.matchConstraints.namespaceSelector.matchExpressions | map(.key + " " + .operator) | join(",")' "$policy")" = "firmament.dev/tenant Exists,firmament.dev/tenant NotIn" ]
+  [ "$(yq -r '.spec.matchImageReferences | map(.glob) | join(",")' "$policy")" = '*' ]
+  [ "$(yq -r '.spec.validationActions | join(",")' "$policy")" = Deny ]
+  [ "$(yq -r '.spec.attestors[0].cosign.keyless.identities[0].subjectRegExp' "$policy")" = "$(yq -r '.verify.identity' packages/cv/package.yaml)" ]
 }
 
 @test "the signed-image policy leaves exactly the tenants of kind platform alone, as the tenant files name them" {
   declare_stage_environment
   yq -i '.kind = "platform"' environments/local/tenants/apps.yaml
   admission_render
-  [ "$(yq -r '.spec.rules[0].match.any[0].resources.namespaceSelector.matchExpressions[1].values | join(",")' "$policy")" = apps,platform ]
+  [ "$(yq -r '.spec.matchConstraints.namespaceSelector.matchExpressions[1].values | join(",")' "$policy")" = apps,platform ]
 }
 
 @test "the admission policies render apart from the namespaces and the releases" {
   render_all
-  [ -e clusters/singularity/admission/local/kyverno-policy/kyverno.io_v1_clusterpolicy_require-signed-images.yaml ]
-  [ -z "$(find clusters/singularity/rendered -name '*clusterpolicy*')" ]
+  [ -e clusters/singularity/admission/local/kyverno-policy/policies.kyverno.io_v1_imagevalidatingpolicy_require-signed-images.yaml ]
+  [ -z "$(find clusters/singularity/rendered -name '*imagevalidatingpolicy*')" ]
 }
 
 @test "the Kyverno namespace gets no network policy of its own and is excluded from the clusterwide deny" {

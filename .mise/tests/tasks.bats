@@ -2693,6 +2693,32 @@ retire_cv() {
   [[ "$output" == *"ok: every retired binding of local is torn down"* ]]
 }
 
+@test "kyverno:verify passes when cv admits its signed image and refuses an unsigned image and a privileged pod" {
+  run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"ok: the signed cv image is admitted"* ]]
+  grep -q -- '--dry-run=server' "$CALLS"
+  ! grep -q -- ' run .*--dry-run=client' "$CALLS"
+}
+
+@test "kyverno:verify fails when an unsigned image is admitted in a tenant namespace" {
+  ADMIT_UNSIGNED=1 run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"an unsigned image was admitted in cv"* ]]
+}
+
+@test "kyverno:verify fails when a privileged pod is admitted in a tenant namespace" {
+  ADMIT_PRIVILEGED=1 run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"a privileged pod was admitted in cv"* ]]
+}
+
+@test "kyverno:verify fails when the policy reaches into a namespace of no tenant" {
+  REFUSE_UNTOUCHED=1 run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"which the policy must leave alone"* ]]
+}
+
 # gateway:check-crds works on a copy of the repository whose crds.yaml and
 # README the test controls; the curl stand-in answers with $UPSTREAM_CRDS.
 setup_gateway_crds_repository() {

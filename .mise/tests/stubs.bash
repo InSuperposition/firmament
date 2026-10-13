@@ -52,6 +52,10 @@
 # `kubectl get helmreleases,ocirepositories,configmaps` in flux-system prints
 # $CHART_OBJECTS, and `kubectl get deployments,statefulsets,daemonsets` prints
 # $RETIRED_WORKLOADS (default: nothing).
+# `kubectl run admission-probe --dry-run=server` admits the pod, except that in
+# cv an image other than the cv digest is refused as unsigned and a privileged
+# pod is refused by Pod Security; $ADMIT_UNSIGNED, $ADMIT_PRIVILEGED and
+# $REFUSE_UNTOUCHED turn those behaviours around.
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -190,6 +194,15 @@ stub() {
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
   *" state list"*) printf '%s' "\${TOFU_STATE_LIST:-}" ;;
+  *" run admission-probe "*)
+    if [[ "\$*" == *"-n cv "* && "\$*" == *'"privileged":true'* && -z "\${ADMIT_PRIVILEGED:-}" ]]; then
+      printf '%s\\n' 'Error from server (Forbidden): pods "admission-probe" is forbidden: violates PodSecurity "baseline:latest": privileged'; exit 1
+    elif [[ "\$*" == *"-n cv "* && "\$*" != *"ghcr.io/insuperposition/cv@"* && -z "\${ADMIT_UNSIGNED:-}" ]]; then
+      printf '%s\\n' 'Error from server: admission webhook "ivpol.validate.kyverno.svc-fail" denied the request: every container image must be signed by the signer'; exit 1
+    elif [[ "\$*" == *"-n default "* && -n "\${REFUSE_UNTOUCHED:-}" ]]; then
+      printf '%s\\n' 'Error from server: denied'; exit 1
+    fi
+    printf '%s\\n' 'pod/admission-probe created (server dry run)' ;;
   *" get helmreleases.helm.toolkit.fluxcd.io,ocirepositories"*) printf '%s' "\${CHART_OBJECTS:-}" ;;
   *" get deployments,statefulsets,daemonsets "*) printf '%s' "\${RETIRED_WORKLOADS:-}" ;;
   *"get ocirepositories.source.toolkit.fluxcd.io test-wrong-signer-"*"[?(@.type"*)

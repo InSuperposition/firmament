@@ -1,6 +1,6 @@
 # Applies the admission policies CI rendered for this environment. It waits for
 # the rendered Kustomization, which is Ready only when the Kyverno release is,
-# so a ClusterPolicy never reconciles before its definition exists. Pruning is
+# so a policy never reconciles before its definition exists. Pruning is
 # on, and each policy carries prune: disabled, so removing a policy takes an
 # explicit delete.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
