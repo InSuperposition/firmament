@@ -9,3 +9,4 @@ runtime_info:
   cluster: singularity
   git_branch: main
   git_commit: abc123
+  artifact_source: ghcr.io/insuperposition/firmament

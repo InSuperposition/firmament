@@ -18,5 +18,7 @@ package clusteraccess
 		cluster!:                  string
 		git_branch!:               string
 		git_commit!:               =~"^[0-9a-f]{40}$"
+		// Where Flux pulls the rendered artifact from, as environment.yaml states it.
+		artifact_source!: =~"^ghcr\\.io/[a-z0-9._/-]+$"
 	})
 })

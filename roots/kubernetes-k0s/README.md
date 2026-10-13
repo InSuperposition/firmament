@@ -31,6 +31,7 @@ runtime_info:
   cluster: singularity
   git_branch: main
   git_commit: 0123456789abcdef0123456789abcdef01234567
+  artifact_source: ghcr.io/insuperposition/firmament
 ```
 
 `runtime_info` carries the values the packages substitute. Flux

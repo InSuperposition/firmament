@@ -24,6 +24,12 @@ load setup.bash
   [ "$exposed" = "$linted" ]
 }
 
+@test "gives Flux the artifact source the environment states" {
+  run planned_output runtime_info
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.artifact_source' <<<"$output")" = "$(yq -r '.artifact_source' "$root_directory/environments/local/environment.yaml")" ]
+}
+
 @test "renders the k0sctl configuration for the machine-hosts contract" {
   run k0sctl_file
   [ "$status" -eq 0 ]

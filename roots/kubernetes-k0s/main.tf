@@ -55,6 +55,7 @@ locals {
     cluster                  = local.cluster
     git_branch               = var.git_branch
     git_commit               = var.git_commit
+    artifact_source          = lookup(local.environment_data, "artifact_source", "")
   }
 }
 

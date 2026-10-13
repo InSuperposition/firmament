@@ -1,5 +1,5 @@
 name: openbao
-layer: identity
+layer: trust
 pin:
   source: oci://ghcr.io/openbao/charts/openbao
   version: 0.18.0

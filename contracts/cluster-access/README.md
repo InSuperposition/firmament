@@ -19,6 +19,7 @@ reads against the same fields at plan time, naming the field that fails.
 | `runtime_info.cluster` | string | |
 | `runtime_info.git_branch` | string | |
 | `runtime_info.git_commit` | string | 40 lowercase hex characters |
+| `runtime_info.artifact_source` | string | a lowercase `ghcr.io/` repository, copied from `environment.yaml`; the Flux OCIRepository pulls `oci://${artifact_source}` |
 
 Every `runtime_info` value is a string: Flux substitution is plain text
 replacement, so a number would not substitute.

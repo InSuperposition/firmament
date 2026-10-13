@@ -28,7 +28,7 @@ locals {
 
   runtime_info_fields = [
     "api_address", "api_port", "kube_proxy_replacement", "cilium_datapath_mode",
-    "cilium_operator_replicas", "environment", "cluster", "git_branch", "git_commit",
+    "cilium_operator_replicas", "environment", "cluster", "git_branch", "git_commit", "artifact_source",
   ]
 
   invalid_runtime_info_fields = [
@@ -39,7 +39,7 @@ locals {
 
 # The cluster-access contract, checked where it is read. The same fields
 # contracts/cluster-access/schema.cue declares: a kubeconfig path and the
-# nine runtime values, every one a string because Flux substitution is
+# ten runtime values, every one a string because Flux substitution is
 # plain text replacement.
 resource "terraform_data" "cluster_access_contract" {
   input = local.cluster
