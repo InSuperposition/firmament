@@ -20,7 +20,8 @@
 # failed requests);
 # $FORTIO_RUN, $FORTIO_STATUS, $FORTIO_STOP and $FORTIO_RESULT name other
 # files to print instead.
-# `tofu state list` prints $TOFU_STATE_LIST. k0sctl is its own stand-in: `k0sctl
+# `tofu state list` prints $TOFU_STATE_LIST. `tofu destroy` of the machine root
+# fails when $MACHINE_DESTROY_FAILS is set. k0sctl is its own stand-in: `k0sctl
 # apply` fails with $K0SCTL_APPLY_ERROR or sleeps $K0SCTL_APPLY_SLEEP seconds
 # when set, and `k0sctl kubeconfig` prints a kubeconfig, or half of one and
 # fails with $K0SCTL_KUBECONFIG_ERROR when set.
@@ -196,6 +197,8 @@ stub() {
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
   *" state list"*) printf '%s' "\${TOFU_STATE_LIST:-}" ;;
+  *"roots/machine-orb destroy"*)
+    if [[ -n "\${MACHINE_DESTROY_FAILS:-}" ]]; then printf '%s\\n' 'Error: machine destroy failed' >&2; exit 1; fi ;;
   *" replace --raw "*"/ephemeralcontainers"*)
     cat >/dev/null
     if [[ -n "\${ADMIT_EPHEMERAL:-}" ]]; then printf '%s\\n' '{"kind":"Pod"}'; else

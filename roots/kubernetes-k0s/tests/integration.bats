@@ -132,7 +132,7 @@ load setup.bash
   [[ "$(tr -s ' \n' '  ' <<<"$output")" == *"is retired, so it cannot run"* ]]
 }
 
-@test "forgets the allocation records with state rm, so destroy works" {
+@test "refuses a plain destroy and works once state rm forgets the allocation records" {
   apply_environment local
   run tofu -chdir="$k0s_root" destroy -input=false -auto-approve -no-color -state="$BATS_TEST_TMPDIR/allocations.tfstate"
   [ "$status" -ne 0 ]
@@ -141,6 +141,19 @@ load setup.bash
   run tofu -chdir="$k0s_root" destroy -input=false -auto-approve -no-color -state="$BATS_TEST_TMPDIR/allocations.tfstate" \
     -var=environment=local -var=environments_directory="$k0s_root/tests/fixtures/environments"
   [ "$status" -eq 0 ]
+}
+
+@test "a destroy that excludes the allocation records removes the rest and keeps the records" {
+  apply_environment local
+  state="$BATS_TEST_TMPDIR/allocations.tfstate"
+  run tofu -chdir="$k0s_root" destroy -input=false -auto-approve -no-color -state="$state" \
+    -var=environment=local -var=environments_directory="$k0s_root/tests/fixtures/environments" \
+    -exclude='terraform_data.allocation'
+  echo "$output" | tail -15 >&3
+  [ "$status" -eq 0 ]
+  run tofu -chdir="$k0s_root" state list -state="$state"
+  echo "left: $output" >&3
+  [[ "$output" == *'terraform_data.allocation["singularity"]'* ]]
 }
 
 @test "refuses to plan without the machine-hosts contract" {
