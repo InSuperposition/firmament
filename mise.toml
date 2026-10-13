@@ -72,14 +72,6 @@ run = ["hk check --all --step mise", "mise tasks validate"]
 description = "Test the vm-orb module without a live VM"
 run = "bats modules/vm-orb/tests/unit.bats"
 
-[tasks.render]
-description = "Check the data files and render each environment's namespaces into clusters/<cluster>/rendered/<environment>; CI runs it before the artifact is pushed"
-env = { ENVIRONMENT = "local" }
-run = [
-  "cue vet -c .:inputs",
-  "timoni bundle build -f render/bundle.cue --runtime-from-env --output-dir clusters/singularity/rendered/local",
-]
-
 [tasks."render:test"]
 description = "Check that the render refuses bad data, renders the same bytes twice and keeps the vendored schema equal to its contract"
 run = "bats tests/render"
