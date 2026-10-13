@@ -1,0 +1,21 @@
+environment: sample
+namespaces:
+  shop:
+    tenant: apps
+    kind: team
+    administrators: []
+    quota:
+      cpu: "2"
+      memory: 4Gi
+    packages:
+      - name: site
+        layer: app
+        source: oci://ghcr.io/example/charts/site
+        version: 1.0.0
+        digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+        bootstrap: false
+        signed: false
+        hostPorts:
+          - port: 44100
+            protocol: TCP
+        ingressPorts: []
