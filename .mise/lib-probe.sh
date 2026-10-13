@@ -20,13 +20,18 @@ probe_name() {
 # $1/$2. The rest of the arguments narrow the flows, as hubble observe flags.
 # The agent keeps flows in a ring buffer and reports them a moment after the
 # probe ends, so the lookup repeats until it finds one or the time is up.
+# Hubble prints one flow per line, "Oct 13 10:43:05.854: <from> -> <to> ...";
+# the --verdict flag selects the verdict, so the line only has to be a flow.
+# A failed exec and any other text, such as an error message, are not a flow.
 expect_flow() {
   local namespace="$1" pod="$2" verdict="$3" flows seen
   shift 3
   for _ in 1 2 3 4 5 6 7 8 9 10; do
-    flows=$(kubectl --kubeconfig "$kubeconfig" -n kube-system exec ds/cilium -c cilium-agent -- \
-      hubble observe --from-pod "$namespace/$pod" --verdict "$verdict" "$@" --since 5m --last 1 2>&1) || true
-    [[ -n "$flows" ]] && return 0
+    if flows=$(kubectl --kubeconfig "$kubeconfig" -n kube-system exec ds/cilium -c cilium-agent -- \
+      hubble observe --from-pod "$namespace/$pod" --verdict "$verdict" "$@" --since 5m --last 1 2>&1) &&
+      grep -Eq '^[A-Z][a-z]{2} [ 0-9]{2} [0-9:.]+: .+ (->|<-|<>) ' <<<"$flows"; then
+      return 0
+    fi
     sleep 2
   done
   seen=$(kubectl --kubeconfig "$kubeconfig" -n kube-system exec ds/cilium -c cilium-agent -- \
