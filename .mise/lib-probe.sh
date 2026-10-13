@@ -1,8 +1,12 @@
 # shellcheck shell=bash
 # Helpers for the tasks that start short-lived pods and check what Hubble
-# recorded for them. Source after lib.sh, with $kubeconfig and $image (a
-# container image that carries wget and nc) set.
-# shellcheck disable=SC2154 # the sourcing task sets kubeconfig and image
+# recorded for them. Source after lib.sh, with $kubeconfig set.
+# shellcheck disable=SC2154 # the sourcing task sets kubeconfig
+
+# The image every probe pod runs. It carries wget, which prints response
+# headers with -S, and nc, which reports a connection in its exit status. It
+# is test infrastructure, so no package or OpenBao setting names it.
+readonly image=quay.io/openbao/openbao:2.7.0
 
 # Runs one short-lived pod, named $2, in namespace $1 and prints what the shell
 # command $3 printed.

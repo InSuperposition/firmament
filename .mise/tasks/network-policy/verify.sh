@@ -7,7 +7,6 @@ source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 source "${MISE_PROJECT_ROOT}/.mise/lib-probe.sh"
 environment=$(require_environment) || exit
 kubeconfig=$(environment_kubeconfig) || exit
-cluster=$(cluster_directory) || exit
 
 # The providers and their consumers come from the same resolution that
 # rendered the policies, so this checks what was rendered.
@@ -16,8 +15,6 @@ policy=$(cd "$MISE_PROJECT_ROOT" && cue export .:inputs -e "policy.$environment"
 # One line per allowed edge: provider namespace, port, consumer namespace.
 edges=$(jq -r '.namespaces | to_entries[] | .key as $provider | .value.provides[]? | .port as $port | .consumers[]? | [$provider, $port, .] | @tsv' <<<"$policy")
 [[ -n "$edges" ]] || fail "no namespace provides a capability that another namespace requires; nothing to check" || exit
-# The probe image carries nc, which opens a connection and reports it in its exit status.
-image=$(yq -r '.storage.init_image' "$cluster/openbao.yaml") || exit
 
 # Prints the pod-network pod IPs of a namespace, one per line.
 pod_addresses() {

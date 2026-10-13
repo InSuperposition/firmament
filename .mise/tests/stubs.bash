@@ -10,7 +10,9 @@
 # ConfigMap holds and $RELEASE_VALUES what `helm get values cilium` prints;
 # both default to the same values, so the release runs what Flux applied.
 # $CILIUM_VALUES_GATEWAY_ERROR makes reading the gateway overlay fail with
-# that message.
+# that message. `kubectl get helmrelease cilium` prints $HELMRELEASE_VALUES_FROM
+# (default: the valuesFrom of packages/cilium/helmrelease.yaml, as the live
+# release carries it), or fails with $HELMRELEASE_ERROR.
 # The local environment's contract files record a machine and a cluster
 # (record_contracts below). Calls to the fortio REST
 # API print the replies fortio gave in a live run, kept in $FORTIO_REPLIES
@@ -235,6 +237,9 @@ case "\$*" in
   *" run "*"nc -z"*) printf '%s\\n' "\${NP_ALLOWED:-exit=0}" ;;
   *" -n default run "*)
     printf '%s\\n' "\${NP_DENIED:-wget: can\'t connect to remote host: Operation timed out exit=1}" ;;
+  *"get helmrelease cilium "*)
+    if [[ -n "\${HELMRELEASE_ERROR:-}" ]]; then printf '%s\\n' "\$HELMRELEASE_ERROR" >&2; exit 1; fi
+    printf '%s\\n' "\${HELMRELEASE_VALUES_FROM:-\$(yq -o=json -I=0 '.spec.valuesFrom' "$root_directory/packages/cilium/helmrelease.yaml")}" ;;
   *"get configmap cilium-values-gateway "*)
     if [[ -n "\${CILIUM_VALUES_GATEWAY_ERROR:-}" ]]; then printf '%s\\n' "\$CILIUM_VALUES_GATEWAY_ERROR" >&2; exit 1; fi
     printf '%s' "\${CILIUM_VALUES_GATEWAY:-}" ;;
