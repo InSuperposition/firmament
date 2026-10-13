@@ -13,6 +13,7 @@
 - package: cv
   namespace: cv
   tenant: apps
+  retired: true
 - package: kyverno
   namespace: kyverno
   tenant: platform
