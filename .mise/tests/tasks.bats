@@ -2412,6 +2412,22 @@ mode_of() {
   [[ "$output" == *"Hubble recorded no DROPPED flow from default/policy-probe-"* ]]
 }
 
+@test "network-policy:verify fails when the Hubble exec fails, so an error message cannot pass for a flow" {
+  record_contracts
+  stub_sleep
+  HUBBLE_FAULT=exec run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Hubble recorded no "* ]]
+}
+
+@test "network-policy:verify fails when Hubble prints an error that names the verdict, so text is not a flow" {
+  record_contracts
+  stub_sleep
+  HUBBLE_FAULT=text run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Hubble recorded no "* ]]
+}
+
 @test "network-policy:verify fails when an allowed probe has no forwarded flow" {
   record_contracts
   stub_sleep

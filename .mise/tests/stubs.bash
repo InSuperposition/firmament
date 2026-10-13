@@ -29,7 +29,9 @@
 # hubble-relay pod has IP 10.0.0.7. A pod in the tenant namespace cv has IP
 # 10.0.0.9, and `kubectl run` there prints $NP_TENANT_API (default: timed out).
 # `kubectl exec ... hubble observe` prints one flow, or nothing for the verdict
-# named in $NP_NO_FLOW (DROPPED or FORWARDED).
+# named in $NP_NO_FLOW (DROPPED or FORWARDED). With $HUBBLE_FAULT=exec it fails
+# with an error message; with $HUBBLE_FAULT=text it exits 0 and prints an error
+# message that contains the word DROPPED.
 # `kubectl get ocirepositories` lists $OCI_SOURCES (default: one signed source
 # named cv), and `kubectl apply -f -` appends what it reads to
 # $BATS_TEST_TMPDIR/applied. `kubectl wait` on a chart source fails when its
@@ -196,7 +198,11 @@ case "\$*" in
     if [[ -n "\${TV_FAIL:-}" && "\$*" == *"\$TV_FAIL"* ]]; then exit 1; fi ;;
   *" exec "*"hubble observe"*)
     if [[ "\$*" == *"--verdict \${NP_NO_FLOW:-none} "* ]]; then exit 0; fi
-    printf '%s\\n' 'Oct 10 10:53:20.425: probe -> target FLOW' ;;
+    case "\${HUBBLE_FAULT:-}" in
+    exec) printf '%s\\n' 'error: unable to upgrade connection: container not found (cilium-agent)' >&2; exit 1 ;;
+    text) printf '%s\\n' 'Failed to get flows: DROPPED verdict unavailable (relay not ready)'; exit 0 ;;
+    esac
+    printf '%s\\n' 'Oct 10 10:53:20.425: 10.0.0.1:41042 (ID:11) -> 10.0.0.2:8080 (ID:22) to-endpoint FORWARDED (TCP Flags: SYN)' ;;
   *"get pods -l k8s-app=hubble-relay"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.7","hostIP":"192.168.0.2"}}]}' ;;
   *"-n openbao get pods"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.5","hostIP":"192.168.0.2"}}]}' ;;
   *"-n cv get pods"*) printf '%s\\n' '{"items":[{"status":{"podIP":"10.0.0.9","hostIP":"192.168.0.2"}}]}' ;;
