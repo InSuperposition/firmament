@@ -15,6 +15,8 @@ import (
 
 	package!:         packagespec.#Package
 	targetNamespace!: =~"^[a-z][a-z0-9-]*$"
+	// The account the release installs as; absent, the controller's own authority.
+	serviceAccountName?: string
 	// The chart's values, written to one ConfigMap the HelmRelease reads.
 	values!: {...}
 
@@ -43,6 +45,7 @@ import (
 			name:            config.package.name
 			namespace:       config.metadata.namespace
 			targetNamespace: config.targetNamespace
+			if config.serviceAccountName != _|_ {serviceAccountName: config.serviceAccountName}
 		}}
 	}
 }

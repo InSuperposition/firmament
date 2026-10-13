@@ -7,6 +7,8 @@ package templates
 		name:            string
 		namespace:       string
 		targetNamespace: string
+		// Absent, the release installs with the controller's authority.
+		serviceAccountName?: string
 	}
 
 	apiVersion: "helm.toolkit.fluxcd.io/v2"
@@ -19,6 +21,7 @@ package templates
 	spec: {
 		interval:         "1h"
 		releaseName:      _config.name
+		if _config.serviceAccountName != _|_ {serviceAccountName: _config.serviceAccountName}
 		targetNamespace:  _config.targetNamespace
 		storageNamespace: _config.targetNamespace
 		chartRef: {

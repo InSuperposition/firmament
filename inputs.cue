@@ -69,6 +69,20 @@ namespaces: {
 	}
 }
 
+// The account the charts of each tenant namespace install as, by environment.
+// A platform tenant's charts keep the controller's authority: they install
+// CRDs and cluster-scoped objects by design.
+installers: {[string]: {[string]: string}}
+installers: {
+	for envName, env in environments {
+		(envName): {
+			for binding in bindings[env.cluster] if tenants[envName][binding.tenant].kind != "platform" {
+				(binding.namespace): "installer-\(binding.namespace)"
+			}
+		}
+	}
+}
+
 // A cluster's chart values: clusters/<cluster>/values/<package>.yaml.
 chartValues: {[string]: {[string]: {...}}}
 chartValues: {
@@ -128,7 +142,7 @@ _bootstrapPackages: {
 // The chart packages each environment installs: every bound package the
 // bootstrap does not install. A chart package needs a values file, even an
 // empty one, so a missing file is an error that names the package.
-charts: {[string]: {[string]: {package: packagespec.#Package, targetNamespace: string, values: {...}}}}
+charts: {[string]: {[string]: {package: packagespec.#Package, targetNamespace: string, values: {...}, serviceAccountName?: string}}}
 charts: {
 	for envName, env in environments {
 		(envName): {
@@ -137,6 +151,7 @@ charts: {
 					package:         packages[binding.package]
 					targetNamespace: binding.namespace
 					values:          chartValues[env.cluster][binding.package] & _generatedValues[envName][binding.package]
+					if installers[envName][binding.namespace] != _|_ {serviceAccountName: installers[envName][binding.namespace]}
 				}
 			}
 		}

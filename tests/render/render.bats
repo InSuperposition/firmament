@@ -320,6 +320,24 @@ YAML
   [ "$(yq -r '.spec.valuesFrom[1] | [.name, .optional] | join(",")' "$root_directory/packages/cilium/helmrelease.yaml")" = cilium-values-policy,true ]
 }
 
+@test "a tenant namespace gets an installer account in flux-system and the admin role in its own namespace only" {
+  render local "$BATS_TEST_TMPDIR/out"
+  account="$BATS_TEST_TMPDIR/out/namespace/flux-system_v1_serviceaccount_installer-cv.yaml"
+  binding="$BATS_TEST_TMPDIR/out/namespace/cv_rbac.authorization.k8s.io_v1_rolebinding_installer-cv.yaml"
+  [ "$(yq -r '.metadata.namespace' "$account")" = flux-system ]
+  [ "$(yq -r '[.roleRef.kind, .roleRef.name] | join(",")' "$binding")" = ClusterRole,admin ]
+  [ "$(yq -r '.subjects[0] | [.kind, .name, .namespace] | join(",")' "$binding")" = ServiceAccount,installer-cv,flux-system ]
+  [ "$(find "$BATS_TEST_TMPDIR/out/namespace" -name '*installer*' | wc -l | tr -d ' ')" -eq 2 ]
+}
+
+@test "a tenant chart installs as its installer account and a platform chart keeps the controller's authority" {
+  render local "$BATS_TEST_TMPDIR/out"
+  [ "$(yq -r '.spec.serviceAccountName' "$BATS_TEST_TMPDIR/out/cv/helm.toolkit.fluxcd.io_v2_helmrelease_cv.yaml")" = installer-cv ]
+  for package in cert-manager openbao; do
+    [ "$(yq -r '.spec | has("serviceAccountName")' "$BATS_TEST_TMPDIR/out/$package/helm.toolkit.fluxcd.io_v2_helmrelease_$package.yaml")" = false ]
+  done
+}
+
 @test "a tenant without a kind is refused, naming the field" {
   sed -i.bak '/^kind:/d' environments/local/tenants/platform.yaml
   run cue vet -c .:inputs
