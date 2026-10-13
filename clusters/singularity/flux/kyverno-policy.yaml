@@ -1,0 +1,22 @@
+# Applies the admission policies CI rendered for this environment. It waits for
+# the rendered Kustomization, which is Ready only when the Kyverno release is,
+# so a ClusterPolicy never reconciles before its definition exists. Pruning is
+# on, and each policy carries prune: disabled, so removing a policy takes an
+# explicit delete.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kyverno-policy
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  timeout: 10m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: rendered
+  sourceRef:
+    kind: OCIRepository
+    name: payload
+  path: ./clusters/singularity/admission/${environment}

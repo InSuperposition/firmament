@@ -10,7 +10,7 @@ setup() {
   cp -R "$root_directory"/{cue.mod,inputs.cue,render,contracts,packages,clusters,environments} "$work"
   mkdir -p "$work/.mise/tasks"
   cp "$root_directory/.mise/tasks/render.sh" "$work/.mise/tasks"
-  rm -rf "$work/clusters/singularity/rendered"
+  rm -rf "$work/clusters/singularity/rendered" "$work/clusters/singularity/admission"
   cd "$work"
 }
 
@@ -260,7 +260,7 @@ YAML
   render local "$BATS_TEST_TMPDIR/out"
   policy="$BATS_TEST_TMPDIR/out/cilium-policy/cilium.io_v2_ciliumclusterwidenetworkpolicy_tenant-default-deny.yaml"
   [ "$(yq -r '.spec.endpointSelector.matchExpressions[0] | [.key, .operator] | join(" ")' "$policy")" = "io.kubernetes.pod.namespace NotIn" ]
-  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | join(",")' "$policy")" = cert-manager,default,flux-system,kube-node-lease,kube-public,kube-system,openbao ]
+  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | join(",")' "$policy")" = cert-manager,default,flux-system,kube-node-lease,kube-public,kube-system,kyverno,openbao ]
   [ "$(yq -r '.spec.endpointSelector.matchExpressions[1] | [.key, .operator] | join(" ")' "$policy")" = "io.kubernetes.pod.namespace Exists" ]
   [ "$(yq -r '.spec.enableDefaultDeny | [.ingress, .egress] | join(",")' "$policy")" = true,true ]
   [ "$(yq -r '.spec.ingress | length' "$policy")" -eq 1 ]
@@ -368,6 +368,39 @@ YAML
   run cue vet -c .:inputs
   [ "$status" -ne 0 ]
   [[ "$output" == *retired* ]]
+}
+
+admission_render() {
+  ENVIRONMENT=local timoni bundle build -f render/admission-bundle.cue --runtime-from-env --output-dir "$BATS_TEST_TMPDIR/admission"
+  policy="$BATS_TEST_TMPDIR/admission/kyverno-policy/kyverno.io_v1_clusterpolicy_require-signed-images.yaml"
+}
+
+@test "the signed-image policy covers tenant namespaces by label, names every image and audits until proven" {
+  admission_render
+  rule='.spec.rules[0]'
+  [ "$(yq -r "$rule.match.any[0].resources.namespaceSelector.matchExpressions | map(.key + \" \" + .operator) | join(\",\")" "$policy")" = "firmament.dev/tenant Exists,firmament.dev/tenant NotIn" ]
+  [ "$(yq -r "$rule.verifyImages[0].imageReferences | join(\",\")" "$policy")" = '*' ]
+  [ "$(yq -r "$rule.verifyImages[0].failureAction" "$policy")" = Audit ]
+  [ "$(yq -r "$rule.verifyImages[0].attestors[0].entries[0].keyless.subjectRegExp" "$policy")" = "$(yq -r '.verify.identity' packages/cv/package.yaml)" ]
+}
+
+@test "the signed-image policy leaves exactly the tenants of kind platform alone, as the tenant files name them" {
+  declare_stage_environment
+  yq -i '.kind = "platform"' environments/local/tenants/apps.yaml
+  admission_render
+  [ "$(yq -r '.spec.rules[0].match.any[0].resources.namespaceSelector.matchExpressions[1].values | join(",")' "$policy")" = apps,platform ]
+}
+
+@test "the admission policies render apart from the namespaces and the releases" {
+  render_all
+  [ -e clusters/singularity/admission/local/kyverno-policy/kyverno.io_v1_clusterpolicy_require-signed-images.yaml ]
+  [ -z "$(find clusters/singularity/rendered -name '*clusterpolicy*')" ]
+}
+
+@test "the Kyverno namespace gets no network policy of its own and is excluded from the clusterwide deny" {
+  render local "$BATS_TEST_TMPDIR/out"
+  [ ! -e "$BATS_TEST_TMPDIR/out/cilium-policy/kyverno_cilium.io_v2_ciliumnetworkpolicy_platform.yaml" ]
+  [ "$(yq -r '.spec.endpointSelector.matchExpressions[0].values | contains(["kyverno"])' "$BATS_TEST_TMPDIR/out/cilium-policy/cilium.io_v2_ciliumclusterwidenetworkpolicy_tenant-default-deny.yaml")" = true ]
 }
 
 @test "a tenant without a kind is refused, naming the field" {

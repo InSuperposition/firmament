@@ -307,3 +307,23 @@ policy: {
 		}
 	}
 }
+
+// ---- admission ------------------------------------------------------------
+
+// What the admission policies of each environment need. The platform tenants
+// are generated from the tenant files, never typed by hand. The signer starts
+// as the one that signs the cv chart and image, and is widened when a second
+// publisher exists. The policy audits until the refusals are proven live.
+admission: {[string]: {mode: "Audit" | "Enforce", platformTenants: [...string], signer: {issuer: string, identity: string}}}
+admission: {
+	for envName, env in environments {
+		(envName): {
+			mode: "Audit"
+			platformTenants: list.SortStrings([for name, tenant in tenants[envName] if tenant.kind == "platform" {name}])
+			signer: {
+				issuer:   packages.cv.verify.issuer
+				identity: packages.cv.verify.identity
+			}
+		}
+	}
+}
