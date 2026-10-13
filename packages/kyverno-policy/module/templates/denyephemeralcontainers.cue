@@ -17,6 +17,10 @@ package templates
 	}
 	spec: {
 		validationActions: ["Deny"]
+		// Admission only: a background scan would need Kyverno to read the
+		// subresource, which it has no permission for, and left the policy
+		// reported as not ready in a live run.
+		evaluation: background: enabled: false
 		matchConstraints: {
 			namespaceSelector: matchExpressions: [{
 				key:      "firmament.dev/tenant"
