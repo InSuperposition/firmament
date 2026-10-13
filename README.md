@@ -86,6 +86,8 @@ packages/cilium/      Cilium and Hubble, as Flux reconciles them (plain Kustomiz
 packages/flux/        Flux itself (Flux Operator and the FluxInstance)
 .mise/tasks/          one executable script per mise task, named
                       <noun>/<verb>.sh and run as `mise run <noun>:<verb>`
+.mise/inventory/      the jq program inventory:verify runs to join the
+                      inventory to the cluster's objects
 .mise/lib.sh          helpers the task scripts share (environment lookup,
                       state paths, the branch Flux follows, Flux build
                       rendering, post-apply waits), tested in .mise/tests

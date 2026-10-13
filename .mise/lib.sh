@@ -393,6 +393,16 @@ cluster_directory() {
   printf '%s\n' "$MISE_PROJECT_ROOT/clusters/$cluster"
 }
 
+# Prints the inventory of the selected environment as JSON: one entry per
+# namespace its cluster binds, derived from the tenants, bindings and
+# packages by render/inventory.cue.
+export_inventory() {
+  local environment
+  environment=$(selected_environment) || return
+  (cd "$MISE_PROJECT_ROOT" && cue export render/inventory.cue -e "inventory.$environment" --out json) ||
+    fail "cannot generate the inventory of environment $environment"
+}
+
 # Prints the name of the machine the selected environment runs on:
 # <environment>-<cluster>, the cluster named by the cluster field of its
 # environment.yaml. roots/machine-orb derives the same name; a test pins the

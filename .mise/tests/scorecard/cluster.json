@@ -1,0 +1,606 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "kind": "Namespace",
+      "metadata": {
+        "name": "cert-manager",
+        "namespace": null,
+        "labels": {
+          "firmament.dev/tenant": "platform"
+        }
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "Namespace",
+      "metadata": {
+        "name": "cilium-secrets",
+        "namespace": null,
+        "labels": {}
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "Namespace",
+      "metadata": {
+        "name": "cv",
+        "namespace": null,
+        "labels": {
+          "firmament.dev/tenant": "apps"
+        }
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "Namespace",
+      "metadata": {
+        "name": "default",
+        "namespace": null,
+        "labels": {}
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "Namespace",
+      "metadata": {
+        "name": "flux-operator-bootstrap",
+        "namespace": null,
+        "labels": {}
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "Namespace",
+      "metadata": {
+        "name": "flux-system",
+        "namespace": null,
+        "labels": {
+          "firmament.dev/tenant": "platform"
+        }
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "Namespace",
+      "metadata": {
+        "name": "k0s-autopilot",
+        "namespace": null,
+        "labels": {}
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "Namespace",
+      "metadata": {
+        "name": "kube-node-lease",
+        "namespace": null,
+        "labels": {}
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "Namespace",
+      "metadata": {
+        "name": "kube-public",
+        "namespace": null,
+        "labels": {}
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "Namespace",
+      "metadata": {
+        "name": "kube-system",
+        "namespace": null,
+        "labels": {
+          "firmament.dev/tenant": "platform"
+        }
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "Namespace",
+      "metadata": {
+        "name": "openbao",
+        "namespace": null,
+        "labels": {
+          "firmament.dev/tenant": "platform"
+        }
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "ResourceQuota",
+      "metadata": {
+        "name": "tenant",
+        "namespace": "cert-manager",
+        "labels": {}
+      },
+      "spec": {
+        "hard": {
+          "requests.cpu": "16",
+          "requests.memory": "32Gi"
+        }
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "ResourceQuota",
+      "metadata": {
+        "name": "tenant",
+        "namespace": "cv",
+        "labels": {}
+      },
+      "spec": {
+        "hard": {
+          "requests.cpu": "2",
+          "requests.memory": "4Gi"
+        }
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "ResourceQuota",
+      "metadata": {
+        "name": "critical-pods-flux-system",
+        "namespace": "flux-system",
+        "labels": {
+          "firmament.dev/tenant": "platform"
+        }
+      },
+      "spec": {
+        "hard": {
+          "pods": "1k"
+        }
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "ResourceQuota",
+      "metadata": {
+        "name": "tenant",
+        "namespace": "flux-system",
+        "labels": {}
+      },
+      "spec": {
+        "hard": {
+          "requests.cpu": "16",
+          "requests.memory": "32Gi"
+        }
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "ResourceQuota",
+      "metadata": {
+        "name": "tenant",
+        "namespace": "kube-system",
+        "labels": {}
+      },
+      "spec": {
+        "hard": {
+          "requests.cpu": "16",
+          "requests.memory": "32Gi"
+        }
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "ResourceQuota",
+      "metadata": {
+        "name": "tenant",
+        "namespace": "openbao",
+        "labels": {}
+      },
+      "spec": {
+        "hard": {
+          "requests.cpu": "16",
+          "requests.memory": "32Gi"
+        }
+      },
+      "status": {
+        "conditions": [],
+        "parents": null
+      }
+    },
+    {
+      "kind": "CiliumNetworkPolicy",
+      "metadata": {
+        "name": "platform",
+        "namespace": "cert-manager",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Valid",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "CiliumNetworkPolicy",
+      "metadata": {
+        "name": "platform",
+        "namespace": "cv",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Valid",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "CiliumNetworkPolicy",
+      "metadata": {
+        "name": "platform",
+        "namespace": "flux-system",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Valid",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "CiliumNetworkPolicy",
+      "metadata": {
+        "name": "platform",
+        "namespace": "kube-system",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Valid",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "CiliumNetworkPolicy",
+      "metadata": {
+        "name": "platform",
+        "namespace": "openbao",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Valid",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "HelmRelease",
+      "metadata": {
+        "name": "cert-manager",
+        "namespace": "flux-system",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "Released",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "HelmRelease",
+      "metadata": {
+        "name": "cilium",
+        "namespace": "flux-system",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "Released",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "HelmRelease",
+      "metadata": {
+        "name": "cv",
+        "namespace": "flux-system",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "Released",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "HelmRelease",
+      "metadata": {
+        "name": "flux-operator",
+        "namespace": "flux-system",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "Released",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "HelmRelease",
+      "metadata": {
+        "name": "openbao",
+        "namespace": "flux-system",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "Released",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "OCIRepository",
+      "metadata": {
+        "name": "cert-manager",
+        "namespace": "flux-system",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "ArtifactInStorage",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "OCIRepository",
+      "metadata": {
+        "name": "cilium",
+        "namespace": "flux-system",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "ArtifactInStorage",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "OCIRepository",
+      "metadata": {
+        "name": "cv",
+        "namespace": "flux-system",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "ArtifactInStorage",
+            "status": "True"
+          },
+          {
+            "type": "SourceVerified",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "OCIRepository",
+      "metadata": {
+        "name": "flux-operator",
+        "namespace": "flux-system",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "ArtifactInStorage",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "OCIRepository",
+      "metadata": {
+        "name": "openbao",
+        "namespace": "flux-system",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "ArtifactInStorage",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "OCIRepository",
+      "metadata": {
+        "name": "payload",
+        "namespace": "flux-system",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          },
+          {
+            "type": "ArtifactInStorage",
+            "status": "True"
+          },
+          {
+            "type": "SourceVerified",
+            "status": "True"
+          }
+        ],
+        "parents": null
+      }
+    },
+    {
+      "kind": "HTTPRoute",
+      "metadata": {
+        "name": "cv",
+        "namespace": "cv",
+        "labels": {}
+      },
+      "status": {
+        "conditions": [],
+        "parents": [
+          {
+            "conditions": [
+              {
+                "type": "Accepted",
+                "status": "True"
+              },
+              {
+                "type": "ResolvedRefs",
+                "status": "True"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

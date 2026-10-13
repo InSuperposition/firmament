@@ -47,6 +47,8 @@
 # `nc -z -w 5` (the Mac connecting to the Gateway) fails when
 # $GATEWAY_PORT_ERROR is set, and `kubectl get gateway platform
 # --ignore-not-found` prints nothing when $GATEWAY_ABSENT is set.
+# `kubectl get namespaces,resourcequotas,...` (the scorecard's one list call)
+# prints the file $CLUSTER_OBJECTS names.
 # `mise tasks ls --name-only` prints $TASKS, or a fixed list without it.
 # The env:doctor probes answer as a healthy host unless told otherwise:
 # `orbctl status` prints $ORBCTL_STATUS (default Running), `orb info`
@@ -185,6 +187,7 @@ stub() {
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
   *" state list"*) printf '%s' "\${TOFU_STATE_LIST:-}" ;;
+  *" get namespaces,resourcequotas,"*) cat "\${CLUSTER_OBJECTS:-/dev/null}" ;;
   *"get ocirepositories.source.toolkit.fluxcd.io test-wrong-signer-"*"[?(@.type"*)
     printf '%s\\n' "\${TV_WRONG_MESSAGE:-failed to verify the signature using provider 'cosign keyless': no matching attestations: failed to verify certificate identity: no matching CertificateIdentity found, last error: expected SAN value to match regex x, got y}" ;;
   *"get ocirepositories.source.toolkit.fluxcd.io test-unsigned-"*"[?(@.type"*)
