@@ -185,3 +185,27 @@
 **Effort:** S
 **Priority:** P3
 **Depends on:** a Cilium minor upgrade
+
+### Probe egress of a namespace no binding names
+
+**What:** In `tenant:verify`, start a listener in `default` and connect to it from the pod in the unbound `test-retained-*` namespace; expect a blocked connection and a DROPPED Hubble flow from that pod.
+
+**Why:** `tenant-default-deny` denies both directions, but `tenant:verify` probes only incoming traffic to the unbound namespace. An egress hole for namespaces made by hand or left behind by a removed binding would pass every current check.
+
+**Context:** `.mise/tasks/tenant/verify.sh` (the unbound-namespace phase) and `.mise/lib-probe.sh` (`connect_probe`, `expect_flow`). Bound tenant pods already have egress probes in `network-policy:verify`. Trigger: a second tenant or a real unbinding.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** a second tenant or a real unbinding
+
+### Break each tenant guarantee on purpose on a live cluster
+
+**What:** Prove on real clusters that `tenant:verify` fails when each guarantee is broken: set `wrong_subject` in `.mise/tasks/tenant/verify.sh` to the real `cv` identity; point `.mise/tenant/unsigned-chart.yaml` at the signed `cv` digest; suspend the owning Flux Kustomization, delete `CiliumClusterwideNetworkPolicy tenant-default-deny`, and run the task. Each run must fail.
+
+**Why:** The stub tests inject results (`TV_FAIL`, `NP_NO_FLOW`, `HUBBLE_FAULT`); they show the script reacts, not that Flux or Cilium produce those results when a boundary breaks. The run on 2026-10-13 that found `expect_flow` passing on a failed Hubble exec met the trigger of Decision 4 in the plan. Undecided whether to do it.
+
+**Context:** Cost, approximate: about 10 minutes of machine time per run on its own `env:apply` cluster (apply about 7.5 min, `tenant:verify` about 1 to 3.5 min, destroy 1 to 2 min), so about 30 minutes for three runs; about 20 minutes if one cluster is reused and each mutation is undone in place. Developer attention, approximate: 45 to 60 minutes for three separate runs (edits, waits, cleanup), 30 to 40 minutes for the shared cluster. Never run on the `env:e2e` cluster. Trigger to decide: a Flux, Cilium or `tenant:verify` change that makes live behavior unclear, or another check found passing for the wrong reason.
+
+**Effort:** M
+**Priority:** P4 (low; undecided)
+**Depends on:** nothing
