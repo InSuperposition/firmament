@@ -351,25 +351,32 @@ plan_kubernetes_root() {
 # since it reads the machine-hosts contract the machine root deletes, then
 # the machine root. A root with no state file has nothing to destroy. The
 # Kubernetes root keeps append-only allocation records that refuse to be
-# destroyed; tearing the whole environment down is the one time its history
-# is meant to reset, so they are forgotten first. Destroying resets nothing
-# over SSH (k0s goes with the machine). What the k0sctl edge wrote outside
-# OpenTofu is removed whether or not a state file exists.
+# destroyed, and their history is lost for good once forgotten, so the first
+# pass excludes them (and, by dependency, the contract they wait for) and the
+# records are forgotten only after the machine root is gone. A machine destroy
+# that fails therefore leaves the records, and a retry repeats the same
+# passes. Destroying resets nothing over SSH (k0s goes with the machine). What
+# the k0sctl edge wrote outside OpenTofu is removed whether or not a state
+# file exists.
 destroy_environment_roots() {
-  local state root record
+  local state root address
   require_environment >/dev/null || return
   state="${TF_VAR_state_directory}"
   for root in kubernetes-k0s machine-orb; do
     [[ -f "$state/$root.tfstate" ]] || continue
     init_root "$root"
     if [[ "$root" == kubernetes-k0s ]]; then
-      while IFS= read -r record; do
-        [[ -n "$record" ]] || continue
-        tofu_in_root "$root" state rm "$record"
-      done < <(tofu_in_root "$root" state list | grep '^terraform_data\.allocation\[' || true)
+      tofu_in_root "$root" destroy -input=false -auto-approve -exclude=terraform_data.allocation
+    else
+      tofu_in_root "$root" destroy -input=false -auto-approve
     fi
-    tofu_in_root "$root" destroy -input=false -auto-approve
   done
+  if [[ -f "$state/kubernetes-k0s.tfstate" ]]; then
+    while IFS= read -r address || [[ -n "$address" ]]; do
+      [[ -n "$address" ]] || continue
+      tofu_in_root kubernetes-k0s state rm "$address"
+    done < <(tofu_in_root kubernetes-k0s state list)
+  fi
   rm -f "$state/admin.kubeconfig" "$state/k0sctl.yaml" "$state/known_hosts"
 }
 

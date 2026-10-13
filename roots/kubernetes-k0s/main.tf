@@ -241,7 +241,8 @@ resource "local_file" "cluster_access" {
 # for a cluster is its record, and a changed pod_cidr or mesh_id, or an entry
 # removed from the data instead of marked retired, fails the plan. The records
 # live in state, so an environment with no state is not checked; the destroy
-# tasks forget them with `tofu state rm` before destroying the root.
+# tasks destroy the root with -exclude on them and forget them with
+# `tofu state rm` only after the machine root is gone.
 resource "terraform_data" "allocation" {
   for_each = local.allocations
 

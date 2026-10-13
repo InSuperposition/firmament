@@ -127,16 +127,29 @@ local_state() {
   ! grep -q ' state rm ' "$CALLS" || fail "removed state with no allocation records: $(cat "$CALLS")"
 }
 
-@test "env:destroy forgets the allocation records before destroying the Kubernetes root, and only those" {
+@test "env:destroy excludes the allocation records from the Kubernetes destroy and forgets them only after the machine root is gone" {
   local_state
-  TOFU_STATE_LIST=$'terraform_data.allocation["singularity"]\nterraform_data.environment_contract\nlocal_file.k0sctl' \
+  TOFU_STATE_LIST=$'terraform_data.allocation["singularity"]\nterraform_data.environment_contract' \
     run_task "$root_directory/.mise/tasks/env/destroy.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   run grep -E '^tofu -chdir=.* (state rm|destroy) ' "$CALLS"
-  [ "${#lines[@]}" -eq 3 ] || fail "${lines[*]}"
-  [[ "${lines[0]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s state rm terraform_data.allocation[\"singularity\"] "* ]]
-  [[ "${lines[1]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s destroy -input=false -auto-approve "* ]]
-  [[ "${lines[2]}" == "tofu -chdir=$root_directory/roots/machine-orb destroy -input=false -auto-approve "* ]]
+  [ "${#lines[@]}" -eq 4 ] || fail "${lines[*]}"
+  [[ "${lines[0]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s destroy -input=false -auto-approve -exclude=terraform_data.allocation "* ]]
+  [[ "${lines[1]}" == "tofu -chdir=$root_directory/roots/machine-orb destroy -input=false -auto-approve "* ]]
+  [[ "${lines[2]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s state rm terraform_data.allocation[\"singularity\"] "* ]]
+  [[ "${lines[3]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s state rm terraform_data.environment_contract "* ]]
+}
+
+@test "env:destroy keeps the allocation records when the machine destroy fails, and a retry forgets them" {
+  local_state
+  MACHINE_DESTROY_FAILS=1 TOFU_STATE_LIST='terraform_data.allocation["singularity"]' \
+    run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  [ "$status" -ne 0 ]
+  ! grep -q ' state rm ' "$CALLS" || fail "forgot the records before the machine was gone: $(cat "$CALLS")"
+  : >"$CALLS"
+  TOFU_STATE_LIST='terraform_data.allocation["singularity"]' run_task "$root_directory/.mise/tasks/env/destroy.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  grep -q ' state rm terraform_data.allocation\["singularity"\] ' "$CALLS"
 }
 
 @test "env:destroy removes what the k0sctl edge wrote, even with no state file, and runs twice" {

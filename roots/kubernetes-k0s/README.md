@@ -67,8 +67,11 @@ removed from the data (instead of marked `retired: true`) fails on
 `pod_cidr` ranges must not overlap and must stay outside the service CIDR
 `10.96.0.0/12`, and a retired cluster cannot be the one an environment
 runs. The records live in state, so an environment with no state is not
-checked; `env:destroy` and `orb:destroy` run `tofu state rm` on them before
-destroying the root.
+checked; `env:destroy` and `orb:destroy` destroy the root with
+`-exclude=terraform_data.allocation`, which also keeps the contract record the
+allocations depend on, and run `tofu state rm` on what remains only after the
+machine root is destroyed. A failed machine destroy therefore leaves the
+records, and a retry repeats the same passes.
 
 ## Cilium replaces kube-proxy
 
