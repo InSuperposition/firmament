@@ -7,13 +7,13 @@ setup() {
   root_directory="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   work="$BATS_TEST_TMPDIR/repo"
   mkdir -p "$work"
-  cp -R "$root_directory"/{cue.mod,inputs.cue,bundle.cue,contracts,packages,clusters,environments} "$work"
+  cp -R "$root_directory"/{cue.mod,inputs.cue,render,contracts,packages,clusters,environments} "$work"
   rm -rf "$work/clusters/singularity/rendered"
   cd "$work"
 }
 
 render() {
-  ENVIRONMENT="${1:-local}" timoni bundle build -f bundle.cue --runtime-from-env --output-dir "$2"
+  ENVIRONMENT="${1:-local}" timoni bundle build -f render/bundle.cue --runtime-from-env --output-dir "$2"
 }
 
 # Binds a tenant package `site` to the namespace shop: it lists host port 44100
@@ -336,7 +336,7 @@ YAML
 }
 
 @test "a missing ENVIRONMENT variable fails the render" {
-  run env -u ENVIRONMENT timoni bundle build -f bundle.cue --runtime-from-env --output-dir "$BATS_TEST_TMPDIR/out"
+  run env -u ENVIRONMENT timoni bundle build -f render/bundle.cue --runtime-from-env --output-dir "$BATS_TEST_TMPDIR/out"
   [ "$status" -ne 0 ]
   [[ "$output" == *environment* ]]
 }

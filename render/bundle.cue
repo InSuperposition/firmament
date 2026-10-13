@@ -17,7 +17,7 @@ bundle: {
 		// installs; the instance is named after the package.
 		for name, chart in _environmentCharts {
 			(name): {
-				module: url: "file://packages/chart/module"
+				module: url: "file://../packages/chart/module"
 				namespace: "flux-system"
 				values: {
 					package:         chart.package
@@ -29,7 +29,7 @@ bundle: {
 
 		// The network policy of the namespaces inputs.cue selects.
 		"cilium-policy": {
-			module: url: "file://packages/cilium-policy/module"
+			module: url: "file://../packages/cilium-policy/module"
 			namespace: "flux-system"
 			values: {
 				namespaces:         inputs.policy[_environment].namespaces
@@ -38,7 +38,7 @@ bundle: {
 		}
 
 		namespace: {
-			module: url: "file://packages/namespace/module"
+			module: url: "file://../packages/namespace/module"
 			namespace: "flux-system"
 			values: {
 				environment: _environment

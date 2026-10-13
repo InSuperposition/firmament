@@ -26,6 +26,10 @@ folders:
     holds: environment data; environment.yaml names the cluster
     may_reference: [clusters, roots]
     must_never: [contain code]
+  render:
+    holds: CUE files that derive output from inputs.cue
+    may_reference: [contracts, packages]
+    must_never: [embed data files, which only inputs.cue does]
 cluster_name_places:
   - clusters/<name>/
   - the cluster field of environments/<env>/environment.yaml

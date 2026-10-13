@@ -77,7 +77,7 @@ description = "Check the data files and render each environment's namespaces int
 env = { ENVIRONMENT = "local" }
 run = [
   "cue vet -c .:inputs",
-  "timoni bundle build -f bundle.cue --runtime-from-env --output-dir clusters/singularity/rendered/local",
+  "timoni bundle build -f render/bundle.cue --runtime-from-env --output-dir clusters/singularity/rendered/local",
 ]
 
 [tasks."render:test"]
