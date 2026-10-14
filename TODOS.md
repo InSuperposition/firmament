@@ -1,6 +1,64 @@
 # TODOS
 
+An item lives here only while it is open. When it is completed, move it to a new file under `.plan/archive/todos/` (named after the item in kebab case, such as `check-flux-depends-on-offline.md`) and remove it from this file. There is no "Completed" section here.
+
 ## Infrastructure
+
+### Require a cluster suite or an explicit exemption for each deployed package
+
+**What:** Make `layout:lint` (or a sibling check) fail when a deployed Flux package has no `tests/cluster` suite and no recorded exemption.
+
+**Why:** `cluster_suites` in `.mise/lib.sh` skips a deployed package without a suite silently (the test "skips a deployed package without a suite" in `.mise/tests/lib.bats` pins that). A package added without a suite is never checked on a live cluster.
+
+**Pros:** closes the silent gap. **Cons:** needs an exemption format, and only Flux packages should need a suite (render modules and manifest-only packages have none today).
+
+**Context:** `chart`, `namespace`, `cilium-policy`, `kyverno-policy` and `gateway-api` have no suite; flux, cert-manager, cilium, cv, kyverno and openbao do. Start from the package kinds that the layout check introduces.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** the layout:lint and layout:format change
+
+### Check Flux dependsOn names and render paths offline
+
+**What:** Add an offline check that every `dependsOn` in `clusters/*/flux/*.yaml` names a Kustomization that exists, and that every `spec.path` is a folder `render.sh` writes or the repository holds, is not gitignored, and is inside the publish filter in `.github/workflows/publish.yaml`.
+
+**Why:** `flux:lint` validates schemas only. The render destinations, Flux `spec.path`, `.gitignore` and the artifact filter are separate declarations, so a renamed output can render and still not ship or not apply. It fails only on a live cluster today.
+
+**Pros:** catches a broken path before a live run, and protects the packages/ split. **Cons:** needs a rule for each declaration.
+
+**Context:** `.mise/tasks/flux/lint.sh`, `.mise/tasks/render.sh`, `clusters/singularity/flux/*.yaml`, `.gitignore`.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** None
+
+### Split packages/ into deployable packages and Timoni render modules
+
+**What:** Move the four Timoni render modules (`chart`, `namespace`, `cilium-policy`, `kyverno-policy`) out of `packages/` into a folder of their own (`timoni-modules/` was proposed) and update `render/bundle.cue` and `render/admission-bundle.cue`.
+
+**Why:** `packages/` should hold only what Flux applies, and "module" means OpenTofu in `modules/` and Timoni in `packages/*/module`. The layout contract then becomes literally true.
+
+**Pros:** names match meaning. **Cons:** touches the CUE module URLs, bundles, tests and docs in one change.
+
+**Context:** the approved layout design defers this on purpose. Other renames proposed and deferred as churn without an observed reader: `render/` to `renderers/`, generated trees to `clusters/*/generated/`, `contracts/*-spec` to plain nouns, `.mise/traffic` and `.mise/tenant` under `fixtures/`.
+
+**Effort:** L
+**Priority:** P2
+**Depends on:** the layout:lint and layout:format change; the offline Flux reference check
+
+### Run mise run check in a separate CI workflow
+
+**What:** Add a GitHub workflow, separate from `publish.yaml`, that runs `mise run check` (or its offline subset) on pull requests.
+
+**Why:** no workflow runs the repository's checks; `publish.yaml` sets `MISE_NO_HOOKS=1` and only renders, signs and publishes the artifact. Checks run only in local hooks.
+
+**Pros:** automatic and independent of the signing workflow. **Cons:** tool installs in CI, a check of about three minutes, a push that needs the workflow scope.
+
+**Context:** the stale branch `origin/ci/check-workflow` is a starting point.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** None
 
 ### Exclude two runs from one checkout around the k0sctl edge
 
@@ -88,18 +146,6 @@
 **Priority:** P2
 **Depends on:** the first-tenant slice (cv, `namespace_quota`, tenant-wide default-deny)
 
-### Give a tenant chart a namespace-scoped installer
-
-**What:** Render `spec.serviceAccountName` on the `HelmRelease` of every non-platform tenant package, with a per-namespace installer ServiceAccount and RoleBinding created by the namespace module.
-
-**Why:** `helmrelease.cue` names a `targetNamespace` but no impersonation identity, so a signed tenant chart installs with the controller's authority and can create cluster-scoped objects. Signature verification authenticates the publisher, not the permissions its manifests deserve.
-
-**Context:** Today the only chart author is the platform owner. Trigger: a second chart author or any tenant that is not the owner.
-
-**Effort:** M
-**Priority:** P2
-**Depends on:** the first-tenant slice
-
 ### Bind tenant administrators and select workloads inside a namespace
 
 **What:** Turn `administrators` into Roles and RoleBindings in the tenant's namespaces, and add workload selectors to `provides`/`requires` so a rule can name pods, not only namespaces.
@@ -111,20 +157,6 @@
 **Effort:** M
 **Priority:** P3
 **Depends on:** the first-tenant slice
-
-### Verify image signatures at admission
-
-**What:** A Kyverno `ImageValidatingPolicy` (`policies.kyverno.io/v1`) with `matchImageReferences` for the tenant image and `attestors[].cosign.keyless.identities` holding the workflow subject and the GitHub OIDC issuer.
-
-**Why:** Images are pinned by digest from cluster values and the chart signature is verified by Flux, but nothing checks the image signature when a pod is admitted.
-
-**Context:** Adds a controller. Trigger: a second image publisher or a tenant-authored release. Use the CEL policy types, not legacy `ClusterPolicy`.
-
-**Effort:** M
-**Priority:** P3
-**Depends on:** the first-tenant slice
-
-## Gateway
 
 ### Serve the Gateway over TLS
 
