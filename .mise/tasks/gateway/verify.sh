@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Check that the platform Gateway serves cv: a pod in the default namespace gets HTTP 200 from the Gateway's address, and Hubble recorded the request forwarded into the cv namespace (starts a short-lived pod)"
+#USAGE flag "--result" help="Also print the HTTP status and the Hubble verdict as one JSON line, the observations a run record keeps"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
@@ -22,3 +23,7 @@ answer=$(probe default "$pod" "wget -T 8 -S -qO /dev/null http://$address:$port/
   fail "a pod in the default namespace did not get HTTP 200 from http://$address:$port/: $answer" || exit
 expect_flow default "$pod" FORWARDED --to-namespace cv || exit
 printf 'ok: the Gateway serves cv at http://%s:%s/ (HTTP 200, forwarded into the cv namespace)\n' "$address" "$port"
+# shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
+if [[ "${usage_result:-}" == true ]]; then
+  jq -nc '{observations: [{kind: "http", status: 200}, {kind: "flow", verdict: "FORWARDED", count: 1, window_seconds: 300}]}'
+fi
