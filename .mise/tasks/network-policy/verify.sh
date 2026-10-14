@@ -1,26 +1,72 @@
 #!/usr/bin/env bash
 #MISE description="Check the network policy on the cluster, each probe against the verdict Hubble recorded for it: every consumer of a capability reaches its provider's port, and a pod in the default namespace does not; a pod in the default namespace resolves names but cannot reach a port of an ingress-denied platform namespace, nor a tenant namespace; the policies leave a tenant pod no egress to the API server (reads the policies; starts short-lived pods in default)"
+#USAGE flag "--only <guarantee>" help="Run only one guarantee (direct-access-denied-gateway-allowed) and print what it observed as JSON on the last line"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # shellcheck source=../../lib-probe.sh
 source "${MISE_PROJECT_ROOT}/.mise/lib-probe.sh"
+# shellcheck source=../../lib-record.sh
+source "${MISE_PROJECT_ROOT}/.mise/lib-record.sh"
 environment=$(require_environment) || exit
 kubeconfig=$(environment_kubeconfig) || exit
+
+# shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
+only="${usage_only:-}"
+case "$only" in
+'' | direct-access-denied-gateway-allowed) ;;
+*) fail "unknown guarantee '$only'; this task knows direct-access-denied-gateway-allowed" || exit ;;
+esac
 
 # The providers and their consumers come from the same resolution that
 # rendered the policies, so this checks what was rendered.
 policy=$(cd "$MISE_PROJECT_ROOT" && cue export .:inputs -e "policy.$environment" --out json) ||
   fail "cannot resolve the network policy of environment $environment" || exit
 # One line per allowed edge: provider namespace, port, consumer namespace.
-edges=$(jq -r '.namespaces | to_entries[] | .key as $provider | .value.provides[]? | .port as $port | .consumers[]? | [$provider, $port, .] | @tsv' <<<"$policy")
-[[ -n "$edges" ]] || fail "no namespace provides a capability that another namespace requires; nothing to check" || exit
+edges=""
+[[ -n "$only" ]] || edges=$(jq -r '.namespaces | to_entries[] | .key as $provider | .value.provides[]? | .port as $port | .consumers[]? | [$provider, $port, .] | @tsv' <<<"$policy")
+[[ -n "$only" || -n "$edges" ]] || fail "no namespace provides a capability that another namespace requires; nothing to check" || exit
 
 # Prints the pod-network pod IPs of a namespace, one per line.
 pod_addresses() {
   kubectl --kubeconfig "$kubeconfig" -n "$1" get pods -o json |
     jq -r '.items[] | select(.status.podIP != .status.hostIP) | .status.podIP'
 }
+
+# Fails unless a pod in default is blocked from a pod-network pod of the tenant
+# namespace $1 on its first host port, with a Hubble drop.
+expect_default_blocked_from() {
+  local tenant="$1" port target pod blocked
+  port=$(jq -r --arg ns "$tenant" '.namespaces[$ns].hostPorts[0].port' <<<"$policy")
+  target=$(kubectl --kubeconfig "$kubeconfig" -n "$tenant" get pods -o json |
+    jq -r '[.items[] | select(.status.podIP != .status.hostIP) | .status.podIP] | first // empty')
+  [[ -n "$target" ]] || fail "no pod-network pod in $tenant to probe" || exit
+  pod=$(probe_name)
+  blocked=$(probe default "$pod" "wget -T 8 -qO- http://$target:$port/; echo exit=\$?")
+  [[ "$blocked" == *'timed out'* ]] || fail "a pod in the default namespace was not blocked from $tenant ($target:$port): $blocked" || exit
+  expect_flow default "$pod" DROPPED --to-ip "$target" --to-port "$port" || exit
+  printf 'ok: default is blocked from the %s pod %s on port %s\n' "$tenant" "$target" "$port"
+}
+
+# --only direct-access-denied-gateway-allowed: the cv pod cannot be reached
+# directly from default, and the Gateway still serves cv to a pod there.
+if [[ -n "$only" ]]; then
+  jq -e '.namespaces.cv.hostPorts[0].port' <<<"$policy" >/dev/null ||
+    fail "the network policy of environment $environment has no host port for the namespace cv; nothing to check" || exit
+  record_begin direct-access-denied-gateway-allowed "mise run network-policy:verify --only $only"
+  trap 'record_end $?' EXIT
+  record_step "a pod in default is blocked from the cv pod, with a Hubble drop"
+  expect_default_blocked_from cv
+  record_flow DROPPED 1 300
+  record_pass
+  record_step "the Gateway serves cv to a pod in default"
+  gateway_output=$(usage_result=true "$MISE_PROJECT_ROOT/.mise/tasks/gateway/verify.sh") ||
+    fail "the Gateway check failed: $gateway_output" || exit
+  sed '$d' <<<"$gateway_output"
+  record_merge "$(tail -n 1 <<<"$gateway_output" | jq -c .observations)"
+  record_pass
+  exit 0
+fi
 
 while IFS=$'\t' read -r provider port consumer; do
   addresses=$(pod_addresses "$provider" | paste -sd' ' -)
@@ -74,15 +120,7 @@ fi
 # denied by the clusterwide policy, and no allow opens the API server to them.
 tenant=$(jq -r '[.namespaces | to_entries[] | select(.value.mode == "allow" and (.value.hostPorts | length) > 0)] | first | .key // empty' <<<"$policy")
 if [[ -n "$tenant" ]]; then
-  port=$(jq -r --arg ns "$tenant" '.namespaces[$ns].hostPorts[0].port' <<<"$policy")
-  target=$(kubectl --kubeconfig "$kubeconfig" -n "$tenant" get pods -o json |
-    jq -r '[.items[] | select(.status.podIP != .status.hostIP) | .status.podIP] | first // empty')
-  [[ -n "$target" ]] || fail "no pod-network pod in $tenant to probe" || exit
-  pod=$(probe_name)
-  blocked=$(probe default "$pod" "wget -T 8 -qO- http://$target:$port/; echo exit=\$?")
-  [[ "$blocked" == *'timed out'* ]] || fail "a pod in the default namespace was not blocked from $tenant ($target:$port): $blocked" || exit
-  expect_flow default "$pod" DROPPED --to-ip "$target" --to-port "$port" || exit
-  printf 'ok: default is blocked from the %s pod %s on port %s\n' "$tenant" "$target" "$port"
+  expect_default_blocked_from "$tenant"
   # The signed-image policy refuses an unsigned probe pod in a tenant
   # namespace, and an ephemeral container is refused there too, so the API
   # server's denial is read from the policies instead: the clusterwide deny

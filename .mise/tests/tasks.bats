@@ -2443,6 +2443,48 @@ mode_of() {
   [ "$(cue eval -e '#OperatorCAConfigMapName' "$root_directory/packages/openbao/config" --out text)" = "$(sed -n 's/^readonly operator_ca_configmap=//p' "$root_directory/.mise/tasks/openbao/seed.sh")" ]
 }
 
+@test "network-policy:verify --only prints a valid result: direct access to cv dropped, the Gateway serving cv" {
+  usage_only=direct-access-denied-gateway-allowed run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  expect_selector_result
+  [ "$(jq -r .guarantee <<<"$selector_result")" = direct-access-denied-gateway-allowed ]
+  [ "$(jq '[.controls[] | select(.passed)] | length' <<<"$selector_result")" = 2 ]
+  [ "$(jq -c '[.observations[] | select(.kind == "flow") | .verdict]' <<<"$selector_result")" = '["DROPPED","FORWARDED"]' ]
+  [ "$(jq -r '[.observations[] | select(.kind == "http") | .status][0]' <<<"$selector_result")" = 200 ]
+  ! grep -q 'nslookup' "$CALLS" || fail "ran the platform checks: $(cat "$CALLS")"
+}
+
+@test "network-policy:verify --only fails with a failed control when the direct probe has no dropped flow" {
+  NP_NO_FLOW=DROPPED usage_only=direct-access-denied-gateway-allowed run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  expect_selector_result
+  [ "$(jq -r '.controls[-1].passed' <<<"$selector_result")" = false ]
+  [[ "$(jq -r '.controls[-1].name' <<<"$selector_result")" == *"blocked from the cv pod"* ]]
+}
+
+@test "network-policy:verify --only fails with a failed control when the Gateway does not serve cv" {
+  GATEWAY_ANSWER='  HTTP/1.1 403 Forbidden exit=1' usage_only=direct-access-denied-gateway-allowed run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  expect_selector_result
+  [ "$(jq -r '.controls | map(.passed) | .[-1]' <<<"$selector_result")" = false ]
+  [[ "$(jq -r '.controls[-1].name' <<<"$selector_result")" == *"Gateway serves cv"* ]]
+}
+
+@test "network-policy:verify --only refuses a guarantee it does not know" {
+  usage_only=nonsense run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown guarantee 'nonsense'"* ]]
+}
+
+@test "gateway:verify --result adds the observations as a last JSON line, and prints none without it" {
+  usage_result=true run_task "$root_directory/.mise/tasks/gateway/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [ "$(tail -n 1 <<<"$output" | jq -c '[.observations[].kind]')" = '["http","flow"]' ]
+  run_task "$root_directory/.mise/tasks/gateway/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" != *'"observations"'* ]]
+}
+
 @test "network-policy:verify passes when the consumer reaches the provider's port and the default namespace does not" {
   record_contracts
   run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
@@ -2565,6 +2607,54 @@ mode_of() {
   NP_ALLOWED='exit=1' run_task "$root_directory/.mise/tasks/network-policy/verify.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"did not reach port 8443 of openbao"* ]]
+}
+
+@test "tenant:verify --only wrong-signer-chart-refused checks the control and the wrong signer on cv, and prints a valid result" {
+  usage_only=wrong-signer-chart-refused run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  expect_selector_result
+  [ "$(jq -r .guarantee <<<"$selector_result")" = wrong-signer-chart-refused ]
+  [ "$(jq -r .reference.kind <<<"$selector_result")" = digest ]
+  [ "$(jq '[.controls[] | select(.passed)] | length' <<<"$selector_result")" = 2 ]
+  [[ "$(jq -r '.observations[0].line' <<<"$selector_result")" == *"no matching CertificateIdentity"* ]]
+  ! grep -q 'test-unsigned' "$CALLS" || fail "created the unsigned copy: $(cat "$CALLS")"
+  ! grep -q 'create namespace' "$CALLS" || fail "ran the retained-namespace check"
+  [ "$(grep -c 'delete ocirepositories.source.toolkit.fluxcd.io -l firmament.test/tenant-verify' "$CALLS")" -eq 2 ]
+}
+
+@test "tenant:verify --only fails when the control copy does not verify, with a failed control" {
+  TV_FAIL='SourceVerified=True' usage_only=wrong-signer-chart-refused run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  expect_selector_result
+  [ "$(jq -r '.controls[-1].passed' <<<"$selector_result")" = false ]
+  [[ "$(jq -r '.controls[-1].name' <<<"$selector_result")" == *"real signer verifies"* ]]
+}
+
+@test "tenant:verify --only fails when the target source cv is absent" {
+  OCI_SOURCES='{"items":[{"metadata":{"name":"other"},"spec":{"verify":{}}}]}' usage_only=wrong-signer-chart-refused run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the chart source cv"*"absent"* ]]
+}
+
+@test "tenant:verify --hold keeps the refused source until Enter, then removes it" {
+  printf '\n' >"$BATS_TEST_TMPDIR/enter"
+  MISE_ENV=local TF_VAR_state_directory="$FIRMAMENT_STATE_HOME/environments/local" usage_hold=true usage_only=wrong-signer-chart-refused \
+    run bash -c "'$root_directory/.mise/tasks/tenant/verify.sh' <'$BATS_TEST_TMPDIR/enter'"
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"Press Enter to remove it"* ]]
+  [[ "$output" == *"no matching CertificateIdentity"* ]]
+}
+
+@test "tenant:verify --hold without --only is refused" {
+  usage_hold=true run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--hold needs --only"* ]]
+}
+
+@test "tenant:verify --only refuses a guarantee it does not know" {
+  usage_only=nonsense run_task "$root_directory/.mise/tasks/tenant/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown guarantee 'nonsense'"* ]]
 }
 
 @test "tenant:verify checks a copy with the real signer, a copy with another signer and a copy of an unsigned chart" {
@@ -2798,6 +2888,72 @@ retire_cv() {
   CAN_I_OWN_NO=1 run_task "$root_directory/.mise/tasks/installer/verify.sh" local
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot create deployments in cv, its own namespace"* ]]
+}
+
+# Vets the last line of $output, the JSON a --only selector prints, against
+# the run record's #SelectorResult, and leaves it in $selector_result.
+expect_selector_result() {
+  selector_result=$(tail -n 1 <<<"$output")
+  printf '%s\n' "$selector_result" >"$BATS_TEST_TMPDIR/selector-result.json"
+  cue vet -c -d '#SelectorResult' "$root_directory/contracts/run-record/schema.cue" "$BATS_TEST_TMPDIR/selector-result.json" ||
+    fail "not a #SelectorResult: $selector_result"
+}
+
+@test "redact_line keeps only the part around a known phrase and agrees with the run-record schema" {
+  # shellcheck source=../lib-record.sh
+  source "$root_directory/.mise/lib-record.sh"
+  local line redacted index=0
+  while IFS= read -r line; do
+    redacted=$(redact_line "$line")
+    jq -nc --arg line "$redacted" '{kind: "refusal", line: $line}' >"$BATS_TEST_TMPDIR/observation-$index.json"
+    cue vet -c -d '#Observation' "$root_directory/contracts/run-record/schema.cue" "$BATS_TEST_TMPDIR/observation-$index.json" ||
+      fail "the schema refuses what redact_line kept for: $line -> $redacted"
+    case "$index" in
+    0) [[ "$redacted" == *"every container image must be signed by the signer"* ]] || fail "dropped a safe line: $redacted" ;;
+    1 | 2 | 3 | 4) [ "$redacted" = "$record_marker" ] || fail "kept an unsafe line ($line): $redacted" ;;
+    esac
+    index=$((index + 1))
+  done <<'LINES'
+Error from server: admission webhook "ivpol.validate.kyverno.svc-fail" denied the request: every container image must be signed by the signer
+pod web-7f9c4-abc12 must be signed by the signer
+must be signed by the signer at 10.0.0.5
+no signatures found for fe80::1:2:3
+something else entirely
+failed to verify the signature using provider cosign: no matching CertificateIdentity found, last error: expected SAN value to match regex
+LINES
+}
+
+@test "kyverno:verify --only unsigned-image-refused runs just that guarantee and prints a valid result" {
+  usage_only=unsigned-image-refused run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  expect_selector_result
+  [ "$(jq -r .guarantee <<<"$selector_result")" = unsigned-image-refused ]
+  [ "$(jq -r .exit_status <<<"$selector_result")" = 0 ]
+  [ "$(jq -r .reference.kind <<<"$selector_result")" = tag ]
+  [ "$(jq '[.controls[] | select(.passed)] | length' <<<"$selector_result")" = 3 ]
+  [[ "$(jq -r '.observations[0].line' <<<"$selector_result")" == *"must be signed by the signer"* ]]
+  ! grep -q 'privileged' "$CALLS" || fail "ran the privileged check: $(cat "$CALLS")"
+}
+
+@test "kyverno:verify --only fails with a failed control and a non-zero status when the unsigned image is admitted" {
+  ADMIT_UNSIGNED=1 usage_only=unsigned-image-refused run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
+  [ "$status" -ne 0 ]
+  expect_selector_result
+  [ "$(jq -r .exit_status <<<"$selector_result")" -ne 0 ]
+  [ "$(jq -r '.controls[-1].passed' <<<"$selector_result")" = false ]
+  [[ "$(jq -r '.controls[-1].name' <<<"$selector_result")" == *"unsigned image is refused"* ]]
+}
+
+@test "kyverno:verify --only refuses a guarantee it does not know" {
+  usage_only=nonsense run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown guarantee 'nonsense'"* ]]
+}
+
+@test "kyverno:verify without --only prints no result object" {
+  run_task "$root_directory/.mise/tasks/kyverno/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" != *'"guarantee"'* ]]
 }
 
 @test "kyverno:verify passes when cv admits its signed image and refuses an unsigned image and a privileged pod" {

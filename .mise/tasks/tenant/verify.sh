@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 #MISE description="Check two tenant guarantees on the cluster: Flux refuses a chart whose signer is wrong and a chart with no signature (for each chart source that must be signed, a copy with the real check verifies, a copy that demands another signer does not, and a copy pointed at an unsigned chart does not), and a namespace that no binding names stays denied (creates and deletes temporary chart sources in flux-system and a temporary namespace with one pod)"
+#USAGE flag "--only <guarantee>" help="Run only one guarantee (wrong-signer-chart-refused) on the cv chart source and print what it observed as JSON on the last line"
+#USAGE flag "--hold" help="With --only, keep the refused source until you press Enter, so it can be seen in the Flux UI"
 set -euo pipefail
 # shellcheck source=../../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 # shellcheck source=../../lib-probe.sh
 source "${MISE_PROJECT_ROOT}/.mise/lib-probe.sh"
+# shellcheck source=../../lib-record.sh
+source "${MISE_PROJECT_ROOT}/.mise/lib-record.sh"
 require_environment >/dev/null
 kubeconfig=$(environment_kubeconfig) || exit
 
@@ -15,6 +19,16 @@ fixture="$MISE_PROJECT_ROOT/.mise/tenant/unsigned-chart.yaml"
 unsigned_source=$(yq -r '.source' "$fixture") || exit
 unsigned_digest=$(yq -r '.digest' "$fixture") || exit
 
+# shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
+only="${usage_only:-}"
+case "$only" in
+'' | wrong-signer-chart-refused) ;;
+*) fail "unknown guarantee '$only'; this task knows wrong-signer-chart-refused" || exit ;;
+esac
+if [[ "${usage_hold:-}" == true && -z "$only" ]]; then
+  fail "--hold needs --only: it keeps the refused source of that one guarantee" || exit
+fi
+
 flux_kubectl() {
   kubectl --kubeconfig "$kubeconfig" -n "$flux_namespace" "$@"
 }
@@ -24,7 +38,13 @@ remove_temporary_objects() {
   flux_kubectl delete ocirepositories.source.toolkit.fluxcd.io -l "$marker" --ignore-not-found --wait=false >/dev/null || true
   kubectl --kubeconfig "$kubeconfig" delete namespaces -l "$marker" --ignore-not-found --wait=false >/dev/null || true
 }
-trap remove_temporary_objects EXIT
+finish() {
+  local status=$?
+  remove_temporary_objects
+  if [[ -n "$only" ]]; then record_end "$status"; fi
+  return "$status"
+}
+trap finish EXIT
 remove_temporary_objects
 
 # Creates a temporary copy of the live source $1 under the name $2. The jq
@@ -51,12 +71,21 @@ expect_verified() {
   fi
   [[ -n "$cause" ]] || return 0
   message=$(flux_kubectl get ocirepositories.source.toolkit.fluxcd.io "$name" -o jsonpath='{.status.conditions[?(@.type=="SourceVerified")].message}') || return
+  verified_message="$message"
   [[ "$message" == *"$cause"* ]] || fail "source $name was refused, but not because of '$cause'; its message:"$'\n'"$message"
 }
 
 sources=$(flux_kubectl get ocirepositories.source.toolkit.fluxcd.io -l "!$marker" -o json |
   jq -r '.items[] | select(.spec.verify != null) | .metadata.name') || exit
 [[ -n "$sources" ]] || fail "no chart source in $flux_namespace must be signed; nothing to check" || exit
+if [[ -n "$only" ]]; then
+  # The guarantee names the cv chart, so a source of another name is not a stand-in.
+  grep -qx cv <<<"$sources" || fail "the chart source cv in $flux_namespace is absent or need not be signed; nothing to check" || exit
+  sources=cv
+  reference=$(flux_kubectl get ocirepositories.source.toolkit.fluxcd.io cv -o json |
+    jq -c 'if .spec.ref.digest then {kind: "digest", value: .spec.ref.digest} else {kind: "tag", value: (.spec.ref.tag // "")} end') || exit
+  record_begin wrong-signer-chart-refused "mise run tenant:verify --only $only" "$reference"
+fi
 
 # shellcheck disable=SC2016 # the jq programs name jq variables, not shell ones
 while IFS= read -r original; do
@@ -66,10 +95,23 @@ while IFS= read -r original; do
   unsigned="test-unsigned-$suffix"
   # The control keeps the real check, so a refusal below cannot be a
   # registry or network fault.
+  [[ -z "$only" ]] || record_step "a copy of $original with the real signer verifies"
   create_copy "$original" "$control" '.' || exit
   expect_verified "$control" True || exit
+  [[ -z "$only" ]] || record_pass
+  [[ -z "$only" ]] || record_step "a copy of $original that demands another signer is refused for its identity"
   create_copy "$original" "$wrong" '.verify.matchOIDCIdentity[0].subject = $subject' --arg subject "$wrong_subject" || exit
   expect_verified "$wrong" False 'no matching CertificateIdentity' || exit
+  if [[ -n "$only" ]]; then
+    record_line condition "$verified_message"
+    record_pass
+    printf 'ok: Flux verifies %s and refuses it when another signer is required: %s\n' "$original" "$verified_message"
+    if [[ "${usage_hold:-}" == true ]]; then
+      printf 'The refused source %s is in %s now. Press Enter to remove it.\n' "$wrong" "$flux_namespace"
+      read -r _ || true
+    fi
+    exit 0
+  fi
   create_copy "$original" "$unsigned" '.url = $source | .ref.digest = $digest' --arg source "$unsigned_source" --arg digest "$unsigned_digest" || exit
   expect_verified "$unsigned" False 'no signatures found' || exit
   printf 'ok: Flux verifies %s, refuses it when another signer is required, and refuses an unsigned chart under the same check\n' "$original"

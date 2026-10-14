@@ -23,6 +23,19 @@ mistaken for a digest), at least one control (`name`, `passed`) and at least
 one observation. A selector prints the same object, without `started` and
 `finished`, as the last line of its output.
 
+Each guarantee has a task that runs only it and prints that object:
+
+| Guarantee | Task | What it keeps |
+| --- | --- | --- |
+| `wrong-signer-chart-refused` | `mise run tenant:verify --only wrong-signer-chart-refused [--hold]` | the cv chart source with the real signer verifies, and a copy that demands another signer is refused for its identity; `--hold` keeps the refused source until Enter, so the Flux UI can show it |
+| `direct-access-denied-gateway-allowed` | `mise run network-policy:verify --only direct-access-denied-gateway-allowed` | a pod in `default` is dropped on the way to the cv pod, and the Gateway still serves cv to it (the result of `gateway:verify --result`) |
+| `unsigned-image-refused` | `mise run kyverno:verify --only unsigned-image-refused` | the signed cv image is admitted, an unsigned image is refused in `cv` and admitted in `default` |
+
+When a selector fails it still prints the object, with its exit status and the
+control in progress marked as not passed, so the caller can keep the failed
+action in an incomplete record. The reference of the unsigned-image action is a
+tag; that of the chart action is a digest.
+
 An observation is one of:
 
 - `refusal` or `condition` with a `line`;
