@@ -1,0 +1,8 @@
+# The generated folders under clusters/<cluster>/ and the bundle file in
+# render/ that fills each one. The admission policies are apart from the rest
+# because their CRDs arrive with a release in the first tree.
+trees:
+  - bundle: bundle.cue
+    folder: rendered
+  - bundle: admission-bundle.cue
+    folder: admission
