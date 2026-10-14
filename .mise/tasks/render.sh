@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Check the data files and render each declared environment into clusters/<cluster>/rendered/<environment> (namespaces and chart releases) and clusters/<cluster>/admission/<environment> (admission policies); CI runs it before the artifact is pushed"
+#MISE description="Check the data files and render each declared environment into clusters/<cluster>/workloads/<environment> (namespaces and chart releases) and clusters/<cluster>/admission/<environment> (admission policies); CI runs it before the artifact is pushed"
 set -euo pipefail
 cd "${MISE_PROJECT_ROOT:?}"
 

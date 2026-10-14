@@ -18,20 +18,6 @@ An item lives here only while it is open. When it is completed, move it to a new
 **Priority:** P3
 **Depends on:** the layout:lint and layout:format change
 
-### Rename the generated output trees and the bundle files together
-
-**What:** Rename `clusters/<cluster>/rendered` and `admission` (for example to `generated/<bundle>/<env>`) and `timoni/bundles/bundle.cue` and `admission-bundle.cue` (for example `workloads.cue` and `admission.cue`) in one change. Update `render.sh`, the Flux `spec.path` values in `clusters/singularity/flux/{rendered,kyverno-policy}.yaml`, `.gitignore`, tests and docs.
-
-**Why:** one consistent noun, and a file-to-tree pairing that is readable by name.
-
-**Pros:** consistent names; `flux-refs:lint` now fails on a `spec.path` the render no longer writes, and `.mise/render-trees.yaml` is the one place that names the folders. **Cons:** touches Flux paths.
-
-**Context:** deferred in the eng review of 2026-10-14 (D5, D8).
-
-**Effort:** M
-**Priority:** P3
-**Depends on:** None
-
 ### Run mise run check in a separate CI workflow
 
 **What:** Add a GitHub workflow, separate from `publish.yaml`, that runs `mise run check` (or its offline subset) on pull requests.

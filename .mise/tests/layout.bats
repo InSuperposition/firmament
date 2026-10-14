@@ -54,7 +54,7 @@ review_checks: [a package names no cluster]
 YAML
   : >"$repository/packages/a-flux/package.yaml"
   : >"$repository/timoni/modules/b-render/timoni.cue"
-  : >"$repository/timoni/bundles/bundle.cue"
+  : >"$repository/timoni/bundles/workloads.cue"
   : >"$repository/packages/c-manifests/crds.yaml"
   for package in a-flux c-manifests; do printf '# %s\n' "$package" >"$repository/packages/$package/README.md"; done
   printf '# b-render\n' >"$repository/timoni/modules/b-render/README.md"

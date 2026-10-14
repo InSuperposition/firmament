@@ -14,9 +14,9 @@ setup() {
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
   repository="$BATS_TEST_TMPDIR/repository"
   flux="$repository/clusters/alpha/flux"
-  mkdir -p "$flux" "$repository/clusters/alpha/payload" "$repository/clusters/alpha/rendered/dev/app" "$repository/.github/workflows"
+  mkdir -p "$flux" "$repository/clusters/alpha/payload" "$repository/clusters/alpha/workloads/dev/app" "$repository/.github/workflows"
   ln -sfn "$root_directory/.mise" "$repository/.mise"
-  printf 'clusters/*/rendered/\nclusters/*/admission/\n' >"$repository/.gitignore"
+  printf 'clusters/*/workloads/\nclusters/*/admission/\n' >"$repository/.gitignore"
   cat >"$repository/.github/workflows/publish.yaml" <<'YAML'
 steps:
   - run: flux push artifact "oci://$ARTIFACT" --path . --ignore-paths '/*,!/clusters/,!/packages/' --reproducible
@@ -29,7 +29,7 @@ resources:
   - rendered.yaml
 YAML
   kustomization payload payload ./clusters/alpha/payload "" "flux-system/cilium" >"$flux/payload.yaml"
-  kustomization rendered rendered './clusters/alpha/rendered/${environment}' "payload" "flux-system/app" >"$flux/rendered.yaml"
+  kustomization rendered rendered './clusters/alpha/workloads/${environment}' "payload" "flux-system/app" >"$flux/rendered.yaml"
   cat >"$repository/clusters/alpha/payload/kustomization.yaml" <<'YAML'
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -37,7 +37,7 @@ resources:
   - cilium.yaml
 YAML
   helm_release cilium >"$repository/clusters/alpha/payload/cilium.yaml"
-  helm_release app >"$repository/clusters/alpha/rendered/dev/app/release.yaml"
+  helm_release app >"$repository/clusters/alpha/workloads/dev/app/release.yaml"
   git -C "$repository" init -q
   git -C "$repository" add .
   export MISE_PROJECT_ROOT="$repository"
@@ -89,7 +89,7 @@ lint() { run --separate-stderr "$root_directory/.mise/tasks/flux-refs/lint.sh"; 
 }
 
 @test "flux-refs:lint rejects a generated path the trees file does not name" {
-  sed -i.bak 's#/rendered/#/rendred/#' "$flux/rendered.yaml"
+  sed -i.bak 's#/workloads/#/workloadz/#' "$flux/rendered.yaml"
   lint
   [ "$status" -eq 1 ]
   [[ "$stderr" == *"does not generate for alpha"* ]]
@@ -110,7 +110,7 @@ lint() { run --separate-stderr "$root_directory/.mise/tasks/flux-refs/lint.sh"; 
 }
 
 @test "flux-refs:lint rejects a generated folder that holds a tracked file" {
-  git -C "$repository" add -f clusters/alpha/rendered
+  git -C "$repository" add -f clusters/alpha/workloads
   lint
   [ "$status" -eq 1 ]
   [[ "$stderr" == *"generated but holds tracked files"* ]]
@@ -145,7 +145,7 @@ lint() { run --separate-stderr "$root_directory/.mise/tasks/flux-refs/lint.sh"; 
 }
 
 @test "flux-refs:lint reports an unrendered generated folder instead of failing" {
-  rm -rf "$repository/clusters/alpha/rendered"
+  rm -rf "$repository/clusters/alpha/workloads"
   lint
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"is not rendered"* ]]

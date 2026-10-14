@@ -2,7 +2,7 @@
 # timoni/bundles/ that fills each one. The admission policies are apart from the rest
 # because their CRDs arrive with a release in the first tree.
 trees:
-  - bundle: bundle.cue
-    folder: rendered
-  - bundle: admission-bundle.cue
+  - bundle: workloads.cue
+    folder: workloads
+  - bundle: admission.cue
     folder: admission
