@@ -9,13 +9,7 @@ source "${MISE_PROJECT_ROOT}/.mise/lib-probe.sh"
 environment=$(require_environment) || exit
 kubeconfig=$(environment_kubeconfig) || exit
 
-readonly gateway_namespace=kube-system gateway_name=platform
-gateway=$(kubectl --kubeconfig "$kubeconfig" -n "$gateway_namespace" get gateway "$gateway_name" -o json) ||
-  fail "cannot read the Gateway $gateway_namespace/$gateway_name" || exit
-address=$(jq -r '.status.addresses[0].value // empty' <<<"$gateway")
-port=$(jq -r '.spec.listeners[0].port // empty' <<<"$gateway")
-[[ -n "$address" && -n "$port" ]] ||
-  fail "the Gateway $gateway_namespace/$gateway_name has no address or listener port yet" || exit
+read -r address port < <(gateway_endpoint) || exit
 
 pod=$(probe_name)
 answer=$(probe default "$pod" "wget -T 8 -S -qO /dev/null http://$address:$port/ 2>&1; echo exit=\$?")

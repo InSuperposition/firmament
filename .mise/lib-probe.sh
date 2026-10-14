@@ -53,3 +53,22 @@ connect_probe() {
   local pod="$4"
   probe "$1" "$pod" "reached=1; for address in $2; do nc -z -w 8 \$address $3 && reached=0; done; echo exit=\$reached"
 }
+
+# Prints the address and the listener port of the platform Gateway, separated
+# by a space, and fails with a message when it cannot be read or has none yet.
+gateway_endpoint() {
+  local namespace=kube-system name=platform gateway address port
+  gateway=$(kubectl --kubeconfig "$kubeconfig" -n "$namespace" get gateway "$name" -o json) ||
+    {
+      fail "cannot read the Gateway $namespace/$name"
+      return
+    }
+  address=$(jq -r '.status.addresses[0].value // empty' <<<"$gateway")
+  port=$(jq -r '.spec.listeners[0].port // empty' <<<"$gateway")
+  [[ -n "$address" && -n "$port" ]] ||
+    {
+      fail "the Gateway $namespace/$name has no address or listener port yet"
+      return
+    }
+  printf '%s %s\n' "$address" "$port"
+}
