@@ -52,6 +52,45 @@ or, for a one-off shell session:
 eval "$(mise env)"
 ```
 
+## See it run
+
+The `cv` site is a tenant of this cluster. Its chart and image are signed,
+Flux refuses anything it cannot verify, and the network and admission policies
+keep other namespaces away from it. `mise run tour` shows three of those
+guarantees on the running cluster, and writes down what it saw.
+
+```sh
+mise run env:apply   # once: builds the cluster, about 8 minutes
+mise run tour        # about 30 seconds of checks, plus your pauses
+```
+
+The tour opens the Flux UI, the Hubble UI and the cv site, then proves one
+guarantee at a time and waits for Enter before each. It stops with a message
+if no cluster runs, if a UI port is busy, or if a guarantee fails; a failed
+or stopped tour keeps an incomplete record. `--yes` skips the pauses, and
+`--build` runs `env:apply` first.
+
+| Guarantee | Where you see it | Task it runs | What it does not show |
+| --- | --- | --- | --- |
+| A source whose signer does not match is rejected at Flux source verification | Flux UI: the refused source stays until you press Enter | `tenant:verify --only wrong-signer-chart-refused` | a foreign-signed chart being refused at install |
+| A pod in `default` cannot reach the cv pod directly, and the Gateway still serves cv | Hubble UI: a dropped flow, then a forwarded one | `network-policy:verify --only direct-access-denied-gateway-allowed` | other source namespaces, and traffic out of a namespace no binding names |
+| An unsigned image is refused at admission | this terminal: the refusal message (a dry run creates no object, so no UI shows it) | `kyverno:verify --only unsigned-image-refused` | privileged pods and ephemeral containers; run `kyverno:verify` for those |
+
+Each run writes a record under `evidence/` in the environment's state folder.
+`mise run evidence` turns the newest complete record into a static page: what
+the tour observed, and, labeled as not observed, what the repository and the
+cluster say now. A record is checked against
+[the run-record contract](contracts/run-record/README.md), which keeps an
+address or a pod name out of its refusal lines. `mise run evidence --publish-record` copies a complete record to
+`.mise/evidence/record.json`; once you commit it, the page states the commit.
+A commit shows the file is unchanged since then, not that the commands ran.
+
+If the tour does not start: `no running cluster` means run `mise run env:apply`;
+`local port ... is already in use` means close what holds 9080, 12000 or 18080
+or pass `--flux-port`, `--hubble-port` or `--cv-port`; `the cluster runs <commit>`
+means the cluster was applied from another commit than this checkout, which the
+record states.
+
 ## Structure
 
 The table below is generated from `contracts/layout/layout.yaml` by
