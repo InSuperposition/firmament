@@ -18,33 +18,19 @@ An item lives here only while it is open. When it is completed, move it to a new
 **Priority:** P3
 **Depends on:** the layout:lint and layout:format change
 
-### Check Flux dependsOn names and render paths offline
+### Rename the generated output trees and the bundle files together
 
-**What:** Add an offline check that every `dependsOn` in `clusters/*/flux/*.yaml` names a Kustomization that exists, and that every `spec.path` is a folder `render.sh` writes or the repository holds, is not gitignored, and is inside the publish filter in `.github/workflows/publish.yaml`.
+**What:** Rename `clusters/<cluster>/rendered` and `admission` (for example to `generated/<bundle>/<env>`) and `timoni/bundles/bundle.cue` and `admission-bundle.cue` (for example `workloads.cue` and `admission.cue`) in one change. Update `render.sh`, the Flux `spec.path` values in `clusters/singularity/flux/{rendered,kyverno-policy}.yaml`, `.gitignore`, tests and docs.
 
-**Why:** `flux:lint` validates schemas only. The render destinations, Flux `spec.path`, `.gitignore` and the artifact filter are separate declarations, so a renamed output can render and still not ship or not apply. It fails only on a live cluster today.
+**Why:** one consistent noun, and a file-to-tree pairing that is readable by name.
 
-**Pros:** catches a broken path before a live run, and protects the packages/ split. **Cons:** needs a rule for each declaration.
+**Pros:** consistent names; `flux-refs:lint` now fails on a `spec.path` the render no longer writes, and `.mise/render-trees.yaml` is the one place that names the folders. **Cons:** touches Flux paths.
 
-**Context:** `.mise/tasks/flux/lint.sh`, `.mise/tasks/render.sh`, `clusters/singularity/flux/*.yaml`, `.gitignore`.
+**Context:** deferred in the eng review of 2026-10-14 (D5, D8).
 
 **Effort:** M
 **Priority:** P3
 **Depends on:** None
-
-### Split packages/ into deployable packages and Timoni render modules
-
-**What:** Move the four Timoni render modules (`chart`, `namespace`, `cilium-policy`, `kyverno-policy`) out of `packages/` into a folder of their own (`timoni-modules/` was proposed) and update `render/bundle.cue` and `render/admission-bundle.cue`.
-
-**Why:** `packages/` should hold only what Flux applies, and "module" means OpenTofu in `modules/` and Timoni in `packages/*/module`. The layout contract then becomes literally true.
-
-**Pros:** names match meaning. **Cons:** touches the CUE module URLs, bundles, tests and docs in one change.
-
-**Context:** the approved layout design defers this on purpose. Other renames proposed and deferred as churn without an observed reader: `render/` to `renderers/`, generated trees to `clusters/*/generated/`, `contracts/*-spec` to plain nouns, `.mise/traffic` and `.mise/tenant` under `fixtures/`.
-
-**Effort:** L
-**Priority:** P2
-**Depends on:** the layout:lint and layout:format change; the offline Flux reference check
 
 ### Run mise run check in a separate CI workflow
 
