@@ -172,6 +172,9 @@ that verb for every noun. The verb also says how far a task reaches:
 | `e2e` | destroys and rebuilds a live cluster; asks first (`--yes` skips) | none |
 | `plan`, `apply`, `destroy` | drive OpenTofu; `destroy` asks first (`-y` skips) | none |
 
+The `check` workflow runs `mise run check` on every pull request and on pushes to `main`,
+with the locked toolset, so a failing check shows red in the Actions tab.
+
 `mise run check` runs every offline check: `lint` (shellcheck, shfmt,
 `tofu fmt`, `mise fmt`, `mise tasks validate`, `chainsaw:lint` for the
 live cluster suites, and `flux:lint`, which renders each environment's
