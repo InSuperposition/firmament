@@ -17,7 +17,7 @@ trap 'rm -rf "$staging"' EXIT
 for tree in "${trees[@]}"; do
   read -r bundle folder <<<"$tree"
   while IFS=$'\t' read -r cluster environment; do
-    ENVIRONMENT="$environment" timoni bundle build -f "render/$bundle" --runtime-from-env \
+    ENVIRONMENT="$environment" timoni bundle build -f "timoni/bundles/$bundle" --runtime-from-env \
       --output-dir "$staging/$folder/$cluster/$environment"
   done < <(cue export .:inputs -e environments --out json |
     jq -r 'to_entries | sort_by(.key)[] | [.value.cluster, .key] | @tsv')

@@ -69,34 +69,40 @@ tree, that contract or this block disagree. Edit the contract, not the block.
 | `.mise/` | the mise task scripts (`tasks/`), their shared libraries, test fixtures and vendored schemas |
 | `clusters/` | cluster definitions; each runs in every environment that names it |
 | `contracts/` | interface documents and the schemas that check them |
-| `cue.mod/` | the CUE module that `inputs.cue` and `render/` belong to |
+| `cue.mod/` | the CUE module that `inputs.cue` and `timoni/` belong to; CUE dictates the name, and it stays at the root because an embed cannot reach outside the module |
 | `environments/` | environment data; `environment.yaml` names the cluster |
 | `modules/` | reusable OpenTofu modules, named `<layer>-<tool>` |
-| `packages/` | what Flux applies and the Timoni modules that render it (see the package kinds below), one folder each, named `<tool>[-<concern>]` |
-| `render/` | CUE files that derive output from `inputs.cue` |
+| `packages/` | deployable components and the code that generates their configuration (see the package kinds below), one folder each, named `<tool>[-<concern>]` |
 | `roots/` | executable OpenTofu roots, named `<concern>-<variant>`, linked by contract files |
 | `tests/` | repository-level render tests (`tests/render`); module and package tests sit beside their code |
+| `timoni/` | the Timoni modules and the bundles that render each environment from `inputs.cue` |
+| `timoni/bundles/` | bundle files that render one environment from `inputs.cue` |
+| `timoni/modules/` | one Timoni module per folder, flat, with its own README and vendored contracts |
 | (top-level files) | `README.md`, `TODOS.md`, `CLAUDE.md`, `inputs.cue`, `mise.toml`, `mise.lock`, `hk.pkl` and the editor, git and shell lint settings |
 
 **Packages**
 
 - `flux-package`: a directory with `package.yaml`; a chart or manifests that Flux installs, with its pin and its cluster suite
-- `render-module`: a directory with `module/` and no `package.yaml`; a Timoni module that renders objects for the bundles in `render/`
-- `manifest-only`: a directory with neither, holding only top-level YAML manifests that Flux applies as they are
+- `manifest-only`: a directory with no `package.yaml`, holding only top-level YAML manifests that Flux applies as they are
 
 | Package | Kind | README |
 | --- | --- | --- |
 | `cert-manager` | `flux-package` | [packages/cert-manager/README.md](packages/cert-manager/README.md) |
-| `chart` | `render-module` | [packages/chart/README.md](packages/chart/README.md) |
 | `cilium` | `flux-package` | [packages/cilium/README.md](packages/cilium/README.md) |
-| `cilium-policy` | `render-module` | [packages/cilium-policy/README.md](packages/cilium-policy/README.md) |
 | `cv` | `flux-package` | [packages/cv/README.md](packages/cv/README.md) |
 | `flux` | `flux-package` | [packages/flux/README.md](packages/flux/README.md) |
 | `gateway-api` | `manifest-only` | [packages/gateway-api/README.md](packages/gateway-api/README.md) |
 | `kyverno` | `flux-package` | [packages/kyverno/README.md](packages/kyverno/README.md) |
-| `kyverno-policy` | `render-module` | [packages/kyverno-policy/README.md](packages/kyverno-policy/README.md) |
-| `namespace` | `render-module` | [packages/namespace/README.md](packages/namespace/README.md) |
 | `openbao` | `flux-package` | [packages/openbao/README.md](packages/openbao/README.md) |
+
+**Timoni modules**
+
+| Module | README |
+| --- | --- |
+| `chart` | [timoni/modules/chart/README.md](timoni/modules/chart/README.md) |
+| `cilium-policy` | [timoni/modules/cilium-policy/README.md](timoni/modules/cilium-policy/README.md) |
+| `kyverno-policy` | [timoni/modules/kyverno-policy/README.md](timoni/modules/kyverno-policy/README.md) |
+| `namespace` | [timoni/modules/namespace/README.md](timoni/modules/namespace/README.md) |
 
 **Where do I...**
 
@@ -104,13 +110,19 @@ tree, that contract or this block disagree. Edit the contract, not the block.
 | --- | --- |
 | Add a tenant (`environments/<env>/tenants/<name>.yaml`) | `environments` |
 | Add a package (`package.yaml`, values and a binding) | `packages` |
-| Find the admission policies (Kyverno) | `packages/kyverno-policy` |
+| Find the admission policies (Kyverno) | `timoni/modules/kyverno-policy` |
 | Find a cluster definition and its Flux build | `clusters` |
 | Find the OpenTofu roots that build the machine, k0s and the bootstrap | `roots` |
 | Find a mise task script (`mise run <noun>:<verb>`) | `.mise/tasks` |
 | Run every offline check | `mise.toml` |
 
 <!-- layout:end -->
+
+Folder names follow three conventions. A tool name (`timoni/`) names an
+execution system, a role (`contracts/`, `clusters/`, `environments/`) names
+what the data is for, and `.mise/` and `cue.mod/` keep the name their tool
+requires. `packages/` holds the deployable components and the code that
+generates their configuration, for example `packages/openbao/config/render.cue`.
 
 The three OpenTofu roots under `roots/` run in order, each from the contract
 file the one before it wrote: `machine-orb` (the OrbStack machine and its
@@ -137,7 +149,7 @@ paths, the branch Flux follows, Flux build rendering, post-apply waits), tested
 in `.mise/tests`.
 
 Every package has its own README with its contract, and so does each root and
-module; `layout:lint` checks the packages'.
+module; `layout:lint` checks the packages' and the Timoni modules'.
 `mise run env:apply` applies the three roots in order (the machine and its
 readiness check, then k0s, then the bootstrap that installs Cilium and
 Flux), and `mise run env:destroy` destroys the Kubernetes root, then the

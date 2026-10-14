@@ -2047,10 +2047,10 @@ expect_planted_value_refused() {
 
 @test "contracts:lint refuses a layout that leaves out a package kind" {
   MISE_PROJECT_ROOT=$(contract_repository)
-  yq -i 'del(.package_kinds."render-module")' "$MISE_PROJECT_ROOT/contracts/layout/layout.yaml"
+  yq -i 'del(.package_kinds."manifest-only")' "$MISE_PROJECT_ROOT/contracts/layout/layout.yaml"
   run "$root_directory/.mise/tasks/contracts/lint.sh"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"render-module"* ]] || fail "$output"
+  [[ "$output" == *"manifest-only"* ]] || fail "$output"
 }
 
 @test "contracts:lint refuses a string ssh.port in machine-hosts" {

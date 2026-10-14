@@ -10,9 +10,11 @@
 #                                                          |
 #   README block <----- layout_current_block ---- layout:lint compares
 #
-# A directory under packages/ has one of three kinds, detected from the
-# tracked tree: flux-package (package.yaml), render-module (module/ and no
-# package.yaml) or manifest-only (neither, with a top-level YAML manifest).
+# A directory under packages/ has one of two kinds, detected from the
+# tracked tree: flux-package (package.yaml) or manifest-only (no package.yaml,
+# with a top-level YAML manifest). A folder may declare subfolders, which are
+# compared with the tracked tree one level down. The Timoni modules under
+# timoni/modules/ are listed in a table of their own.
 
 readonly layout_data=contracts/layout/layout.yaml
 readonly layout_readme=README.md
@@ -36,23 +38,41 @@ layout_package_dirs() {
   git ls-files -- packages | awk -F/ 'NF > 2 {print $2}' | LC_ALL=C sort -u
 }
 
+# Prints the directories directly under timoni/modules/ that hold tracked
+# files, one per line, sorted.
+layout_timoni_module_dirs() {
+  git ls-files -- timoni/modules | awk -F/ 'NF > 3 {print $3}' | LC_ALL=C sort -u
+}
+
+# Prints the subfolders a folder declares, one per line, sorted.
+layout_declared_subfolders() {
+  FOLDER="$1" yq -r '.folders[strenv(FOLDER)].subfolders // {} | keys | .[]' "$layout_data" | LC_ALL=C sort
+}
+
+# Prints the directories directly under a folder that hold tracked files, one
+# per line, sorted. A file directly under the folder is not a subfolder.
+layout_tracked_subfolders() {
+  git ls-files -- "$1" | awk -F/ 'NF > 2 {print $2}' | LC_ALL=C sort -u
+}
+
+# Prints every name a may_reference entry can take: each folder, and each
+# subfolder as folder/subfolder.
+layout_declared_references() {
+  yq -r '.folders | to_entries | .[] | .key as $folder | [$folder] + [.value.subfolders // {} | keys | .[] | $folder + "/" + .] | .[]' "$layout_data"
+}
+
 # Prints the kind of one package directory, or "unclassifiable".
 layout_package_kind() {
-  local name="$1" file has_package=0 has_module=0 has_manifest=0
+  local name="$1" file has_package=0 has_manifest=0
   while IFS= read -r file; do
     case "${file#"packages/$name/"}" in
     package.yaml) has_package=1 ;;
-    module/*) has_module=1 ;;
     */*) ;;
     *.yaml) has_manifest=1 ;;
     esac
   done < <(git ls-files -- "packages/$name")
-  if ((has_package && has_module)); then
-    printf 'unclassifiable\n'
-  elif ((has_package)); then
+  if ((has_package)); then
     printf 'flux-package\n'
-  elif ((has_module)); then
-    printf 'render-module\n'
   elif ((has_manifest)); then
     printf 'manifest-only\n'
   else
@@ -65,12 +85,13 @@ layout_is_tracked() {
   [[ -n "$(git ls-files -- "$1")" ]]
 }
 
-# Prints the README block: the folders, the package kinds and packages, and
-# the places to look for common tasks. Deterministic: sorted, no dates.
+# Prints the README block: the folders and subfolders, the package kinds and
+# packages, the Timoni modules, and the places to look for common tasks.
+# Deterministic: sorted, no dates.
 layout_render_block() {
   local name kind
   printf '\n**Folders**\n\n| Folder | Holds |\n| --- | --- |\n'
-  yq -r '.folders | to_entries | sort_by(.key) | .[] | "| `" + .key + "/` | " + .value.holds + " |"' "$layout_data"
+  yq -r '.folders | to_entries | sort_by(.key) | .[] | .key as $folder | ["| `" + $folder + "/` | " + .value.holds + " |"] + [.value.subfolders // {} | to_entries | sort_by(.key) | .[] | "| `" + $folder + "/" + .key + "/` | " + .value.holds + " |"] | .[]' "$layout_data"
   yq -r '"| (top-level files) | " + .top_level_files.holds + " |"' "$layout_data"
   printf '\n**Packages**\n\n'
   yq -r '.package_kinds | to_entries | .[] | "- `" + .key + "`: " + .value.holds' "$layout_data"
@@ -83,6 +104,14 @@ layout_render_block() {
       printf '| `%s` | `%s` | missing |\n' "$name" "$kind"
     fi
   done < <(layout_package_dirs)
+  printf '\n**Timoni modules**\n\n| Module | README |\n| --- | --- |\n'
+  while IFS= read -r name; do
+    if layout_is_tracked "timoni/modules/$name/README.md"; then
+      printf '| `%s` | [timoni/modules/%s/README.md](timoni/modules/%s/README.md) |\n' "$name" "$name" "$name"
+    else
+      printf '| `%s` | missing |\n' "$name"
+    fi
+  done < <(layout_timoni_module_dirs)
   printf '\n**Where do I...**\n\n| Task | Path |\n| --- | --- |\n'
   yq -r '.find[] | "| " + .question + " | `" + .path + "` |"' "$layout_data"
   printf '\n'
@@ -136,7 +165,7 @@ layout_replace_block() {
 # Prints one line per way the layout and the tree disagree; prints nothing
 # when they agree. Reads only; never writes.
 layout_problems() {
-  local folder reference name kind path expected actual
+  local folder reference references name kind path expected actual
   if [[ ! -f "$layout_data" ]]; then
     printf '%s is missing\n' "$layout_data"
     return 0
@@ -151,21 +180,33 @@ layout_problems() {
   while IFS= read -r folder; do
     printf '%s lists %s, which is not a tracked folder\n' "$layout_data" "$folder"
   done < <(comm -13 <(layout_tracked_folders) <(layout_declared_folders))
+  references=$(layout_declared_references)
   while read -r folder reference; do
     [[ -n "$folder" ]] || continue
-    if ! layout_declared_folders | grep -qx -F -- "$reference"; then
-      printf '%s: folders.%s.may_reference names %s, which is not a folder\n' "$layout_data" "$folder" "$reference"
+    if ! grep -qx -F -- "$reference" <<<"$references"; then
+      printf '%s: %s.may_reference names %s, which is not a folder or a subfolder\n' "$layout_data" "$folder" "$reference"
     fi
-  done < <(yq -r '.folders | to_entries | .[] | .key as $folder | .value.may_reference[] | $folder + " " + .' "$layout_data")
+  done < <(yq -r '.folders | to_entries | .[] | .key as $folder | [.value.may_reference[] | "folders." + $folder + " " + .] + [.value.subfolders // {} | to_entries | .[] | .key as $sub | .value.may_reference[] | "folders." + $folder + ".subfolders." + $sub + " " + .] | .[]' "$layout_data")
+  while IFS= read -r folder; do
+    while IFS= read -r name; do
+      printf '%s: folders.%s.subfolders lists %s, which is not a tracked folder\n' "$layout_data" "$folder" "$name"
+    done < <(comm -13 <(layout_tracked_subfolders "$folder") <(layout_declared_subfolders "$folder"))
+    while IFS= read -r name; do
+      printf 'the tracked folder %s/%s/ is not in folders.%s.subfolders of %s\n' "$folder" "$name" "$folder" "$layout_data"
+    done < <(comm -23 <(layout_tracked_subfolders "$folder") <(layout_declared_subfolders "$folder"))
+  done < <(yq -r '.folders | to_entries | .[] | select(.value.subfolders) | .key' "$layout_data")
   while IFS= read -r path; do
     layout_is_tracked "$path" || printf '%s: the find path %s is not in the tracked tree\n' "$layout_data" "$path"
   done < <(yq -r '.find[].path' "$layout_data")
   while IFS= read -r name; do
     kind=$(layout_package_kind "$name")
     [[ "$kind" != unclassifiable ]] ||
-      printf 'packages/%s fits no kind: it needs package.yaml, or module/ without package.yaml, or a top-level YAML manifest, and not both package.yaml and module/\n' "$name"
+      printf 'packages/%s fits no kind: it needs package.yaml or a top-level YAML manifest; a Timoni module belongs in timoni/modules/\n' "$name"
     layout_is_tracked "packages/$name/README.md" || printf 'packages/%s has no tracked README.md\n' "$name"
   done < <(layout_package_dirs)
+  while IFS= read -r name; do
+    layout_is_tracked "timoni/modules/$name/README.md" || printf 'timoni/modules/%s has no tracked README.md\n' "$name"
+  done < <(layout_timoni_module_dirs)
   if [[ ! -f "$layout_readme" ]]; then
     printf '%s is missing\n' "$layout_readme"
     return 0
