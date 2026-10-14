@@ -49,7 +49,8 @@ esac
 STUB
   chmod +x "$stubs/mise"
   own_stub curl
-  printf '#!/usr/bin/env bash\nprintf 200\n' >"$stubs/curl"
+  cv_port=$((40000 + RANDOM % 10000))
+  printf '#!/usr/bin/env bash\nprintf %%s "${CV_STATUS:-200}"\n' >"$stubs/curl"
   chmod +x "$stubs/curl"
 }
 
@@ -60,7 +61,7 @@ teardown() {
 
 tour() {
   MISE_ENV=local TF_VAR_state_directory="$state" usage_yes="${YES:-true}" usage_flux_port="$flux_port" usage_hubble_port="$hubble_port" \
-    run "$root_directory/.mise/tasks/tour.sh" "$@"
+    usage_cv_port="$cv_port" run "$root_directory/.mise/tasks/tour.sh" "$@"
 }
 
 latest_record() {
@@ -171,4 +172,21 @@ latest_record() {
   [[ "$output" == *"Press Enter to start."* ]]
   grep -q 'mise run tenant:verify --only wrong-signer-chart-refused --hold' "$CALLS"
   ! grep -q 'network-policy:verify --only direct-access-denied-gateway-allowed --hold' "$CALLS"
+}
+
+@test "tour opens the cv site through the Gateway when it answers from this machine" {
+  tour
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"The cv site: http://192.0.2.10:8880/"* ]]
+  ! grep -q 'port-forward' "$CALLS" || fail "started a port-forward: $(cat "$CALLS")"
+}
+
+@test "tour falls back to a port-forward to the cv service when the Gateway does not answer, and stops it" {
+  CV_STATUS=000 tour
+  [ "$status" -eq 0 ] || fail "$output"
+  [[ "$output" == *"does not answer from this machine; using a port-forward"* ]]
+  [[ "$output" == *"The cv site: http://localhost:$cv_port/"* ]]
+  grep -q -- "-n cv port-forward svc/cv $cv_port:80" "$CALLS"
+  sleep 1
+  ! nc -z 127.0.0.1 "$cv_port" || fail "the cv port-forward is still open"
 }

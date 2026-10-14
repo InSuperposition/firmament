@@ -11,8 +11,13 @@ kubeconfig=$(environment_kubeconfig) || exit
 
 read -r address port < <(gateway_endpoint) || exit
 
-pod=$(probe_name)
-answer=$(probe default "$pod" "wget -T 8 -S -qO /dev/null http://$address:$port/ 2>&1; echo exit=\$?")
+# A probe pod that loses the race with its own attach prints no exit status:
+# the command never ran, so it is tried once more with a new pod.
+for _ in 1 2; do
+  pod=$(probe_name)
+  answer=$(probe default "$pod" "wget -T 8 -S -qO /dev/null http://$address:$port/ 2>&1; echo exit=\$?")
+  [[ "$answer" == *'exit='* ]] && break
+done
 [[ "$answer" == *'HTTP/1.1 200'* && "$answer" == *'exit=0'* ]] ||
   fail "a pod in the default namespace did not get HTTP 200 from http://$address:$port/: $answer" || exit
 expect_flow default "$pod" FORWARDED --to-namespace cv || exit
