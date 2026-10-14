@@ -11,7 +11,7 @@ setup() {
   mkdir -p "$work/.mise/tasks"
   cp "$root_directory/.mise/tasks/render.sh" "$work/.mise/tasks"
   cp "$root_directory/.mise/render-trees.yaml" "$work/.mise"
-  rm -rf "$work/clusters/singularity/rendered" "$work/clusters/singularity/admission"
+  rm -rf "$work/clusters/singularity/workloads" "$work/clusters/singularity/admission"
   cd "$work"
 }
 
@@ -26,7 +26,7 @@ declare_stage_environment() {
 }
 
 render() {
-  ENVIRONMENT="${1:-local}" timoni bundle build -f timoni/bundles/bundle.cue --runtime-from-env --output-dir "$2"
+  ENVIRONMENT="${1:-local}" timoni bundle build -f timoni/bundles/workloads.cue --runtime-from-env --output-dir "$2"
 }
 
 # Binds a tenant package `site` to the namespace shop: it lists host port 44100
@@ -372,7 +372,7 @@ YAML
 }
 
 admission_render() {
-  ENVIRONMENT=local timoni bundle build -f timoni/bundles/admission-bundle.cue --runtime-from-env --output-dir "$BATS_TEST_TMPDIR/admission"
+  ENVIRONMENT=local timoni bundle build -f timoni/bundles/admission.cue --runtime-from-env --output-dir "$BATS_TEST_TMPDIR/admission"
   policy="$BATS_TEST_TMPDIR/admission/kyverno-policy/policies.kyverno.io_v1_imagevalidatingpolicy_require-signed-images.yaml"
 }
 
@@ -403,7 +403,7 @@ admission_render() {
 @test "the admission policies render apart from the namespaces and the releases" {
   render_all
   [ -e clusters/singularity/admission/local/kyverno-policy/policies.kyverno.io_v1_imagevalidatingpolicy_require-signed-images.yaml ]
-  [ -z "$(find clusters/singularity/rendered -name '*imagevalidatingpolicy*')" ]
+  [ -z "$(find clusters/singularity/workloads -name '*imagevalidatingpolicy*')" ]
 }
 
 @test "the Kyverno namespace gets no network policy of its own and is excluded from the clusterwide deny" {
@@ -440,7 +440,7 @@ admission_render() {
 }
 
 @test "a missing ENVIRONMENT variable fails the render" {
-  run env -u ENVIRONMENT timoni bundle build -f timoni/bundles/bundle.cue --runtime-from-env --output-dir "$BATS_TEST_TMPDIR/out"
+  run env -u ENVIRONMENT timoni bundle build -f timoni/bundles/workloads.cue --runtime-from-env --output-dir "$BATS_TEST_TMPDIR/out"
   [ "$status" -ne 0 ]
   [[ "$output" == *environment* ]]
 }
@@ -545,51 +545,51 @@ admission_render() {
 @test "every declared environment renders into its own directory of its cluster" {
   declare_stage_environment
   render_all
-  grep -q 'requests.cpu: "16"' clusters/singularity/rendered/local/namespace/flux-system_v1_resourcequota_tenant.yaml
-  grep -q 'requests.cpu: "8"' clusters/singularity/rendered/stage/namespace/flux-system_v1_resourcequota_tenant.yaml
+  grep -q 'requests.cpu: "16"' clusters/singularity/workloads/local/namespace/flux-system_v1_resourcequota_tenant.yaml
+  grep -q 'requests.cpu: "8"' clusters/singularity/workloads/stage/namespace/flux-system_v1_resourcequota_tenant.yaml
 }
 
 @test "the render of one environment is byte-identical to a direct build of it" {
   render_all
   render local "$BATS_TEST_TMPDIR/direct"
-  diff -r "$BATS_TEST_TMPDIR/direct" clusters/singularity/rendered/local
+  diff -r "$BATS_TEST_TMPDIR/direct" clusters/singularity/workloads/local
 }
 
 @test "two renders of every environment are byte-identical" {
   declare_stage_environment
   render_all
-  cp -R clusters/singularity/rendered "$BATS_TEST_TMPDIR/first"
+  cp -R clusters/singularity/workloads "$BATS_TEST_TMPDIR/first"
   render_all
-  diff -r "$BATS_TEST_TMPDIR/first" clusters/singularity/rendered
+  diff -r "$BATS_TEST_TMPDIR/first" clusters/singularity/workloads
 }
 
 @test "a build that fails leaves the last complete render in place" {
   render_all
-  cp -R clusters/singularity/rendered "$BATS_TEST_TMPDIR/before"
+  cp -R clusters/singularity/workloads "$BATS_TEST_TMPDIR/before"
   declare_stage_environment
   mkdir "$BATS_TEST_TMPDIR/bin"
   printf '#!/usr/bin/env bash\n[ "$ENVIRONMENT" != stage ] || exit 1\nexec %s "$@"\n' "$(command -v timoni)" >"$BATS_TEST_TMPDIR/bin/timoni"
   chmod +x "$BATS_TEST_TMPDIR/bin/timoni"
   run env PATH="$BATS_TEST_TMPDIR/bin:$PATH" MISE_PROJECT_ROOT="$work" "$work/.mise/tasks/render.sh"
   [ "$status" -ne 0 ]
-  diff -r "$BATS_TEST_TMPDIR/before" clusters/singularity/rendered
+  diff -r "$BATS_TEST_TMPDIR/before" clusters/singularity/workloads
 }
 
 @test "data the schema refuses leaves the last complete render in place" {
   render_all
-  cp -R clusters/singularity/rendered "$BATS_TEST_TMPDIR/before"
+  cp -R clusters/singularity/workloads "$BATS_TEST_TMPDIR/before"
   sed -i.bak '/^kind:/d' environments/local/tenants/platform.yaml
   run render_all
   [ "$status" -ne 0 ]
-  diff -r "$BATS_TEST_TMPDIR/before" clusters/singularity/rendered
+  diff -r "$BATS_TEST_TMPDIR/before" clusters/singularity/workloads
 }
 
-@test "an environment that is no longer declared leaves no rendered directory" {
+@test "an environment that is no longer declared leaves no workloads directory" {
   declare_stage_environment
   render_all
-  [ -d clusters/singularity/rendered/stage ]
+  [ -d clusters/singularity/workloads/stage ]
   rm -rf environments/stage
   render_all
-  [ ! -e clusters/singularity/rendered/stage ]
-  [ -d clusters/singularity/rendered/local ]
+  [ ! -e clusters/singularity/workloads/stage ]
+  [ -d clusters/singularity/workloads/local ]
 }

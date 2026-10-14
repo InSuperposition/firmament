@@ -2,7 +2,7 @@
 
 Abstract: the Timoni module that renders the admission policies of an
 environment for Kyverno. It is not a Flux package:
-`timoni/bundles/admission-bundle.cue` renders one instance into
+`timoni/bundles/admission.cue` renders one instance into
 `clusters/<cluster>/admission/<environment>`, and the `kyverno-policy` Flux
 Kustomization applies that folder after the `rendered` Kustomization, which is
 Ready only when the Kyverno release is. A policy therefore never reconciles

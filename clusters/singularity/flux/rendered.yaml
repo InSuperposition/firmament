@@ -1,7 +1,10 @@
 # Applies what CI rendered for this environment: the namespaces, with their
 # tenant labels and quotas. The artifact holds one folder per environment;
 # ${environment} comes from the flux-runtime-info ConfigMap. Namespaces carry
-# prune: disabled, so removing a binding never deletes a namespace.
+# prune: disabled, so removing a binding never deletes a namespace. The
+# Kustomization keeps the name rendered while its folder is workloads: Flux
+# prunes what a deleted Kustomization applied, so a rename would remove the
+# releases.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -28,4 +31,4 @@ spec:
   sourceRef:
     kind: OCIRepository
     name: payload
-  path: ./clusters/singularity/rendered/${environment}
+  path: ./clusters/singularity/workloads/${environment}

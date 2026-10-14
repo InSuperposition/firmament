@@ -2149,7 +2149,7 @@ expect_planted_value_refused() {
   [ "$(yq -r '.spec.url' "$flux/ocirepository.yaml")" = 'oci://${artifact_source}' ]
   [[ "$(yq -r '.spec.verify.matchOIDCIdentity[0].subject' "$flux/ocirepository.yaml")" == *'workflows/publish\.yaml@refs/heads/'* ]]
   [ "$(yq -r '.spec.path' "$flux/payload.yaml")" = ./clusters/singularity/payload ]
-  [ "$(yq -r '.spec.path' "$flux/rendered.yaml")" = './clusters/singularity/rendered/${environment}' ]
+  [ "$(yq -r '.spec.path' "$flux/rendered.yaml")" = './clusters/singularity/workloads/${environment}' ]
   run yq -r '.resources[]' "$root_directory/clusters/singularity/payload/kustomization.yaml"
   [ "$output" = "$(printf '../../../packages/cilium\n../../../packages/flux')" ] || fail "$output"
 }

@@ -1,7 +1,7 @@
 # chart
 
 Abstract: The generic Timoni module that installs a Helm chart through Flux.
-Like `namespace`, it is not bound itself: `timoni/bundles/bundle.cue` renders one
+Like `namespace`, it is not bound itself: `timoni/bundles/workloads.cue` renders one
 instance of it for every bound package that is not a bootstrap package, and the instance
 is named after the package.
 
