@@ -200,7 +200,7 @@ stub() {
 printf '%s %s | state=%s branch=%s\n' "$1" "\$*" "\${TF_VAR_state_directory:-}" "\${TF_VAR_git_branch:-}" >>"\$CALLS"
 case "\$*" in
   *" state list"*) printf '%s' "\${TOFU_STATE_LIST:-}" ;;
-  *"roots/machine-orb destroy"*)
+  *"tofu/roots/machine-orb destroy"*)
     if [[ -n "\${MACHINE_DESTROY_FAILS:-}" ]]; then printf '%s\\n' 'Error: machine destroy failed' >&2; exit 1; fi ;;
   *" replace --raw "*"/ephemeralcontainers"*)
     cat >/dev/null

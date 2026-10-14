@@ -16,7 +16,7 @@ locals {
   machine = yamldecode(file("${var.state_directory}/machine-hosts.yaml"))
 
   # The environment's data names the cluster definition it runs.
-  environment_file = "${coalesce(var.environments_directory, "${path.module}/../../environments")}/${var.environment}/environment.yaml"
+  environment_file = "${coalesce(var.environments_directory, "${path.module}/../../../environments")}/${var.environment}/environment.yaml"
   environment_data = yamldecode(file(local.environment_file))
   cluster          = local.environment_data.cluster
 
@@ -166,7 +166,7 @@ resource "terraform_data" "cluster_definition" {
 
   lifecycle {
     precondition {
-      condition     = fileexists("${path.module}/../../clusters/${local.cluster}/flux/kustomization.yaml")
+      condition     = fileexists("${path.module}/../../../clusters/${local.cluster}/flux/kustomization.yaml")
       error_message = "${local.environment_file} names cluster '${local.cluster}', but clusters/${local.cluster}/flux/kustomization.yaml does not exist."
     }
   }

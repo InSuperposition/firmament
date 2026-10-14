@@ -97,7 +97,7 @@ through its private diagnostic upload.
 
 ### Notes for this repo (not part of the issue)
 
-`modules/vm-orb` does not hit this bug. The `robertdebock/orbstack`
+`tofu/modules/vm-orb` does not hit this bug. The `robertdebock/orbstack`
 provider's `orbstack_machine` resource uses the machine's name as its
 `id`, so its delete call takes the name-based path. That is a property of
 the provider, not a deliberate workaround; if the provider ever switches
@@ -111,7 +111,7 @@ to the real OrbStack ID, `env:destroy` would hit this crash.
 | Template | Feature request (`t/feature`) |
 | Status | Filed 2026-09-25: [orbstack/orbstack#2711](https://github.com/orbstack/orbstack/issues/2711) |
 | Duplicate search | 2026-09-23: `INET_DIAG_DESTROY`, `INET_DIAG`, `socket destroy`, `sock_destroy`, `netkit`, `cilium`, `kernel config`; no match |
-| Related Cilium bug | [cilium/BUGS.md](../../packages/cilium/BUGS.md#socket-termination-disabled-when-only-the-netlink-destroy-path-is-missing) |
+| Related Cilium bug | [cilium/BUGS.md](../../../packages/cilium/BUGS.md#socket-termination-disabled-when-only-the-netlink-destroy-path-is-missing) |
 
 **Title:** `[Kernel] Enable CONFIG_INET_DIAG_DESTROY (socket termination for Cilium and ss -K)`
 
@@ -211,7 +211,7 @@ Major distribution and platform kernels already enable it:
   `cilium connectivity test` runs, reconsider
   `socketLB.hostNamespaceOnly` in `packages/cilium`, and update the
   socket termination section in
-  [packages/cilium/README.md](../../packages/cilium/README.md#socket-termination).
+  [packages/cilium/README.md](../../../packages/cilium/README.md#socket-termination).
 - Unlike `CONFIG_PSI` (#1309, declined for measured performance
   regressions), this option does nothing until a privileged process
   sends a destroy request.
@@ -219,7 +219,7 @@ Major distribution and platform kernels already enable it:
   remove, also shapes how Hubble reports Service replies. It is not the
   cause of the `cilium connectivity test` flow-validation failures, which are a
   cilium-cli bug on any platform; see
-  [cilium/BUGS.md](../../packages/cilium/BUGS.md#flow-validation-never-matches-reverse-nated-service-replies).
+  [cilium/BUGS.md](../../../packages/cilium/BUGS.md#flow-validation-never-matches-reverse-nated-service-replies).
   No OrbStack issue mentions Cilium, Hubble or netkit tracing (searched
   2026-09-24 for `cilium`, `cilium hubble`, `cilium netkit`, `ebpf netkit`,
   `kube-proxy replacement`).

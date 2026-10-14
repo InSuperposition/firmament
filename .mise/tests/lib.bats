@@ -66,7 +66,7 @@ setup() {
 @test "runs tofu in one root with the environment's state directory and branch" {
   tofu_in_root kubernetes-k0s plan -input=false
   run cat "$CALLS"
-  [ "$output" = "tofu -chdir=$root_directory/roots/kubernetes-k0s plan -input=false | state=$FIRMAMENT_STATE_HOME/environments/local branch=feature/test" ]
+  [ "$output" = "tofu -chdir=$root_directory/tofu/roots/kubernetes-k0s plan -input=false | state=$FIRMAMENT_STATE_HOME/environments/local branch=feature/test" ]
 }
 
 @test "tells a root the name of the environment it runs for" {
@@ -156,7 +156,7 @@ setup() {
   local root
   for root in machine-orb kubernetes-k0s bootstrap-flux; do
     init_root "$root"
-    grep -q "^tofu -chdir=$root_directory/roots/$root init -input=false -reconfigure -lockfile=readonly -backend-config=path=$FIRMAMENT_STATE_HOME/environments/local/$root.tfstate " "$CALLS" ||
+    grep -q "^tofu -chdir=$root_directory/tofu/roots/$root init -input=false -reconfigure -lockfile=readonly -backend-config=path=$FIRMAMENT_STATE_HOME/environments/local/$root.tfstate " "$CALLS" ||
       fail "$root: $(cat "$CALLS")"
   done
   [ -d "$FIRMAMENT_STATE_HOME/environments/local" ]
@@ -319,26 +319,26 @@ cilium_release_listing() {
 }
 
 @test "initializes a directory without a backend" {
-  init_offline /modules/a
+  init_offline /tofu/modules/a
   run cat "$CALLS"
-  [ "${output%% |*}" = "tofu -chdir=/modules/a init -backend=false -input=false -reconfigure -lockfile=readonly" ]
+  [ "${output%% |*}" = "tofu -chdir=/tofu/modules/a init -backend=false -input=false -reconfigure -lockfile=readonly" ]
 }
 
 @test "finds each module and root holding an OpenTofu test suite, once" {
-  MISE_PROJECT_ROOT=$(make_repository modules/a/tests/unit.tftest.hcl modules/a/tests/more.tftest.hcl \
-    modules/b/tests/unit.bats roots/r/tests/wiring.tftest.hcl)
+  MISE_PROJECT_ROOT=$(make_repository tofu/modules/a/tests/unit.tftest.hcl tofu/modules/a/tests/more.tftest.hcl \
+    tofu/modules/b/tests/unit.bats tofu/roots/r/tests/wiring.tftest.hcl)
   run tofu_test_directories
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 2 ]
-  [ "${lines[0]}" = "$MISE_PROJECT_ROOT/modules/a" ]
-  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/roots/r" ]
+  [ "${lines[0]}" = "$MISE_PROJECT_ROOT/tofu/modules/a" ]
+  [ "${lines[1]}" = "$MISE_PROJECT_ROOT/tofu/roots/r" ]
 }
 
-@test "finds no test directories when no suite exists" {
-  MISE_PROJECT_ROOT=$(make_repository modules/b/tests/unit.bats)
+@test "fails when no OpenTofu test suite exists" {
+  MISE_PROJECT_ROOT=$(make_repository tofu/modules/b/tests/unit.bats)
   run tofu_test_directories
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no OpenTofu test suite"* ]]
 }
 
 @test "stops before tofu when the environment does not exist" {
@@ -476,7 +476,7 @@ cilium_release_listing() {
 # A repository on main, pushed to origin, whose environment x runs a cluster that deploys
 # cilium and flux but not policy-kyverno, then a branch off it.
 branch_repository() {
-  MISE_PROJECT_ROOT=$(make_pushed_repository main environments/x/environment.yaml clusters/singularity/payload/kustomization.yaml roots/r/main.tf \
+  MISE_PROJECT_ROOT=$(make_pushed_repository main environments/x/environment.yaml clusters/singularity/payload/kustomization.yaml tofu/roots/r/main.tf \
     packages/cilium/values.yaml packages/flux/fluxinstance.yaml packages/policy-kyverno/policy.yaml README.md)
   printf 'resources:\n  - ../../../packages/cilium\n  - ../../../packages/flux\n' \
     >"$MISE_PROJECT_ROOT/clusters/singularity/payload/kustomization.yaml"
@@ -516,7 +516,7 @@ branch_repository() {
 @test "changed packages: a change outside packages selects every package" {
   branch_repository
   printf 'x\n' >>"$MISE_PROJECT_ROOT/packages/cilium/values.yaml"
-  printf 'x\n' >>"$MISE_PROJECT_ROOT/roots/r/main.tf"
+  printf 'x\n' >>"$MISE_PROJECT_ROOT/tofu/roots/r/main.tf"
   MISE_ENV=x run changed_packages
   [ "$status" -eq 0 ]
   [ -z "$output" ]

@@ -129,7 +129,7 @@ flux_revision() {
 # Prints the directory of an OpenTofu root: machine-orb, kubernetes-k0s or
 # bootstrap-flux.
 tofu_root_directory() {
-  printf '%s/roots/%s\n' "${MISE_PROJECT_ROOT:?run this through mise}" "$1"
+  printf '%s/tofu/roots/%s\n' "${MISE_PROJECT_ROOT:?run this through mise}" "$1"
 }
 
 # Runs tofu in one root for the selected environment, telling it the
@@ -216,11 +216,19 @@ init_offline() {
 # suite (tests/*.tftest.hcl), once, in sorted order.
 tofu_test_directories() {
   local suite
-  for suite in "${MISE_PROJECT_ROOT:?run this through mise}"/{modules,roots}/*/tests/*.tftest.hcl; do
-    if [[ -e "$suite" ]]; then
-      dirname -- "$(dirname -- "$suite")"
-    fi
-  done | sort -u
+  local directories
+  directories=$(
+    for suite in "${MISE_PROJECT_ROOT:?run this through mise}"/tofu/{modules,roots}/*/tests/*.tftest.hcl; do
+      if [[ -e "$suite" ]]; then
+        dirname -- "$(dirname -- "$suite")"
+      fi
+    done | sort -u
+  )
+  if [[ -z "$directories" ]]; then
+    fail "no OpenTofu test suite (tests/*.tftest.hcl) under tofu/modules or tofu/roots; a moved folder would otherwise pass with no test run"
+    return
+  fi
+  printf '%s\n' "$directories"
 }
 
 # Prints one field of a contract file an earlier root wrote into an
@@ -402,7 +410,7 @@ cluster_directory() {
 
 # Prints the name of the machine the selected environment runs on:
 # <environment>-<cluster>, the cluster named by the cluster field of its
-# environment.yaml. roots/machine-orb derives the same name; a test pins the
+# environment.yaml. tofu/roots/machine-orb derives the same name; a test pins the
 # two together. It reads only the environment's data, so it works before any
 # state or contract exists, such as during a stalled apply.
 machine_name() {

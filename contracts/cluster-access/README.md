@@ -1,10 +1,10 @@
 # cluster-access
 
 Abstract: Where the cluster's kubeconfig is, and the runtime values every
-package reads. `roots/kubernetes-k0s` writes `cluster-access.yaml` into the
-environment's state directory; `roots/bootstrap-flux` and the mise tasks
+package reads. `tofu/roots/kubernetes-k0s` writes `cluster-access.yaml` into the
+environment's state directory; `tofu/roots/bootstrap-flux` and the mise tasks
 read it. The schema (`schema.cue`) is closed. `mise run contracts:lint`
-checks the sample beside it, and `roots/bootstrap-flux` checks the file it
+checks the sample beside it, and `tofu/roots/bootstrap-flux` checks the file it
 reads against the same fields at plan time, naming the field that fails.
 
 | Field | Type | Rule |

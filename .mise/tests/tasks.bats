@@ -119,11 +119,11 @@ local_state() {
   [ "$status" -eq 0 ] || fail "$output"
   run grep -E '^tofu -chdir=.* (init|destroy) ' "$CALLS"
   [ "${#lines[@]}" -eq 4 ]
-  [[ "${lines[0]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s init "* ]]
-  [[ "${lines[1]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s destroy -input=false -auto-approve "* ]]
-  [[ "${lines[2]}" == "tofu -chdir=$root_directory/roots/machine-orb init "* ]]
-  [[ "${lines[3]}" == "tofu -chdir=$root_directory/roots/machine-orb destroy -input=false -auto-approve "* ]]
-  ! grep -q -- 'roots/bootstrap-flux' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
+  [[ "${lines[0]}" == "tofu -chdir=$root_directory/tofu/roots/kubernetes-k0s init "* ]]
+  [[ "${lines[1]}" == "tofu -chdir=$root_directory/tofu/roots/kubernetes-k0s destroy -input=false -auto-approve "* ]]
+  [[ "${lines[2]}" == "tofu -chdir=$root_directory/tofu/roots/machine-orb init "* ]]
+  [[ "${lines[3]}" == "tofu -chdir=$root_directory/tofu/roots/machine-orb destroy -input=false -auto-approve "* ]]
+  ! grep -q -- 'tofu/roots/bootstrap-flux' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
   ! grep -q ' state rm ' "$CALLS" || fail "removed state with no allocation records: $(cat "$CALLS")"
 }
 
@@ -134,10 +134,10 @@ local_state() {
   [ "$status" -eq 0 ] || fail "$output"
   run grep -E '^tofu -chdir=.* (state rm|destroy) ' "$CALLS"
   [ "${#lines[@]}" -eq 4 ] || fail "${lines[*]}"
-  [[ "${lines[0]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s destroy -input=false -auto-approve -exclude=terraform_data.allocation "* ]]
-  [[ "${lines[1]}" == "tofu -chdir=$root_directory/roots/machine-orb destroy -input=false -auto-approve "* ]]
-  [[ "${lines[2]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s state rm terraform_data.allocation[\"singularity\"] "* ]]
-  [[ "${lines[3]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s state rm terraform_data.environment_contract "* ]]
+  [[ "${lines[0]}" == "tofu -chdir=$root_directory/tofu/roots/kubernetes-k0s destroy -input=false -auto-approve -exclude=terraform_data.allocation "* ]]
+  [[ "${lines[1]}" == "tofu -chdir=$root_directory/tofu/roots/machine-orb destroy -input=false -auto-approve "* ]]
+  [[ "${lines[2]}" == "tofu -chdir=$root_directory/tofu/roots/kubernetes-k0s state rm terraform_data.allocation[\"singularity\"] "* ]]
+  [[ "${lines[3]}" == "tofu -chdir=$root_directory/tofu/roots/kubernetes-k0s state rm terraform_data.environment_contract "* ]]
 }
 
 @test "env:destroy keeps the allocation records when the machine destroy fails, and a retry forgets them" {
@@ -193,27 +193,27 @@ local_state() {
   [ "$status" -eq 0 ]
   run grep -E '^tofu -chdir=.* destroy ' "$CALLS"
   [ "${#lines[@]}" -eq 2 ]
-  [[ "${lines[0]}" == "tofu -chdir=$root_directory/roots/kubernetes-k0s destroy -input=false -auto-approve "* ]]
-  [[ "${lines[1]}" == "tofu -chdir=$root_directory/roots/machine-orb destroy -input=false -auto-approve "* ]]
-  ! grep -q -- 'roots/bootstrap-flux' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
+  [[ "${lines[0]}" == "tofu -chdir=$root_directory/tofu/roots/kubernetes-k0s destroy -input=false -auto-approve "* ]]
+  [[ "${lines[1]}" == "tofu -chdir=$root_directory/tofu/roots/machine-orb destroy -input=false -auto-approve "* ]]
+  ! grep -q -- 'tofu/roots/bootstrap-flux' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
 }
 
 @test "env:apply applies the machine root, the Kubernetes root around the k0sctl edge, then the bootstrap root, then waits" {
   e2e_repository
   run_task "$root_directory/.mise/tasks/env/apply.sh" local
   [ "$status" -eq 0 ] || fail "$output"
-  local state="$FIRMAMENT_STATE_HOME/environments/local" k0s="$MISE_PROJECT_ROOT/roots/kubernetes-k0s"
+  local state="$FIRMAMENT_STATE_HOME/environments/local" k0s="$MISE_PROJECT_ROOT/tofu/roots/kubernetes-k0s"
   run grep -E '^(tofu -chdir=.* (init|apply) |k0sctl |kubectl .*--raw /readyz|cilium |mise run openbao:)' "$CALLS"
-  [[ "${lines[0]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/machine-orb init "*"-backend-config=path=$state/machine-orb.tfstate "* ]]
-  [[ "${lines[1]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/machine-orb apply -input=false -auto-approve "* ]]
+  [[ "${lines[0]}" == "tofu -chdir=$MISE_PROJECT_ROOT/tofu/roots/machine-orb init "*"-backend-config=path=$state/machine-orb.tfstate "* ]]
+  [[ "${lines[1]}" == "tofu -chdir=$MISE_PROJECT_ROOT/tofu/roots/machine-orb apply -input=false -auto-approve "* ]]
   [[ "${lines[2]}" == "tofu -chdir=$k0s init "*"-backend-config=path=$state/kubernetes-k0s.tfstate "* ]]
   [[ "${lines[3]}" == "tofu -chdir=$k0s apply -input=false -auto-approve -var=publish_cluster_access=false "* ]]
   [[ "${lines[4]}" == "k0sctl apply --config $state/k0sctl.yaml --no-drain --timeout 900s "* ]]
   [[ "${lines[5]}" == "k0sctl kubeconfig --config $state/k0sctl.yaml "* ]]
   [[ "${lines[6]}" == "kubectl --kubeconfig $state/admin.kubeconfig get --raw /readyz "* ]]
   [[ "${lines[7]}" == "tofu -chdir=$k0s apply -input=false -auto-approve -var=publish_cluster_access=true "* ]]
-  [[ "${lines[8]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/bootstrap-flux init "*"-backend-config=path=$state/bootstrap-flux.tfstate "* ]]
-  [[ "${lines[9]}" == "tofu -chdir=$MISE_PROJECT_ROOT/roots/bootstrap-flux apply -input=false -auto-approve "* ]]
+  [[ "${lines[8]}" == "tofu -chdir=$MISE_PROJECT_ROOT/tofu/roots/bootstrap-flux init "*"-backend-config=path=$state/bootstrap-flux.tfstate "* ]]
+  [[ "${lines[9]}" == "tofu -chdir=$MISE_PROJECT_ROOT/tofu/roots/bootstrap-flux apply -input=false -auto-approve "* ]]
   [[ "${lines[10]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
   [[ "${lines[11]}" == "cilium --kubeconfig /state/admin.kubeconfig status"* ]]
   [[ "${lines[12]}" == "mise run openbao:seed"* ]]
@@ -228,7 +228,7 @@ local_state() {
   [ "$status" -eq 0 ] || fail "$output"
   local root
   for root in machine-orb kubernetes-k0s bootstrap-flux; do
-    grep -q "^tofu -chdir=$MISE_PROJECT_ROOT/roots/$root plan -input=false " "$CALLS" || fail "$root not planned"
+    grep -q "^tofu -chdir=$MISE_PROJECT_ROOT/tofu/roots/$root plan -input=false " "$CALLS" || fail "$root not planned"
   done
 }
 
@@ -238,8 +238,8 @@ local_state() {
   run_task "$root_directory/.mise/tasks/env/plan.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   [[ "$output" == *"No cluster recorded yet, so the bootstrap is not planned"* ]]
-  grep -q "^tofu -chdir=$MISE_PROJECT_ROOT/roots/kubernetes-k0s plan -input=false " "$CALLS"
-  ! grep -q -- 'roots/bootstrap-flux' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
+  grep -q "^tofu -chdir=$MISE_PROJECT_ROOT/tofu/roots/kubernetes-k0s plan -input=false " "$CALLS"
+  ! grep -q -- 'tofu/roots/bootstrap-flux' "$CALLS" || fail "ran tofu in the bootstrap root: $(cat "$CALLS")"
 }
 
 @test "env:plan plans only the machine root while the environment records no machine" {
@@ -249,8 +249,8 @@ local_state() {
   run_task "$root_directory/.mise/tasks/env/plan.sh" local
   [ "$status" -eq 0 ] || fail "$output"
   [[ "$output" == *"No machine recorded yet, so k0s and the bootstrap are not planned"* ]]
-  grep -q "^tofu -chdir=$MISE_PROJECT_ROOT/roots/machine-orb plan -input=false " "$CALLS"
-  ! grep -qE -- 'roots/(kubernetes-k0s|bootstrap-flux)' "$CALLS" || fail "planned a later root: $(cat "$CALLS")"
+  grep -q "^tofu -chdir=$MISE_PROJECT_ROOT/tofu/roots/machine-orb plan -input=false " "$CALLS"
+  ! grep -qE -- 'tofu/roots/(kubernetes-k0s|bootstrap-flux)' "$CALLS" || fail "planned a later root: $(cat "$CALLS")"
 }
 
 @test "env:apply refuses a recorded cluster that cannot say whether k0s installs charts" {
@@ -351,11 +351,11 @@ record_pinned_commit() {
   run grep -nE '^(tofu .* apply |k0sctl |kubectl |cilium )' "$CALLS"
   [ "${#lines[@]}" -eq 7 ] || fail "${lines[*]}"
   [[ "${lines[0]}" == *"get charts.helm.k0sproject.io "* ]]
-  [[ "${lines[1]}" == *"tofu -chdir=$MISE_PROJECT_ROOT/roots/kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=false "* ]]
+  [[ "${lines[1]}" == *"tofu -chdir=$MISE_PROJECT_ROOT/tofu/roots/kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=false "* ]]
   [[ "${lines[2]}" == *"k0sctl apply --config "* ]]
   [[ "${lines[3]}" == *"k0sctl kubeconfig --config "* ]]
   [[ "${lines[4]}" == *"get --raw /readyz "* ]]
-  [[ "${lines[5]}" == *"tofu -chdir=$MISE_PROJECT_ROOT/roots/kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=true "* ]]
+  [[ "${lines[5]}" == *"tofu -chdir=$MISE_PROJECT_ROOT/tofu/roots/kubernetes-k0s apply -input=false -auto-approve -var=publish_cluster_access=true "* ]]
   [[ "${lines[6]}" == *"get nodes -o name "* ]]
 }
 
@@ -509,31 +509,39 @@ record_pinned_commit() {
 }
 
 @test "tofu:test initializes and tests each suite directory, and never applies" {
-  MISE_PROJECT_ROOT=$(make_repository modules/a/tests/unit.tftest.hcl roots/r/tests/wiring.tftest.hcl)
+  MISE_PROJECT_ROOT=$(make_repository tofu/modules/a/tests/unit.tftest.hcl tofu/roots/r/tests/wiring.tftest.hcl)
   run "$root_directory/.mise/tasks/tofu/test.sh"
   [ "$status" -eq 0 ]
   run cut -d"|" -f1 "$CALLS"
-  [ "${lines[0]}" = "tofu -chdir=$MISE_PROJECT_ROOT/modules/a init -backend=false -input=false -reconfigure -lockfile=readonly " ]
-  [ "${lines[1]}" = "tofu -chdir=$MISE_PROJECT_ROOT/modules/a test " ]
-  [ "${lines[2]}" = "tofu -chdir=$MISE_PROJECT_ROOT/roots/r init -backend=false -input=false -reconfigure -lockfile=readonly " ]
-  [ "${lines[3]}" = "tofu -chdir=$MISE_PROJECT_ROOT/roots/r test " ]
+  [ "${lines[0]}" = "tofu -chdir=$MISE_PROJECT_ROOT/tofu/modules/a init -backend=false -input=false -reconfigure -lockfile=readonly " ]
+  [ "${lines[1]}" = "tofu -chdir=$MISE_PROJECT_ROOT/tofu/modules/a test " ]
+  [ "${lines[2]}" = "tofu -chdir=$MISE_PROJECT_ROOT/tofu/roots/r init -backend=false -input=false -reconfigure -lockfile=readonly " ]
+  [ "${lines[3]}" = "tofu -chdir=$MISE_PROJECT_ROOT/tofu/roots/r test " ]
   [ "${#lines[@]}" -eq 4 ]
 }
 
 @test "tofu:test stops at the first failing suite" {
-  MISE_PROJECT_ROOT=$(make_repository modules/a/tests/unit.tftest.hcl modules/b/tests/unit.tftest.hcl)
+  MISE_PROJECT_ROOT=$(make_repository tofu/modules/a/tests/unit.tftest.hcl tofu/modules/b/tests/unit.tftest.hcl)
   own_stub tofu
   printf '#!/usr/bin/env bash\nprintf "tofu %%s\\n" "$*" >>"$CALLS"\n[[ "$*" != *" test" ]]\n' >"$stubs/tofu"
   run "$root_directory/.mise/tasks/tofu/test.sh"
   [ "$status" -ne 0 ]
-  ! grep -q "modules/b" "$CALLS"
+  ! grep -q "tofu/modules/b" "$CALLS"
 }
 
-@test "tofu:test runs nothing when no suite exists" {
-  MISE_PROJECT_ROOT=$(make_repository modules/b/tests/unit.bats)
+@test "tofu:test fails and runs nothing when no suite exists" {
+  MISE_PROJECT_ROOT=$(make_repository tofu/modules/b/tests/unit.bats)
   run "$root_directory/.mise/tasks/tofu/test.sh"
-  [ "$status" -eq 0 ]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no OpenTofu test suite"* ]]
   [ ! -e "$CALLS" ]
+}
+
+@test "env:test fails when tofu/roots holds no root suite" {
+  MISE_PROJECT_ROOT=$(make_repository tofu/modules/b/tests/unit.bats)
+  run "$root_directory/.mise/tasks/env/test.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no root suite"* ]]
 }
 
 @test "cilium:observe follows flows through a Relay port-forward on a free random port" {

@@ -1,8 +1,8 @@
 setup_file() {
   export TF_DATA_DIR="$BATS_FILE_TMPDIR/tofu"
   mkdir -p "${TF_PLUGIN_CACHE_DIR:?run this through mise}"
-  root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../.." && pwd)
-  export machine_root="$root_directory/roots/machine-orb"
+  root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../../.." && pwd)
+  export machine_root="$root_directory/tofu/roots/machine-orb"
   tofu -chdir="$machine_root" init -input=false -reconfigure \
     -backend-config="path=$BATS_FILE_TMPDIR/machine-orb.tfstate" >/dev/null
 }

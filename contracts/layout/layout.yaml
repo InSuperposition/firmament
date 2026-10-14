@@ -15,7 +15,7 @@ folders:
     must_never: [run the repository checks]
   .mise:
     holds: the mise task scripts (`tasks/`), their shared libraries, test fixtures and vendored schemas
-    may_reference: [clusters, contracts, environments, modules, packages, roots, timoni]
+    may_reference: [clusters, contracts, environments, packages, timoni, tofu]
     must_never: [name an environment]
   clusters:
     holds: cluster definitions; each runs in every environment that names it
@@ -31,20 +31,12 @@ folders:
     must_never: [contain code]
   environments:
     holds: environment data; `environment.yaml` names the cluster
-    may_reference: [clusters, roots]
+    may_reference: [clusters, tofu/roots]
     must_never: [contain code]
-  modules:
-    holds: reusable OpenTofu modules, named `<layer>-<tool>`
-    may_reference: [contracts]
-    must_never: [reference packages, clusters or environments]
   packages:
     holds: deployable components and the code that generates their configuration (see the package kinds below), one folder each, named `<tool>[-<concern>]`
     may_reference: [contracts]
     must_never: [name a cluster, environment or tenant namespace]
-  roots:
-    holds: executable OpenTofu roots, named `<concern>-<variant>`, linked by contract files
-    may_reference: [modules, contracts, packages, clusters, environments]
-    must_never: [hardcode an environment or cluster name]
   timoni:
     holds: the Timoni modules and the bundles that render each environment from `inputs.cue`
     may_reference: []
@@ -58,6 +50,19 @@ folders:
         holds: one Timoni module per folder, flat, with its own README and vendored contracts
         may_reference: []
         must_never: [reference a package, cluster or environment]
+  tofu:
+    holds: the OpenTofu code, apart from the Timoni code in `timoni/`
+    may_reference: []
+    must_never: [hardcode an environment or cluster name]
+    subfolders:
+      modules:
+        holds: reusable OpenTofu modules, named `<layer>-<tool>`
+        may_reference: [contracts]
+        must_never: [reference packages, clusters or environments]
+      roots:
+        holds: executable OpenTofu roots, named `<concern>-<variant>`, linked by contract files
+        may_reference: [tofu/modules, contracts, packages, clusters, environments]
+        must_never: [hardcode an environment or cluster name]
   tests:
     holds: repository-level render tests (`tests/render`); module and package tests sit beside their code
     may_reference: [clusters, contracts, environments, packages, timoni]
@@ -79,7 +84,7 @@ find:
   - question: Find a cluster definition and its Flux build
     path: clusters
   - question: Find the OpenTofu roots that build the machine, k0s and the bootstrap
-    path: roots
+    path: tofu/roots
   - question: Find a mise task script (`mise run <noun>:<verb>`)
     path: .mise/tasks
   - question: Run every offline check
@@ -88,7 +93,7 @@ cluster_name_places:
   - clusters/<name>/
   - the cluster field of environments/<env>/environment.yaml
 reference_notes:
-  - roots/bootstrap-flux reads the packages it bootstraps (packages/cilium, packages/flux) so the bootstrap and Flux install the same bytes
+  - tofu/roots/bootstrap-flux reads the packages it bootstraps (packages/cilium, packages/flux) so the bootstrap and Flux install the same bytes
 standalone_checks:
   - rule: chainsaw suites only read the cluster
     task: chainsaw:lint

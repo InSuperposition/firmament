@@ -9,8 +9,8 @@ setup() {
   export FIRMAMENT_K0S_POD_CIDR=10.240.0.0/16
   mkdir -p "$BATS_TEST_ROOT"
 
-  root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../.." && pwd)
-  k0s_directory="$root_directory/modules/orch-k0s"
+  root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../../.." && pwd)
+  k0s_directory="$root_directory/tofu/modules/orch-k0s"
 
   tofu -chdir="$k0s_directory" init -backend=false -input=false -reconfigure >/dev/null
 }

@@ -7,7 +7,7 @@ locals {
   # failed bootstrap, without rebuilding the machine.
   bootstrap_revision = 1
 
-  packages              = "${path.module}/../../packages"
+  packages              = "${path.module}/../../../packages"
   cilium_source         = yamldecode(file("${local.packages}/cilium/ocirepository.yaml"))
   cilium_release        = yamldecode(file("${local.packages}/cilium/helmrelease.yaml"))
   flux_operator_source  = yamldecode(file("${local.packages}/flux/ocirepository.yaml"))

@@ -54,7 +54,7 @@ depends = ["*:format"]
 
 [tasks."k0s:test"]
 description = "Check that the orch-k0s module requires its inputs, without a live host"
-run = "bats modules/orch-k0s/tests/inputs.bats"
+run = "bats tofu/modules/orch-k0s/tests/inputs.bats"
 
 [tasks.lint]
 description = "Run every *:lint task; changes nothing"
@@ -70,7 +70,7 @@ run = ["hk check --all --step mise", "mise tasks validate"]
 
 [tasks."orb:test"]
 description = "Test the vm-orb module without a live VM"
-run = "bats modules/vm-orb/tests/unit.bats"
+run = "bats tofu/modules/vm-orb/tests/unit.bats"
 
 [tasks."render:test"]
 description = "Check that the render refuses bad data, renders the same bytes twice and keeps the vendored schema equal to its contract"
@@ -106,4 +106,4 @@ run = "hk check --all --step tofu"
 
 [tasks."ubuntu:test"]
 description = "Test the os-ubuntu module without a live host"
-run = "bats modules/os-ubuntu/tests/unit.bats"
+run = "bats tofu/modules/os-ubuntu/tests/unit.bats"

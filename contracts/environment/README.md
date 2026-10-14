@@ -1,10 +1,10 @@
 # environment
 
 Abstract: The facts an environment states about itself, in
-`environments/<env>/environment.yaml`. `roots/kubernetes-k0s` and the mise
+`environments/<env>/environment.yaml`. `tofu/roots/kubernetes-k0s` and the mise
 tasks read it. The schema (`schema.cue`) is closed, so each later fact needs
 a schema edit. `mise run contracts:lint` checks the sample beside it, and
-`roots/kubernetes-k0s` checks the file it reads against the same fields at
+`tofu/roots/kubernetes-k0s` checks the file it reads against the same fields at
 plan time, naming the field that fails.
 
 | Field | Type | Rule |
@@ -20,7 +20,7 @@ Mesh ids and pod CIDRs are append-only: a removed cluster stays as
 `retired: true`. A later OpenTofu rule checks that they are unique, do not
 overlap and stay outside the service CIDR `10.96.0.0/12`, against recorded
 state.
-`roots/kubernetes-k0s` checks the fields above except the allocations.
+`tofu/roots/kubernetes-k0s` checks the fields above except the allocations.
 
 Tenants and deltas are separate files: [tenant-spec](../tenant-spec/README.md)
 and [delta-spec](../delta-spec/README.md).

@@ -13,7 +13,7 @@ terraform {
 
 locals {
   # The environment's data names the cluster definition it runs.
-  environment_file = "${coalesce(var.environments_directory, "${path.module}/../../environments")}/${var.environment}/environment.yaml"
+  environment_file = "${coalesce(var.environments_directory, "${path.module}/../../../environments")}/${var.environment}/environment.yaml"
   environment_data = yamldecode(file(local.environment_file))
   cluster          = local.environment_data.cluster
 

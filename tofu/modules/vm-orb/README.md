@@ -39,7 +39,7 @@ module knows OrbStack. When no key is found for `[127.0.0.1]:32222`, the
 ## Commands
 
 Run from the repo root — this module has no state or backend of its own;
-see [`environments/local`](../../environments/local/README.md) for the
+see [`environments/local`](../../../environments/local/README.md) for the
 full task list; these tasks run the machine root, which composes this
 module:
 
