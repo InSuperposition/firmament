@@ -1,7 +1,7 @@
 package templates
 
 import (
-	packagespec "firmament.dev/package-spec:packagespec"
+	packagespec "firmament.dev/package:packagespec"
 )
 
 // One chart package placed in a cluster. The instance is named after the

@@ -4,7 +4,7 @@ import "net"
 
 // The environment contract: the facts an environment states about itself.
 // Closed, so each later fact needs a schema edit. Tenants and deltas are
-// separate files with their own specs (tenant-spec, delta-spec).
+// separate files with their own specs (tenant, delta).
 #Contract: #Environment
 
 #Name: =~"^[a-z][a-z0-9-]*$"

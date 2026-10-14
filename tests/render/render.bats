@@ -528,7 +528,7 @@ admission_render() {
 }
 
 @test "the vendored tenant schema equals its contract" {
-  diff "$work/contracts/tenant-spec/schema.cue" "$work/timoni/modules/namespace/cue.mod/pkg/firmament.dev/tenant-spec/schema.cue"
+  diff "$work/contracts/tenant/schema.cue" "$work/timoni/modules/namespace/cue.mod/pkg/firmament.dev/tenant/schema.cue"
 }
 
 @test "a package.yaml whose layer is outside the closed set is refused, naming the field" {
@@ -539,7 +539,7 @@ admission_render() {
 }
 
 @test "the vendored package schema equals its contract" {
-  diff "$work/contracts/package-spec/schema.cue" "$work/timoni/modules/chart/cue.mod/pkg/firmament.dev/package-spec/schema.cue"
+  diff "$work/contracts/package/schema.cue" "$work/timoni/modules/chart/cue.mod/pkg/firmament.dev/package/schema.cue"
 }
 
 @test "every declared environment renders into its own directory of its cluster" {

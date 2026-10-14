@@ -1,4 +1,4 @@
-# delta-spec
+# delta
 
 Abstract: The `environments/<env>/deltas/<cluster>/<package>.yaml` file
 format: a sparse divergence from the cluster's values for one package in one
@@ -13,4 +13,4 @@ environment, with the reason for it. The schema (`schema.cue`) is closed.
 The `delta_keys` rule spans two files, so the module that consumes the delta
 checks it.
 
-See also [package-spec](../package-spec/README.md).
+See also [package](../package/README.md).

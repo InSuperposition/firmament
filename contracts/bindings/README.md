@@ -1,4 +1,4 @@
-# bindings-spec
+# bindings
 
 Abstract: The `clusters/<name>/packages.yaml` file format: a list of
 bindings, each placing one package in a namespace for a tenant. A tenant is
@@ -21,5 +21,5 @@ file after the teardown.
 Whether the package and the tenant exist spans several files, so the
 `namespace` and `cilium-policy` modules check it when they render.
 
-See also [package-spec](../package-spec/README.md) and
-[tenant-spec](../tenant-spec/README.md).
+See also [package](../package/README.md) and
+[tenant](../tenant/README.md).

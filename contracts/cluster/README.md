@@ -1,4 +1,4 @@
-# cluster-spec
+# cluster
 
 Abstract: The `clusters/<name>/cluster.yaml` file format. A cluster has no
 `role`: its roles are what its packages provide. The schema (`schema.cue`)
@@ -9,5 +9,5 @@ checks the sample.
 | --- | --- | --- |
 | `name` | string | `^[a-z][a-z0-9-]*$`; the name of the folder `clusters/<name>/` |
 
-See also [bindings-spec](../bindings-spec/README.md), which holds the
+See also [bindings](../bindings/README.md), which holds the
 cluster's `packages.yaml`.

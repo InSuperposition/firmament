@@ -1,4 +1,4 @@
-# tenant-spec
+# tenant
 
 Abstract: The `environments/<env>/tenants/<name>.yaml` file format: an
 owner of namespaces that bindings refer to by name. The schema
@@ -13,4 +13,4 @@ checks the sample.
 | `namespace_quota.memory` | string | a Kubernetes quantity, such as `8Gi` |
 | `administrators` | list of strings | each not empty; may be empty |
 
-See also [bindings-spec](../bindings-spec/README.md).
+See also [bindings](../bindings/README.md).

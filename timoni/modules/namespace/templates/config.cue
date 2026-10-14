@@ -1,7 +1,7 @@
 package templates
 
 import (
-	tenantspec "firmament.dev/tenant-spec:tenantspec"
+	tenantspec "firmament.dev/tenant:tenantspec"
 )
 
 // The namespaces one environment declares, each with the tenant that owns

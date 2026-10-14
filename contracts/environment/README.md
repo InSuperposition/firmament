@@ -22,8 +22,8 @@ overlap and stay outside the service CIDR `10.96.0.0/12`, against recorded
 state.
 `tofu/roots/kubernetes-k0s` checks the fields above except the allocations.
 
-Tenants and deltas are separate files: [tenant-spec](../tenant-spec/README.md)
-and [delta-spec](../delta-spec/README.md).
+Tenants and deltas are separate files: [tenant](../tenant/README.md)
+and [delta](../delta/README.md).
 
 See also [machine-hosts](../machine-hosts/README.md) and
 [cluster-access](../cluster-access/README.md); change a field name in all

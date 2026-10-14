@@ -137,8 +137,8 @@ controller+worker node; it installs no charts).
 
 The contracts `machine-hosts`, `cluster-access` and `environment` are the data
 files that cross roots and tasks, with closed schemas checked offline by
-`contracts:lint` and by the root that reads each file. `package-spec`,
-`cluster-spec`, `bindings-spec`, `tenant-spec` and `delta-spec` are the formats
+`contracts:lint` and by the root that reads each file. `package`,
+`cluster`, `bindings`, `tenant` and `delta` are the formats
 of the files authors write; the Timoni modules that read them check them again.
 `clusters/singularity/` is the cluster definition: its Flux build (which
 packages Flux applies) and its cluster suite. `environments/local/` is the
