@@ -18,20 +18,6 @@ An item lives here only while it is open. When it is completed, move it to a new
 **Priority:** P3
 **Depends on:** the layout:lint and layout:format change
 
-### Run mise run check in a separate CI workflow
-
-**What:** Add a GitHub workflow, separate from `publish.yaml`, that runs `mise run check` (or its offline subset) on pull requests.
-
-**Why:** no workflow runs the repository's checks; `publish.yaml` sets `MISE_NO_HOOKS=1` and only renders, signs and publishes the artifact. Checks run only in local hooks.
-
-**Pros:** automatic and independent of the signing workflow. **Cons:** tool installs in CI, a check of about three minutes, a push that needs the workflow scope.
-
-**Context:** the stale branch `origin/ci/check-workflow` is a starting point.
-
-**Effort:** M
-**Priority:** P3
-**Depends on:** None
-
 ### Exclude two runs from one checkout around the k0sctl edge
 
 **What:** Add a lock around the environment apply and destroy tasks so two runs from the same checkout cannot interleave.
