@@ -1,35 +1,82 @@
-# The repository layout: each top-level folder, what it may reference and
-# what it must never do, the places a cluster name appears (C40), and the
-# rules review checks because no tool consumes them (C79).
+# The repository layout: each tracked top-level folder, what it may
+# reference and what it must never do, the kinds of directory under
+# packages/, where to look for common tasks, the places a cluster name
+# appears (C40), and the rules review checks because no tool consumes them
+# (C79). layout:lint compares the folders with the tracked tree and
+# layout:format renders the README Structure block from this file.
 folders:
-  contracts:
-    holds: interface documents and the schemas that check them
+  .config:
+    holds: worktrunk (wt) configuration for this repository
     may_reference: []
-    must_never: [reference another folder]
-  packages:
-    holds: what Flux applies, one folder per package, named <tool>[-<concern>]
-    may_reference: [contracts]
-    must_never: [name a cluster, environment or tenant namespace]
-  modules:
-    holds: reusable OpenTofu modules, named <layer>-<tool>
-    may_reference: [contracts]
-    must_never: [reference packages, clusters or environments]
-  roots:
-    holds: executable OpenTofu roots, named <concern>-<variant>, linked by contract files
-    may_reference: [modules, contracts, packages, clusters, environments]
-    must_never: [hardcode an environment or cluster name]
+    must_never: [contain code]
+  .github:
+    holds: the GitHub Actions workflow that publishes the signed cluster artifact
+    may_reference: [clusters, packages]
+    must_never: [run the repository checks]
+  .mise:
+    holds: the mise task scripts (`tasks/`), their shared libraries, test fixtures and vendored schemas
+    may_reference: [clusters, contracts, environments, modules, packages, render, roots]
+    must_never: [name an environment]
   clusters:
     holds: cluster definitions; each runs in every environment that names it
     may_reference: [packages, contracts]
     must_never: [reference an environment, hold a literal environment fact]
+  contracts:
+    holds: interface documents and the schemas that check them
+    may_reference: []
+    must_never: [reference another folder]
+  cue.mod:
+    holds: the CUE module that `inputs.cue` and `render/` belong to
+    may_reference: []
+    must_never: [contain code]
   environments:
-    holds: environment data; environment.yaml names the cluster
+    holds: environment data; `environment.yaml` names the cluster
     may_reference: [clusters, roots]
     must_never: [contain code]
+  modules:
+    holds: reusable OpenTofu modules, named `<layer>-<tool>`
+    may_reference: [contracts]
+    must_never: [reference packages, clusters or environments]
+  packages:
+    holds: what Flux applies and the Timoni modules that render it (see the package kinds below), one folder each, named `<tool>[-<concern>]`
+    may_reference: [contracts]
+    must_never: [name a cluster, environment or tenant namespace]
   render:
-    holds: CUE files that derive output from inputs.cue
+    holds: CUE files that derive output from `inputs.cue`
     may_reference: [contracts, packages]
     must_never: [embed data files, which only inputs.cue does]
+  roots:
+    holds: executable OpenTofu roots, named `<concern>-<variant>`, linked by contract files
+    may_reference: [modules, contracts, packages, clusters, environments]
+    must_never: [hardcode an environment or cluster name]
+  tests:
+    holds: repository-level render tests (`tests/render`); module and package tests sit beside their code
+    may_reference: [clusters, contracts, environments, packages, render]
+    must_never: [change tracked files]
+top_level_files:
+  holds: '`README.md`, `TODOS.md`, `CLAUDE.md`, `inputs.cue`, `mise.toml`, `mise.lock`, `hk.pkl` and the editor, git and shell lint settings'
+package_kinds:
+  flux-package:
+    holds: a directory with `package.yaml`; a chart or manifests that Flux installs, with its pin and its cluster suite
+  render-module:
+    holds: a directory with `module/` and no `package.yaml`; a Timoni module that renders objects for the bundles in `render/`
+  manifest-only:
+    holds: a directory with neither, holding only top-level YAML manifests that Flux applies as they are
+find:
+  - question: Add a tenant (`environments/<env>/tenants/<name>.yaml`)
+    path: environments
+  - question: Add a package (`package.yaml`, values and a binding)
+    path: packages
+  - question: Find the admission policies (Kyverno)
+    path: packages/kyverno-policy
+  - question: Find a cluster definition and its Flux build
+    path: clusters
+  - question: Find the OpenTofu roots that build the machine, k0s and the bootstrap
+    path: roots
+  - question: Find a mise task script (`mise run <noun>:<verb>`)
+    path: .mise/tasks
+  - question: Run every offline check
+    path: mise.toml
 cluster_name_places:
   - clusters/<name>/
   - the cluster field of environments/<env>/environment.yaml
@@ -38,6 +85,8 @@ reference_notes:
 standalone_checks:
   - rule: chainsaw suites only read the cluster
     task: chainsaw:lint
+  - rule: the folders match the tracked tree, every package is classified and has a README, find paths exist and the README block is the render of this file
+    task: layout:lint
 review_checks:
   - a package names no cluster, environment or tenant namespace
   - a module references no package, cluster or environment
