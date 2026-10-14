@@ -2124,20 +2124,20 @@ expect_planted_value_refused() {
   [[ "$output" == *"contracts/environment/extra.yaml: untracked, not checked"* ]] || fail "$output"
 }
 
-@test "contracts:lint refuses a namespace field in package-spec" {
-  expect_planted_value_refused package-spec '.namespace = "openbao"' namespace
+@test "contracts:lint refuses a namespace field in the package contract" {
+  expect_planted_value_refused package '.namespace = "openbao"' namespace
 }
 
-@test "contracts:lint refuses a pin without a digest in package-spec" {
-  expect_planted_value_refused package-spec 'del(.pin.digest)' pin.digest
+@test "contracts:lint refuses a pin without a digest in the package contract" {
+  expect_planted_value_refused package 'del(.pin.digest)' pin.digest
 }
 
-@test "contracts:lint refuses a layer outside the closed set in package-spec" {
-  expect_planted_value_refused package-spec '.layer = "trsut"' layer
+@test "contracts:lint refuses a layer outside the closed set in the package contract" {
+  expect_planted_value_refused package '.layer = "trsut"' layer
 }
 
-@test "contracts:lint refuses a role in cluster-spec" {
-  expect_planted_value_refused cluster-spec '.role = "workload"' role
+@test "contracts:lint refuses a role in the cluster contract" {
+  expect_planted_value_refused cluster '.role = "workload"' role
 }
 
 @test "the Flux root lists no package, and its source is verified against the publish workflow" {
@@ -2170,8 +2170,8 @@ expect_planted_value_refused() {
   expect_planted_value_refused cluster-access 'del(.runtime_info.git_commit)' git_commit
 }
 
-@test "contracts:lint refuses a binding without a tenant in bindings-spec" {
-  expect_planted_value_refused bindings-spec 'del(.[0].tenant)' tenant
+@test "contracts:lint refuses a binding without a tenant in the bindings contract" {
+  expect_planted_value_refused bindings 'del(.[0].tenant)' tenant
 }
 
 @test "contracts:lint refuses a readable seal key in private-state" {
@@ -2205,12 +2205,12 @@ expect_planted_value_refused() {
   expect_planted_value_refused environment 'del(.artifact_source)' artifact_source
 }
 
-@test "contracts:lint refuses the reserved cluster kind in tenant-spec" {
-  expect_planted_value_refused tenant-spec '.kind = "cluster"' kind
+@test "contracts:lint refuses the reserved cluster kind in the tenant contract" {
+  expect_planted_value_refused tenant '.kind = "cluster"' kind
 }
 
-@test "contracts:lint refuses a delta without a reason in delta-spec" {
-  expect_planted_value_refused delta-spec 'del(.reason)' reason
+@test "contracts:lint refuses a delta without a reason in the delta contract" {
+  expect_planted_value_refused delta 'del(.reason)' reason
 }
 
 @test "timoni is pinned to one version and locked" {

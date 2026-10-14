@@ -5,11 +5,11 @@ import (
 	"list"
 	"strings"
 
-	bindingsspec "firmament.dev/firmament/contracts/bindings-spec:bindingsspec"
+	bindingsspec "firmament.dev/firmament/contracts/bindings:bindingsspec"
 	environmentspec "firmament.dev/firmament/contracts/environment:environment"
-	packagespec "firmament.dev/firmament/contracts/package-spec:packagespec"
+	packagespec "firmament.dev/firmament/contracts/package:packagespec"
 	openbaoconfig "firmament.dev/firmament/packages/openbao/config:openbaoconfig"
-	tenantspec "firmament.dev/firmament/contracts/tenant-spec:tenantspec"
+	tenantspec "firmament.dev/firmament/contracts/tenant:tenantspec"
 )
 
 // Every data file the render reads, keyed by the names its path carries.

@@ -1,9 +1,9 @@
-# package-spec
+# package
 
 Abstract: The `package.yaml` file format: what one package is, what it
 requires and provides, and which delta keys it accepts. The schema
 (`schema.cue`) is closed and has no `namespace` field, because a binding
-places a package (see [bindings-spec](../bindings-spec/README.md)).
+places a package (see [bindings](../bindings/README.md)).
 `mise run contracts:lint` checks the sample. The Timoni modules that read
 the file check it again through a vendored copy of the schema.
 
@@ -27,6 +27,6 @@ Cross-file rules (every requirement met exactly once, no cycle, a delta key
 declared here) belong to the modules and the `inputs` package that read
 several files.
 
-See also [cluster-spec](../cluster-spec/README.md),
-[delta-spec](../delta-spec/README.md) and the
+See also [cluster](../cluster/README.md),
+[delta](../delta/README.md) and the
 [environment](../environment/README.md) contract.

@@ -27,4 +27,4 @@ the old one protected.
 Lost private state is lost for good: it lives on one machine and nothing here
 backs it up (C39).
 
-See also [package-spec](../package-spec/README.md).
+See also [package](../package/README.md).
