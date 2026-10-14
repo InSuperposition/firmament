@@ -2810,6 +2810,12 @@ mode_of() {
   grep -q -- 'hubble observe --from-pod default/policy-probe-.* --verdict FORWARDED --to-namespace cv' "$CALLS"
 }
 
+@test "gateway:verify tries once more when the first probe pod never ran its command" {
+  GATEWAY_FIRST_ANSWER='If you don'"'"'t see a command prompt, try pressing enter.' run_task "$root_directory/.mise/tasks/gateway/verify.sh" local
+  [ "$status" -eq 0 ] || fail "$output"
+  [ "$(grep -c 'wget -T 8 -S' "$CALLS")" -eq 2 ]
+}
+
 @test "gateway:verify fails, with the answer, when the Gateway does not answer 200" {
   GATEWAY_ANSWER='  HTTP/1.1 403 Forbidden exit=1' run_task "$root_directory/.mise/tasks/gateway/verify.sh" local
   [ "$status" -ne 0 ]

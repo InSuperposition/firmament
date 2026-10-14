@@ -4,6 +4,7 @@
 #USAGE flag "--yes" help="Do not wait for Enter between the steps; the refused chart source is then removed at once"
 #USAGE flag "--flux-port <port>" help="Local port of the Flux Web UI (default 9080)"
 #USAGE flag "--hubble-port <port>" help="Local port of the Hubble UI (default 12000)"
+#USAGE flag "--cv-port <port>" help="Local port for the cv site when the Gateway does not answer from this machine (default 18080)"
 set -euo pipefail
 # shellcheck source=../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
@@ -15,6 +16,7 @@ source "${MISE_PROJECT_ROOT}/.mise/lib-record.sh"
 environment=$(require_environment) || exit
 flux_port="${usage_flux_port:-9080}"
 hubble_port="${usage_hubble_port:-12000}"
+cv_port="${usage_cv_port:-18080}"
 assume_yes="${usage_yes:-false}"
 
 if [[ "${usage_build:-}" == true ]]; then
@@ -55,7 +57,7 @@ stop_uis() {
   for pid in "${ui_pids[@]}"; do
     kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
   done
-  for port in "$flux_port" "$hubble_port"; do
+  for port in "$flux_port" "$hubble_port" "$cv_port"; do
     for pid in $(lsof -ti "tcp:$port" -sTCP:LISTEN 2>/dev/null || true); do
       kill -TERM "$pid" 2>/dev/null || true
     done
@@ -123,19 +125,30 @@ set +m
 wait_for_local_port "${ui_pids[0]}" "$flux_port" 60 || exit
 wait_for_local_port "${ui_pids[1]}" "$hubble_port" 60 || exit
 
-# The cv site, through the Gateway.
+# The cv site, through the Gateway; when the Gateway does not answer from this
+# machine, through a port-forward to the cv service instead.
+cv_url=""
 if endpoint=$(gateway_endpoint 2>/dev/null); then
   read -r address port <<<"$endpoint"
-  cv_url="http://$address:$port/"
-  if [[ "$(curl -s -o /dev/null -m 5 -w '%{http_code}' "$cv_url" 2>/dev/null || true)" == 200 ]]; then
-    open "$cv_url"
-    printf 'The cv site: %s\n' "$cv_url"
+  if [[ "$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://$address:$port/" 2>/dev/null || true)" == 200 ]]; then
+    cv_url="http://$address:$port/"
   else
-    printf 'Warning: the cv site at %s does not answer from this machine; open it by hand if you can reach it.\n' "$cv_url"
+    printf 'The Gateway at %s:%s does not answer from this machine; using a port-forward to the cv service.\n' "$address" "$port"
   fi
 else
-  printf 'Warning: the Gateway has no address yet, so the cv site is not opened.\n'
+  printf 'The Gateway has no address yet; using a port-forward to the cv service.\n'
 fi
+if [[ -z "$cv_url" ]]; then
+  require_free_local_port "$cv_port" || exit
+  set -m
+  kubectl --kubeconfig "$kubeconfig" -n cv port-forward svc/cv "$cv_port:80" >/dev/null 2>&1 &
+  ui_pids+=($!)
+  set +m
+  wait_for_local_port "${ui_pids[2]}" "$cv_port" 30 || exit
+  cv_url="http://localhost:$cv_port/"
+fi
+open "$cv_url"
+printf 'The cv site: %s\n' "$cv_url"
 
 # Runs the guarantee $1 (an index) and appends its action to the record.
 run_action() {

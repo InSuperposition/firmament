@@ -46,7 +46,8 @@
 # the namespace cilium-test-1 when $CILIUM_TEST_NAMESPACE_MISSING is set.
 # `kubectl get gateway platform` prints $GATEWAY_JSON (default: one address and
 # listener port 8880), and `kubectl run` in default with `wget -T 8 -S` prints
-# $GATEWAY_ANSWER (default: HTTP/1.1 200 OK exit=0).
+# $GATEWAY_ANSWER (default: HTTP/1.1 200 OK exit=0); $GATEWAY_FIRST_ANSWER, when set, is
+# printed instead for the first probe only.
 # `nc -z -w 5` (the Mac connecting to the Gateway) fails when
 # $GATEWAY_PORT_ERROR is set, and `kubectl get gateway platform
 # --ignore-not-found` prints nothing when $GATEWAY_ABSENT is set.
@@ -262,6 +263,7 @@ case "\$*" in
   *"get gateway platform "*)
     if [[ -n "\${GATEWAY_JSON:-}" ]]; then printf '%s\\n' "\$GATEWAY_JSON"; else printf '%s\\n' '{"status":{"addresses":[{"value":"192.0.2.10"}]},"spec":{"listeners":[{"port":8880}]}}'; fi ;;
   *" -n default run "*"wget -T 8 -S"*)
+    if [[ -n "\${GATEWAY_FIRST_ANSWER:-}" && ! -e "\$CALLS.gateway-first" ]]; then : >"\$CALLS.gateway-first"; printf '%s\\n' "\$GATEWAY_FIRST_ANSWER"; exit 0; fi
     printf '%s\\n' "\${GATEWAY_ANSWER:-  HTTP/1.1 200 OK exit=0}" ;;
   *" -n default run "*"nslookup"*) printf '%s\\n' "\${NP_RESOLVED:-exit=0}" ;;
   *"get ciliumclusterwidenetworkpolicies.cilium.io tenant-default-deny"*)
