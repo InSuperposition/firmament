@@ -52,4 +52,12 @@ the tour, the evidence task and `contracts:lint` apply the same one.
 An incomplete record (`complete: false`) holds what ran before a failure. It
 is kept for the log and is never published.
 
+`mise run evidence` reads a record, checks it against this schema and renders
+the evidence page: what the tour observed (the record), and, labeled
+configured, a snapshot of the cv image and chart digests, the Flux
+Kustomizations, the flows into cv and the admission policy names. The snapshot
+keeps only those fields; anything else is dropped. `--publish-record` copies a
+complete record to `.mise/evidence/record.json`; the page then states the git
+commit of that file. An incomplete record is shown as such and never published.
+
 See also [cluster-access](../cluster-access/README.md).
