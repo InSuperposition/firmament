@@ -38,6 +38,12 @@ local fast = new Mapping<String, Step> {
     glob = List("packages/**", "clusters/*/flux/**", ".mise/flux-test-values.env", ".mise/flux-schemas/**")
     check = "mise run flux:lint"
   }
+  // Every Kustomization's dependsOn, path and healthChecks against the
+  // tracked tree, the generated folders and the published folders.
+  ["flux-refs"] {
+    glob = List("clusters/**", ".github/workflows/publish.yaml", ".mise/render-trees.yaml", ".gitignore")
+    check = "mise run flux-refs:lint"
+  }
 }
 
 // Whole-repository checks, too slow for every commit. Each runs once, and

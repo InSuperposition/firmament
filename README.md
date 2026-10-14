@@ -165,7 +165,10 @@ live cluster suites, and `flux:lint`, which renders each environment's
 Flux build with test runtime values through `flux envsubst --strict` and
 validates it with `flux-schema` against the schemas vendored in
 `.mise/flux-schemas`; `mise run flux:schemas` refreshes them from a pinned
-flux-schema commit), `tofu:validate` and
+flux-schema commit; `flux-refs:lint` checks offline that each Flux
+Kustomization's `dependsOn`, `spec.path` and `healthChecks` resolve, and that
+the published artifact carries each path; `.mise/render-trees.yaml` names the
+generated folders), `tofu:validate` and
 `test` (every module and environment suite, and the task scripts with
 their shared library). Suites that only check OpenTofu logic (rendered
 values, variable validation, preconditions) are `tests/*.tftest.hcl`,

@@ -10,6 +10,7 @@ setup() {
   cp -R "$root_directory"/{cue.mod,inputs.cue,render,contracts,packages,clusters,environments} "$work"
   mkdir -p "$work/.mise/tasks"
   cp "$root_directory/.mise/tasks/render.sh" "$work/.mise/tasks"
+  cp "$root_directory/.mise/render-trees.yaml" "$work/.mise"
   rm -rf "$work/clusters/singularity/rendered" "$work/clusters/singularity/admission"
   cd "$work"
 }

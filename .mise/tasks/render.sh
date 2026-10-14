@@ -5,9 +5,9 @@ cd "${MISE_PROJECT_ROOT:?}"
 
 cue vet -c .:inputs
 
-# The bundle files and the folder each fills. The admission policies are apart
-# from the rest because their CRDs arrive with a release in the first tree.
-readonly -a trees=("bundle.cue rendered" "admission-bundle.cue admission")
+# The bundle files and the folder each fills.
+mapfile -t trees < <(yq -r '.trees[] | .bundle + " " + .folder' .mise/render-trees.yaml)
+readonly trees
 
 # Build every environment first, so a failed build leaves the last complete
 # render in place.
