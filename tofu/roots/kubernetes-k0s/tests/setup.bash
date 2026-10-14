@@ -1,9 +1,9 @@
 setup_file() {
   export TF_DATA_DIR="$BATS_FILE_TMPDIR/tofu"
   mkdir -p "${TF_PLUGIN_CACHE_DIR:?run this through mise}"
-  root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../.." && pwd)
-  export k0s_root="$root_directory/roots/kubernetes-k0s"
-  export bootstrap_root="$root_directory/roots/bootstrap-flux"
+  root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../../.." && pwd)
+  export k0s_root="$root_directory/tofu/roots/kubernetes-k0s"
+  export bootstrap_root="$root_directory/tofu/roots/bootstrap-flux"
   export payload_build="$root_directory/clusters/singularity/payload"
   export packages_directory="$root_directory/packages"
   export root_directory

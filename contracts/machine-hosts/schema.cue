@@ -4,7 +4,7 @@ import "net"
 
 // The machine-hosts contract: everything the Kubernetes root needs to
 // reach a machine. Closed: a field not declared here is refused.
-// contracts:lint checks the sample against #Contract; roots/kubernetes-k0s
+// contracts:lint checks the sample against #Contract; tofu/roots/kubernetes-k0s
 // checks the file it reads against the same fields.
 #Contract: #MachineHosts
 

@@ -94,7 +94,7 @@ Run `cilium connectivity test` by hand with `--log-check-only-test-time`,
 so this start-up error does not fail the suite; agent errors logged while
 the tests run still do. The Cilium bug report is in [BUGS.md](BUGS.md), and
 the OrbStack kernel request is in
-[vm-orb/BUGS.md](../../modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy).
+[vm-orb/BUGS.md](../../tofu/modules/vm-orb/BUGS.md#kernel-request-enable-config_inet_diag_destroy).
 
 ## Gateway API
 

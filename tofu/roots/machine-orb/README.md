@@ -2,8 +2,8 @@
 
 Abstract: The machine root. Reads `environments/<env>/environment.yaml`,
 creates the OrbStack machine, named `<environment>-<cluster>`, with
-`modules/vm-orb`, checks it with the Ubuntu readiness postconditions of
-`modules/os-ubuntu`, and writes the `machine-hosts` contract the
+`tofu/modules/vm-orb`, checks it with the Ubuntu readiness postconditions of
+`tofu/modules/os-ubuntu`, and writes the `machine-hosts` contract the
 Kubernetes root reads. It is the only root that knows the machine runs on
 OrbStack.
 
@@ -37,7 +37,7 @@ ssh:
 ```
 
 k0sctl reaches the machine with the SSH key OrbStack creates and checks the
-server key against `host_keys`, which `modules/vm-orb` reads from OrbStack's
+server key against `host_keys`, which `tofu/modules/vm-orb` reads from OrbStack's
 own `known_hosts`. To use another key, replace or symlink OrbStack's key
 file; this root takes no key setting.
 

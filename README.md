@@ -2,7 +2,7 @@
 
 Abstract: Declarative bootstrap for a dedicated Kubernetes host — one
 OrbStack VM, verified Ubuntu-ready, running k0s with Cilium and Hubble.
-Three OpenTofu roots under `roots/` compose the modules under `modules/`,
+Three OpenTofu roots under `tofu/roots/` compose the modules under `tofu/modules/`,
 one concern each: the machine, k0s on it, then the bootstrap of Flux,
 which runs Cilium and itself from `packages/`. Each root hands the next a
 contract file.
@@ -14,7 +14,7 @@ contract file.
   and hand the next root a contract file — not standalone scripts wired
   together by task ordering.
 - Each module stays generic (host-agnostic where the underlying tool
-  allows it); OrbStack-specific wiring lives in `roots/machine-orb`, not
+  allows it); OrbStack-specific wiring lives in `tofu/roots/machine-orb`, not
   inside the modules themselves.
 
 ## Constraints
@@ -71,13 +71,14 @@ tree, that contract or this block disagree. Edit the contract, not the block.
 | `contracts/` | interface documents and the schemas that check them |
 | `cue.mod/` | the CUE module that `inputs.cue` and `timoni/` belong to; CUE dictates the name, and it stays at the root because an embed cannot reach outside the module |
 | `environments/` | environment data; `environment.yaml` names the cluster |
-| `modules/` | reusable OpenTofu modules, named `<layer>-<tool>` |
 | `packages/` | deployable components and the code that generates their configuration (see the package kinds below), one folder each, named `<tool>[-<concern>]` |
-| `roots/` | executable OpenTofu roots, named `<concern>-<variant>`, linked by contract files |
 | `tests/` | repository-level render tests (`tests/render`); module and package tests sit beside their code |
 | `timoni/` | the Timoni modules and the bundles that render each environment from `inputs.cue` |
 | `timoni/bundles/` | bundle files that render one environment from `inputs.cue` |
 | `timoni/modules/` | one Timoni module per folder, flat, with its own README and vendored contracts |
+| `tofu/` | the OpenTofu code, apart from the Timoni code in `timoni/` |
+| `tofu/modules/` | reusable OpenTofu modules, named `<layer>-<tool>` |
+| `tofu/roots/` | executable OpenTofu roots, named `<concern>-<variant>`, linked by contract files |
 | (top-level files) | `README.md`, `TODOS.md`, `CLAUDE.md`, `inputs.cue`, `mise.toml`, `mise.lock`, `hk.pkl` and the editor, git and shell lint settings |
 
 **Packages**
@@ -112,25 +113,25 @@ tree, that contract or this block disagree. Edit the contract, not the block.
 | Add a package (`package.yaml`, values and a binding) | `packages` |
 | Find the admission policies (Kyverno) | `timoni/modules/kyverno-policy` |
 | Find a cluster definition and its Flux build | `clusters` |
-| Find the OpenTofu roots that build the machine, k0s and the bootstrap | `roots` |
+| Find the OpenTofu roots that build the machine, k0s and the bootstrap | `tofu/roots` |
 | Find a mise task script (`mise run <noun>:<verb>`) | `.mise/tasks` |
 | Run every offline check | `mise.toml` |
 
 <!-- layout:end -->
 
-Folder names follow three conventions. A tool name (`timoni/`) names an
+Folder names follow three conventions. A tool name (`timoni/`, `tofu/`) names an
 execution system, a role (`contracts/`, `clusters/`, `environments/`) names
 what the data is for, and `.mise/` and `cue.mod/` keep the name their tool
 requires. `packages/` holds the deployable components and the code that
 generates their configuration, for example `packages/openbao/config/render.cue`.
 
-The three OpenTofu roots under `roots/` run in order, each from the contract
+The three OpenTofu roots under `tofu/roots/` run in order, each from the contract
 file the one before it wrote: `machine-orb` (the OrbStack machine and its
 readiness check; writes the `machine-hosts` contract), `kubernetes-k0s`
 (renders `k0sctl.yaml` for that machine, a mise task runs k0sctl, and it writes
 the `cluster-access` contract with the runtime values) and `bootstrap-flux`
 (bootstraps Cilium and Flux into the cluster). They compose the modules under
-`modules/`: `vm-orb` (the OrbStack VM), `os-ubuntu` (the Ubuntu readiness
+`tofu/modules/`: `vm-orb` (the OrbStack VM), `os-ubuntu` (the Ubuntu readiness
 check: an SSH probe and postconditions) and `orch-k0s` (the k0s
 controller+worker node; it installs no charts).
 

@@ -2,7 +2,7 @@
 
 Abstract: The Kubernetes root. Reads the `machine-hosts` contract the
 machine root wrote, renders the k0sctl configuration for that host with
-`modules/orch-k0s`, writes it and its `known_hosts` trust file, and, in the
+`tofu/modules/orch-k0s`, writes it and its `known_hosts` trust file, and, in the
 publish pass, writes the `cluster-access` contract the bootstrap root and
 the tasks read. It runs no program: a mise task runs the pinned `k0sctl`
 between the passes (see below). It knows nothing about OrbStack: any
@@ -10,7 +10,7 @@ machine root that writes the same contract can feed it.
 
 ## Contracts
 
-In: `machine-hosts.yaml` (see `roots/machine-orb`). Planning without it
+In: `machine-hosts.yaml` (see `tofu/roots/machine-orb`). Planning without it
 fails and names the file.
 
 Out: `known_hosts` and `k0sctl.yaml` (both mode 0600) in the state
@@ -78,8 +78,8 @@ records, and a retry repeats the same passes.
 `kube_proxy_replacement = true` for both k0s (`kubeProxy.disabled`) and
 Cilium (`kubeProxyReplacement`), which also selects Cilium's netkit pod
 datapath with BPF masquerading. It is not a variable, because no
-environment runs kube-proxy. `modules/orch-k0s` and the Cilium values
-still accept `false`, and `modules/orch-k0s` refuses to change the value
+environment runs kube-proxy. `tofu/modules/orch-k0s` and the Cilium values
+still accept `false`, and `tofu/modules/orch-k0s` refuses to change the value
 on an existing cluster, since Cilium documents no live migration between
 the two modes for a single node.
 

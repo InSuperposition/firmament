@@ -2,8 +2,8 @@ setup() {
   export BATS_TEST_ROOT="$BATS_TEST_TMPDIR/orb"
   mkdir -p "$BATS_TEST_ROOT"
 
-  root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../.." && pwd)
-  orb_directory="$root_directory/modules/vm-orb"
+  root_directory=$(cd -- "$BATS_TEST_DIRNAME/../../../.." && pwd)
+  orb_directory="$root_directory/tofu/modules/vm-orb"
   fixtures="$BATS_TEST_DIRNAME/fixtures"
 
   tofu -chdir="$orb_directory" init -backend=false -input=false -reconfigure >/dev/null

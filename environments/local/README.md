@@ -2,8 +2,8 @@
 
 Abstract: The local environment on one OrbStack machine. Three OpenTofu
 roots build it in order, each from the contract file the one before it
-wrote: `roots/machine-orb` (the machine and its readiness check),
-`roots/kubernetes-k0s` (k0s on it) and `roots/bootstrap-flux` (Cilium and
+wrote: `tofu/roots/machine-orb` (the machine and its readiness check),
+`tofu/roots/kubernetes-k0s` (k0s on it) and `tofu/roots/bootstrap-flux` (Cilium and
 Flux). From then on Flux runs both from `packages/`, through the Flux
 build of the cluster definition `environment.yaml` names
 (`clusters/singularity/flux/kustomization.yaml`). This folder holds only
