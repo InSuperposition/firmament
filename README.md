@@ -135,7 +135,7 @@ the `cluster-access` contract with the runtime values) and `bootstrap-flux`
 check: an SSH probe and postconditions) and `orch-k0s` (the k0s
 controller+worker node; it installs no charts).
 
-The contracts `machine-hosts`, `cluster-access` and `environment` are the data
+The contracts `machine-hosts`, `cluster-access`, `environment` and `run-record` are the data
 files that cross roots and tasks, with closed schemas checked offline by
 `contracts:lint` and by the root that reads each file. `package`,
 `cluster`, `bindings`, `tenant` and `delta` are the formats

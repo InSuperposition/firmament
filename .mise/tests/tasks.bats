@@ -2174,6 +2174,60 @@ expect_planted_value_refused() {
   expect_planted_value_refused bindings 'del(.[0].tenant)' tenant
 }
 
+@test "contracts:lint refuses a refusal line that names a pod in run-record" {
+  expect_planted_value_refused run-record '.actions[2].observations[0].line = "pod web-7f9c4-abc12 must be signed by the signer"' line
+}
+
+@test "contracts:lint refuses a refusal line that names an address in run-record" {
+  expect_planted_value_refused run-record '.actions[2].observations[0].line = "must be signed by the signer at 10.0.0.5"' line
+}
+
+@test "contracts:lint refuses a refusal line with no known phrase in run-record" {
+  expect_planted_value_refused run-record '.actions[2].observations[0].line = "something else entirely"' line
+}
+
+@test "contracts:lint accepts the withheld marker in place of a line in run-record" {
+  MISE_PROJECT_ROOT=$(contract_repository)
+  yq -i '.actions[2].observations[0].line = "[line withheld: names an address or a pod]"' "$MISE_PROJECT_ROOT/contracts/run-record/run-record.yaml"
+  run "$root_directory/.mise/tasks/contracts/lint.sh"
+  [ "$status" -eq 0 ] || fail "$output"
+}
+
+@test "contracts:lint refuses a complete record whose action exited non-zero in run-record" {
+  expect_planted_value_refused run-record '.actions[0].exit_status = 1' exit_status
+}
+
+@test "contracts:lint refuses a complete record with a failed control in run-record" {
+  expect_planted_value_refused run-record '.actions[1].controls[0].passed = false' passed
+}
+
+@test "contracts:lint refuses a complete record with fewer than three actions in run-record" {
+  expect_planted_value_refused run-record '.actions = .actions[0:2]' complete
+}
+
+@test "contracts:lint refuses a complete record without a finish time in run-record" {
+  expect_planted_value_refused run-record 'del(.finished)' finished
+}
+
+@test "contracts:lint accepts an incomplete record that stopped after one action in run-record" {
+  MISE_PROJECT_ROOT=$(contract_repository)
+  yq -i '.complete = false | .actions = .actions[0:1] | del(.finished)' "$MISE_PROJECT_ROOT/contracts/run-record/run-record.yaml"
+  run "$root_directory/.mise/tasks/contracts/lint.sh"
+  [ "$status" -eq 0 ] || fail "$output"
+}
+
+@test "contracts:lint refuses a revision that is not 40 lowercase hex characters in run-record" {
+  expect_planted_value_refused run-record '.revision.cluster = "abc"' cluster
+}
+
+@test "contracts:lint refuses a reference kind other than tag or digest in run-record" {
+  expect_planted_value_refused run-record '.actions[0].reference.kind = "branch"' kind
+}
+
+@test "contracts:lint refuses a field the run-record schema does not declare" {
+  expect_planted_value_refused run-record '.extra = 1' complete
+}
+
 @test "contracts:lint refuses a readable seal key in private-state" {
   expect_planted_value_refused private-state '.openbao.seal_key.mode = "0644"' mode
 }

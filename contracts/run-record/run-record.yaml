@@ -1,0 +1,54 @@
+schema: 1
+started: "2026-10-14T12:00:00Z"
+finished: "2026-10-14T12:03:10Z"
+revision:
+  checkout: 0123456789abcdef0123456789abcdef01234567
+  cluster: 0123456789abcdef0123456789abcdef01234567
+  matches: true
+complete: true
+actions:
+  - guarantee: wrong-signer-chart-refused
+    started: "2026-10-14T12:00:05Z"
+    finished: "2026-10-14T12:01:20Z"
+    command: mise run tenant:verify --only wrong-signer-chart-refused
+    exit_status: 0
+    reference:
+      kind: digest
+      value: sha256:e2e23ef16404303b2c0bd230e877ddef4d85028235001c3e27fc71460323b15d
+    controls:
+      - name: a source with the matching signer verifies
+        passed: true
+    observations:
+      - kind: condition
+        line: no matching CertificateIdentity
+  - guarantee: direct-access-denied-gateway-allowed
+    started: "2026-10-14T12:01:25Z"
+    finished: "2026-10-14T12:02:10Z"
+    command: mise run network-policy:verify --only direct-access-denied-gateway-allowed
+    exit_status: 0
+    controls:
+      - name: the Gateway serves cv to a pod in default
+        passed: true
+    observations:
+      - kind: flow
+        verdict: DROPPED
+        count: 1
+        window_seconds: 300
+      - kind: http
+        status: 200
+  - guarantee: unsigned-image-refused
+    started: "2026-10-14T12:02:15Z"
+    finished: "2026-10-14T12:03:05Z"
+    command: mise run kyverno:verify --only unsigned-image-refused
+    exit_status: 0
+    reference:
+      kind: tag
+      value: ghcr.io/kyverno/readiness-checker:v1.19.1
+    controls:
+      - name: the signed cv image is admitted in cv
+        passed: true
+      - name: an unsigned image is admitted in default
+        passed: true
+    observations:
+      - kind: refusal
+        line: must be signed by the signer
