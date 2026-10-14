@@ -78,6 +78,34 @@ An item lives here only while it is open. When it is completed, move it to a new
 **Priority:** P3
 **Depends on:** machines-orbstack implementation
 
+### Link the evidence page from the cv site
+
+**What:** Render the redacted evidence page as a static page in the cv repository and link it from the cv site as "How this site is run". Release cv, then re-pin the chart digest in `packages/cv/package.yaml` and the image digest in `clusters/singularity/values/cv.yaml`.
+
+**Why:** The cv site is the resume subject and a tenant of this platform; a link to its own proof ties the capstone to the resume.
+
+**Pros:** finishes the resume story. **Cons:** two repositories, a cv release and a Flux-verified re-pin.
+
+**Context:** the capstone design (tour and evidence page) keeps the page local with an allowlist and defers the link. The page must keep the allowlist and escaping: no addresses, node names or pod names.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** the evidence task from the capstone design
+
+### Write the capstone claim table
+
+**What:** A table with one row per claim the capstone demo makes: the claim, the control that enforces it, the evidence captured (a record line, a UI, a command), and what it does not cover. Required not-covered rows: the commit hash shows the record is unchanged since that commit, not that the commands ran or that the clock is right; the wrong-signer row reads "a source whose signer does not match is rejected at Flux source verification" and does not claim a foreign-signed chart was refused at install; direct pod access from `default` is denied while Gateway access is allowed.
+
+**Why:** A grader or interviewer asks "how do you know that?" for each claim. The course needs no written report, so the table has no home in the capstone plan; this item holds it until a place is chosen (README section, or a generated page).
+
+**Pros:** states the limits of each claim. **Cons:** documentation only; it can go stale when a task changes.
+
+**Context:** the capstone plan is `tensor-main-design-20261014-141309.md` in the gstack project folder (CEO decision CD3). The evidence behind each row comes from the run record that the tour writes.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** the tour and the evidence task
+
 ## Tenancy
 
 ### Run the first database for a tenant (CloudNativePG)
