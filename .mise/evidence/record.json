@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "started": "2026-10-14T17:05:04Z",
+  "finished": "2026-10-14T17:06:01Z",
+  "revision": {
+    "checkout": "b086dea41f96b27f26eb6198d363683c9a118f92",
+    "cluster": "b086dea41f96b27f26eb6198d363683c9a118f92",
+    "matches": true
+  },
+  "complete": true,
+  "actions": [
+    {
+      "guarantee": "wrong-signer-chart-refused",
+      "command": "mise run tenant:verify --only wrong-signer-chart-refused",
+      "exit_status": 0,
+      "controls": [
+        {
+          "name": "a copy of cv with the real signer verifies",
+          "passed": true
+        },
+        {
+          "name": "a copy of cv that demands another signer is refused for its identity",
+          "passed": true
+        }
+      ],
+      "observations": [
+        {
+          "kind": "condition",
+          "line": "no matching CertificateIdentity found"
+        }
+      ],
+      "reference": {
+        "kind": "digest",
+        "value": "sha256:e2e23ef16404303b2c0bd230e877ddef4d85028235001c3e27fc71460323b15d"
+      },
+      "started": "2026-10-14T17:05:24Z",
+      "finished": "2026-10-14T17:05:34Z"
+    },
+    {
+      "guarantee": "direct-access-denied-gateway-allowed",
+      "command": "mise run network-policy:verify --only direct-access-denied-gateway-allowed",
+      "exit_status": 0,
+      "controls": [
+        {
+          "name": "a pod in default is blocked from the cv pod, with a Hubble drop",
+          "passed": true
+        },
+        {
+          "name": "the Gateway serves cv to a pod in default",
+          "passed": true
+        }
+      ],
+      "observations": [
+        {
+          "kind": "flow",
+          "verdict": "DROPPED",
+          "count": 1,
+          "window_seconds": 300
+        },
+        {
+          "kind": "http",
+          "status": 200
+        },
+        {
+          "kind": "flow",
+          "verdict": "FORWARDED",
+          "count": 1,
+          "window_seconds": 300
+        }
+      ],
+      "started": "2026-10-14T17:05:34Z",
+      "finished": "2026-10-14T17:05:46Z"
+    },
+    {
+      "guarantee": "unsigned-image-refused",
+      "command": "mise run kyverno:verify --only unsigned-image-refused",
+      "exit_status": 0,
+      "controls": [
+        {
+          "name": "the signed cv image is admitted in cv",
+          "passed": true
+        },
+        {
+          "name": "an unsigned image is refused in cv for its missing signature",
+          "passed": true
+        },
+        {
+          "name": "an unsigned image is admitted in default, which the policy leaves alone",
+          "passed": true
+        }
+      ],
+      "observations": [
+        {
+          "kind": "refusal",
+          "line": "every container image must be signed by the signer"
+        }
+      ],
+      "reference": {
+        "kind": "tag",
+        "value": "ghcr.io/kyverno/readiness-checker:v1.19.1"
+      },
+      "started": "2026-10-14T17:05:46Z",
+      "finished": "2026-10-14T17:06:01Z"
+    }
+  ]
+}
