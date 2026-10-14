@@ -8,7 +8,7 @@ package runrecord
 // Closed: a field not declared here is refused. contracts:lint checks the
 // sample against #Contract; the tour and the evidence task check the records
 // they write and read against the same fields. A record that is not complete
-// is never published.
+// is labeled incomplete wherever it is shown.
 #Contract: #RunRecord
 
 #Time: =~"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
@@ -89,7 +89,7 @@ _record: {
 
 // A complete record holds the three guarantees in order, each with an exit
 // status of zero and every control passed. An incomplete record holds
-// whatever ran before the failure and is never published.
+// whatever ran before the failure.
 #RunRecord: close(_record) & ({
 	complete: true
 	finished: #Time
