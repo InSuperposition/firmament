@@ -2,7 +2,7 @@
 
 Abstract: The repository layout as data (`layout.yaml`). It lists each
 tracked top-level folder, what it may reference and what it must never do, the
-three kinds of directory under `packages/`, where to look for common tasks
+two kinds of directory under `packages/`, the subfolders a folder declares (`timoni/modules`), where to look for common tasks
 (`find`), the places a cluster name appears (renaming one is a migration, C40),
 and which rules a tool checks and which only review checks (C79).
 
@@ -14,11 +14,17 @@ Three tools read it:
   equal the tracked top-level folders, every `may_reference` entry must name a
   folder, every `find` path must be tracked, every directory under `packages/`
   must have a kind (detected from the tree, never listed here) and a tracked
-  README, and the README Structure block must be the render of this file. It
-  reads only and never writes.
+  README, every declared subfolder must be a tracked directory one level down
+  and every tracked one declared, every `timoni/modules/<name>` must have a
+  tracked README, a `may_reference` entry may name a folder or
+  `folder/subfolder`, and the README Structure block must be the render of
+  this file. It reads only and never writes.
 - `mise run layout:format` writes that README block between its markers from
   this file and the tracked tree, and changes nothing else. It refuses, and
   writes nothing, when the markers are absent, duplicated or out of order.
+
+`may_reference` is checked only for names that exist; no tool reads imports to
+compare them with it.
 
 Most of the rules about code are review checks: no tool reads code for them.
 The standalone checks are that chainsaw suites only read the cluster

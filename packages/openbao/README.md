@@ -1,7 +1,7 @@
 # openbao
 
 Abstract: OpenBao, the cluster's root CA, installed by the
-[chart](../chart/README.md) module. The pin is in `package.yaml`. The server
+[chart](../../timoni/modules/chart/README.md) module. The pin is in `package.yaml`. The server
 config is not written by hand: `config/` is a CUE package that validates
 `clusters/<cluster>/openbao.yaml` and builds the config string and the chart
 values that must agree with it. `inputs.cue` merges them into

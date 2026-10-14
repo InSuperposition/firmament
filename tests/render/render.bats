@@ -7,7 +7,7 @@ setup() {
   root_directory="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   work="$BATS_TEST_TMPDIR/repo"
   mkdir -p "$work"
-  cp -R "$root_directory"/{cue.mod,inputs.cue,render,contracts,packages,clusters,environments} "$work"
+  cp -R "$root_directory"/{cue.mod,inputs.cue,timoni,contracts,packages,clusters,environments} "$work"
   mkdir -p "$work/.mise/tasks"
   cp "$root_directory/.mise/tasks/render.sh" "$work/.mise/tasks"
   cp "$root_directory/.mise/render-trees.yaml" "$work/.mise"
@@ -26,7 +26,7 @@ declare_stage_environment() {
 }
 
 render() {
-  ENVIRONMENT="${1:-local}" timoni bundle build -f render/bundle.cue --runtime-from-env --output-dir "$2"
+  ENVIRONMENT="${1:-local}" timoni bundle build -f timoni/bundles/bundle.cue --runtime-from-env --output-dir "$2"
 }
 
 # Binds a tenant package `site` to the namespace shop: it lists host port 44100
@@ -372,7 +372,7 @@ YAML
 }
 
 admission_render() {
-  ENVIRONMENT=local timoni bundle build -f render/admission-bundle.cue --runtime-from-env --output-dir "$BATS_TEST_TMPDIR/admission"
+  ENVIRONMENT=local timoni bundle build -f timoni/bundles/admission-bundle.cue --runtime-from-env --output-dir "$BATS_TEST_TMPDIR/admission"
   policy="$BATS_TEST_TMPDIR/admission/kyverno-policy/policies.kyverno.io_v1_imagevalidatingpolicy_require-signed-images.yaml"
 }
 
@@ -440,7 +440,7 @@ admission_render() {
 }
 
 @test "a missing ENVIRONMENT variable fails the render" {
-  run env -u ENVIRONMENT timoni bundle build -f render/bundle.cue --runtime-from-env --output-dir "$BATS_TEST_TMPDIR/out"
+  run env -u ENVIRONMENT timoni bundle build -f timoni/bundles/bundle.cue --runtime-from-env --output-dir "$BATS_TEST_TMPDIR/out"
   [ "$status" -ne 0 ]
   [[ "$output" == *environment* ]]
 }
@@ -528,7 +528,7 @@ admission_render() {
 }
 
 @test "the vendored tenant schema equals its contract" {
-  diff "$work/contracts/tenant-spec/schema.cue" "$work/packages/namespace/module/cue.mod/pkg/firmament.dev/tenant-spec/schema.cue"
+  diff "$work/contracts/tenant-spec/schema.cue" "$work/timoni/modules/namespace/cue.mod/pkg/firmament.dev/tenant-spec/schema.cue"
 }
 
 @test "a package.yaml whose layer is outside the closed set is refused, naming the field" {
@@ -539,7 +539,7 @@ admission_render() {
 }
 
 @test "the vendored package schema equals its contract" {
-  diff "$work/contracts/package-spec/schema.cue" "$work/packages/chart/module/cue.mod/pkg/firmament.dev/package-spec/schema.cue"
+  diff "$work/contracts/package-spec/schema.cue" "$work/timoni/modules/chart/cue.mod/pkg/firmament.dev/package-spec/schema.cue"
 }
 
 @test "every declared environment renders into its own directory of its cluster" {

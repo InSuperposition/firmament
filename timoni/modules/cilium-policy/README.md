@@ -1,7 +1,7 @@
 # cilium-policy
 
 Abstract: the Timoni module that renders the network policy of an environment
-for Cilium. It is a render module, not a Flux package: `render/bundle.cue`
+for Cilium. It is not a Flux package: `timoni/bundles/bundle.cue`
 renders one instance, and Flux applies its objects through the `rendered`
 Kustomization. `inputs.cue` resolves what each namespace provides, requires and
 exposes from the bound packages' `package.yaml` files; the module turns that

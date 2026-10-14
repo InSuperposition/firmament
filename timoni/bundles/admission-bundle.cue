@@ -12,7 +12,7 @@ bundle: {
 	name:       "firmament-admission"
 
 	instances: "kyverno-policy": {
-		module: url: "file://../packages/kyverno-policy/module"
+		module: url: "file://../modules/kyverno-policy"
 		namespace: "flux-system"
 		values: {
 			mode:            inputs.admission[_environment].mode

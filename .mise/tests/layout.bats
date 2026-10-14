@@ -13,7 +13,7 @@ setup() {
   seal_git
   root_directory=$(cd -- "$BATS_TEST_DIRNAME/../.." && pwd)
   repository="$BATS_TEST_TMPDIR/repository"
-  mkdir -p "$repository/contracts/layout" "$repository/packages/a-flux" "$repository/packages/b-render/module" "$repository/packages/c-manifests"
+  mkdir -p "$repository/contracts/layout" "$repository/packages/a-flux" "$repository/timoni/modules/b-render" "$repository/timoni/bundles" "$repository/packages/c-manifests"
   ln -sfn "$root_directory/.mise" "$repository/.mise"
   cat >"$repository/contracts/layout/layout.yaml" <<'YAML'
 folders:
@@ -25,13 +25,24 @@ folders:
     holds: the packages
     may_reference: [contracts]
     must_never: [name a cluster]
+  timoni:
+    holds: the modules and bundles
+    may_reference: []
+    must_never: [embed data files]
+    subfolders:
+      bundles:
+        holds: the bundles
+        may_reference: [timoni/modules]
+        must_never: [embed data files]
+      modules:
+        holds: the modules
+        may_reference: []
+        must_never: [reference a package]
 top_level_files:
   holds: README.md
 package_kinds:
   flux-package:
     holds: a directory with package.yaml
-  render-module:
-    holds: a directory with module/ and no package.yaml
   manifest-only:
     holds: a directory with neither and a top-level manifest
 find:
@@ -42,12 +53,14 @@ standalone_checks: []
 review_checks: [a package names no cluster]
 YAML
   : >"$repository/packages/a-flux/package.yaml"
-  : >"$repository/packages/b-render/module/timoni.cue"
+  : >"$repository/timoni/modules/b-render/timoni.cue"
+  : >"$repository/timoni/bundles/bundle.cue"
   : >"$repository/packages/c-manifests/crds.yaml"
-  for package in a-flux b-render c-manifests; do printf '# %s\n' "$package" >"$repository/packages/$package/README.md"; done
+  for package in a-flux c-manifests; do printf '# %s\n' "$package" >"$repository/packages/$package/README.md"; done
+  printf '# b-render\n' >"$repository/timoni/modules/b-render/README.md"
   printf '# stand-in\n\n<!-- layout:begin -->\n<!-- layout:end -->\n' >"$repository/README.md"
   git -C "$repository" init -q
-  git -C "$repository" add README.md contracts packages
+  git -C "$repository" add README.md contracts packages timoni
   export MISE_PROJECT_ROOT="$repository"
   format
 }
@@ -93,7 +106,7 @@ readme_hash() { shasum "$repository/README.md" | cut -d' ' -f1; }
   yq -i '.folders.packages.may_reference = ["nowhere"]' "$repository/contracts/layout/layout.yaml"
   lint
   [ "$status" -ne 0 ]
-  [[ "$output" == *"folders.packages.may_reference names nowhere, which is not a folder"* ]]
+  [[ "$output" == *"folders.packages.may_reference names nowhere, which is not a folder or a subfolder"* ]]
 }
 
 @test "layout:lint names a find path that is not in the tracked tree" {
@@ -144,7 +157,8 @@ readme_hash() { shasum "$repository/README.md" | cut -d' ' -f1; }
   tail -1 "$repository/README.md" | grep -qx 'after'
   run ! grep -q '^stale$' "$repository/README.md"
   grep -q '| `a-flux` | `flux-package` |' "$repository/README.md"
-  grep -q '| `b-render` | `render-module` |' "$repository/README.md"
+  grep -q '| `b-render` | \[timoni/modules/b-render/README.md\]' "$repository/README.md"
+  grep -q '| `timoni/modules/` | the modules |' "$repository/README.md"
   grep -q '| `c-manifests` | `manifest-only` |' "$repository/README.md"
   after=$(readme_hash)
   format
@@ -161,16 +175,48 @@ readme_hash() { shasum "$repository/README.md" | cut -d' ' -f1; }
   [ "$(readme_hash)" = "$before" ]
 }
 
-@test "layout:lint refuses a package that fits no kind or two kinds" {
+@test "layout:lint refuses a package that fits no kind, and a Timoni module returned to packages/" {
   mkdir "$repository/packages/d-empty" && printf '# d\n' >"$repository/packages/d-empty/README.md"
   git -C "$repository" add packages/d-empty
   lint
   [ "$status" -ne 0 ]
   [[ "$output" == *"packages/d-empty fits no kind"* ]]
-  mkdir "$repository/packages/e-both" && : >"$repository/packages/e-both/package.yaml" && mkdir "$repository/packages/e-both/module" && : >"$repository/packages/e-both/module/x.cue" && printf '# e\n' >"$repository/packages/e-both/README.md"
-  git -C "$repository" add packages/e-both
+  mkdir -p "$repository/packages/e-module/module" && : >"$repository/packages/e-module/module/timoni.cue" && printf '# e\n' >"$repository/packages/e-module/README.md"
+  git -C "$repository" add packages/e-module
   lint
-  [[ "$output" == *"packages/e-both fits no kind"* ]]
+  [[ "$output" == *"packages/e-module fits no kind"* ]]
+  [[ "$output" == *"a Timoni module belongs in timoni/modules/"* ]]
+}
+
+@test "layout:lint names a Timoni module without a tracked README" {
+  git -C "$repository" rm -q --cached timoni/modules/b-render/README.md
+  lint
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"timoni/modules/b-render has no tracked README.md"* ]]
+}
+
+@test "layout:format lists a Timoni module in its table, and marks one without a README as missing" {
+  git -C "$repository" rm -q --cached timoni/modules/b-render/README.md
+  format
+  grep -q '| `b-render` | missing |' "$repository/README.md"
+}
+
+@test "layout:lint names a subfolder the tree tracks and layout.yaml leaves out, and the reverse" {
+  mkdir "$repository/timoni/extra" && : >"$repository/timoni/extra/file" && git -C "$repository" add timoni/extra
+  lint
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the tracked folder timoni/extra/ is not in folders.timoni.subfolders"* ]]
+  git -C "$repository" rm -q -f --cached timoni/extra/file
+  yq -i '.folders.timoni.subfolders.ghost = {"holds": "nothing", "may_reference": [], "must_never": []}' "$repository/contracts/layout/layout.yaml"
+  lint
+  [[ "$output" == *"folders.timoni.subfolders lists ghost, which is not a tracked folder"* ]]
+}
+
+@test "layout:lint accepts a subfolder reference and names one that does not exist" {
+  yq -i '.folders.timoni.subfolders.bundles.may_reference = ["timoni/nowhere"]' "$repository/contracts/layout/layout.yaml"
+  lint
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"folders.timoni.subfolders.bundles.may_reference names timoni/nowhere, which is not a folder or a subfolder"* ]]
 }
 
 @test "layout:lint names a package without a README, and one whose README is not tracked" {

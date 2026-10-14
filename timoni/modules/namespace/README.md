@@ -1,8 +1,8 @@
 # namespace
 
 Abstract: the Timoni module that renders the namespaces of an environment and
-what every tenant namespace carries. It is a render module, not a Flux
-package: `render/bundle.cue` renders one instance, and Flux applies it through
+what every tenant namespace carries. It is not a Flux
+package: `timoni/bundles/bundle.cue` renders one instance, and Flux applies it through
 the `rendered` Kustomization. `inputs.cue` resolves the bindings into
 `namespaces` (namespace to tenant) and `installers` (namespace to installer
 account name).

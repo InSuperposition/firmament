@@ -9,13 +9,24 @@ package layout
 // A top-level folder name; a dot folder such as .mise is allowed.
 #FolderName: =~"^\\.?[a-z][a-z0-9.-]*$"
 
+// What a may_reference entry names: a folder, or folder/subfolder.
+#Reference: =~"^\\.?[a-z][a-z0-9.-]*(/[a-z][a-z0-9.-]*)?$"
+
 // One line of prose that renders into a Markdown table cell.
 #Cell: string & =~"^[^|\n]+$"
 
-#Folder: close({
+_rules: {
 	holds!:         #Cell
-	may_reference!: [...#FolderName]
+	may_reference!: [...#Reference]
 	must_never!:    [...string & !=""]
+}
+
+// A subfolder carries the same rules as the folder, so a reference rule stays
+// exact where one folder holds two kinds of directory.
+#Subfolder: close(_rules)
+
+#Folder: close(_rules & {
+	subfolders?: close({[=~"^[a-z][a-z0-9.-]*$"]: #Subfolder})
 })
 
 // What a kind of directory under packages/ is. The kind of a directory is
@@ -29,7 +40,6 @@ package layout
 	top_level_files!: close({holds!: #Cell})
 	package_kinds!: close({
 		"flux-package"!:  #PackageKind
-		"render-module"!: #PackageKind
 		"manifest-only"!: #PackageKind
 	})
 	// Where to look for a task; each path must be in the tracked tree.

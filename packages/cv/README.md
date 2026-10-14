@@ -1,6 +1,6 @@
 # cv
 
-Abstract: The cv site, installed by the [chart](../chart/README.md) module
+Abstract: The cv site, installed by the [chart](../../timoni/modules/chart/README.md) module
 from the chart the cv repository publishes to ghcr.io. The pin and the
 signer Flux checks are in `package.yaml`; the image, pinned by digest, is in
 `clusters/<cluster>/values/cv.yaml`. A new release means a new chart digest
