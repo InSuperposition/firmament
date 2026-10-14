@@ -38,7 +38,28 @@ resources:
 YAML
   helm_release cilium >"$repository/clusters/alpha/payload/cilium.yaml"
   helm_release app >"$repository/clusters/alpha/workloads/dev/app/release.yaml"
+  mkdir -p "$repository/environments/dev"
+  printf 'artifact_source: ghcr.io/example-owner/stand-in\n' >"$repository/environments/dev/environment.yaml"
+  cat >"$flux/ocirepository.yaml" <<'YAML'
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: payload
+  namespace: flux-system
+spec:
+  interval: 10m
+  url: oci://${artifact_source}
+  ref:
+    tag: ${git_commit}
+  verify:
+    provider: cosign
+    matchOIDCIdentity:
+      - issuer: ^https://token\.actions\.githubusercontent\.com$
+        subject: ^https://github\.com/Example-Owner/stand-in/\.github/workflows/publish\.yaml@refs/heads/.+$
+YAML
+  printf '  - ocirepository.yaml\n' >>"$flux/kustomization.yaml"
   git -C "$repository" init -q
+  git -C "$repository" remote add origin https://github.com/Example-Owner/stand-in.git
   git -C "$repository" add .
   export MISE_PROJECT_ROOT="$repository"
 }
@@ -156,4 +177,52 @@ lint() { run --separate-stderr "$root_directory/.mise/tasks/flux-refs/lint.sh"; 
   lint
   [ "$status" -eq 1 ]
   [[ "$stderr" == *"extra.yaml is not listed"* ]]
+}
+
+@test "flux-refs:lint rejects an OCIRepository without spec.verify" {
+  yq -i 'del(.spec.verify)' "$flux/ocirepository.yaml"
+  lint
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"ocirepository.yaml: the source does not verify the signature of .github/workflows/publish.yaml on a branch of Example-Owner/stand-in"* ]]
+}
+
+@test "flux-refs:lint rejects a verify subject that names another repository" {
+  sed -i.bak 's#Example-Owner/stand-in#Someone-Else/stand-in#' "$flux/ocirepository.yaml"
+  lint
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"the source does not verify the signature"* ]]
+}
+
+@test "flux-refs:lint rejects a verify subject that names another workflow file" {
+  sed -i.bak 's#publish\\.yaml#other\\.yaml#' "$flux/ocirepository.yaml"
+  lint
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"the source does not verify the signature"* ]]
+}
+
+@test "flux-refs:lint rejects an OCIRepository url that is not the artifact_source" {
+  yq -i '.spec.url = "oci://ghcr.io/example-owner/stand-in"' "$flux/ocirepository.yaml"
+  lint
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"the source does not verify the signature"* ]]
+}
+
+@test "flux-refs:lint rejects an environment whose artifact_source is not the lowercase repository" {
+  printf 'artifact_source: ghcr.io/Example-Owner/stand-in\n' >"$repository/environments/dev/environment.yaml"
+  lint
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"environments/dev/environment.yaml: artifact_source is not ghcr.io/example-owner/stand-in"* ]]
+}
+
+@test "flux-refs:lint reads an ssh origin the same way" {
+  git -C "$repository" remote set-url origin git@github.com:Example-Owner/stand-in.git
+  lint
+  [ "$status" -eq 0 ]
+}
+
+@test "flux-refs:lint rejects a repository with no GitHub origin" {
+  git -C "$repository" remote remove origin
+  lint
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"is not a GitHub repository"* ]]
 }

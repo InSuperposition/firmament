@@ -180,7 +180,9 @@ validates it with `flux-schema` against the schemas vendored in
 `.mise/flux-schemas`; `mise run flux:schemas` refreshes them from a pinned
 flux-schema commit; `flux-refs:lint` checks offline that each Flux
 Kustomization's `dependsOn`, `spec.path` and `healthChecks` resolve, and that
-the published artifact carries each path; `.mise/render-trees.yaml` names the
+the published artifact carries each path, and that the OCIRepository verifies
+the signature of the publish workflow on a branch of this repository;
+`.mise/render-trees.yaml` names the
 generated folders), `tofu:validate` and
 `test` (every module and environment suite, and the task scripts with
 their shared library). Suites that only check OpenTofu logic (rendered

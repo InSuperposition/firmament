@@ -39,9 +39,10 @@ local fast = new Mapping<String, Step> {
     check = "mise run flux:lint"
   }
   // Every Kustomization's dependsOn, path and healthChecks against the
-  // tracked tree, the generated folders and the published folders.
+  // tracked tree, the generated folders and the published folders, and the
+  // artifact source against the repository's publish workflow.
   ["flux-refs"] {
-    glob = List("clusters/**", ".github/workflows/publish.yaml", ".mise/render-trees.yaml", ".gitignore")
+    glob = List("clusters/**", ".github/workflows/publish.yaml", ".mise/render-trees.yaml", ".mise/flux-source.cue", "environments/*/environment.yaml", ".gitignore")
     check = "mise run flux-refs:lint"
   }
 }
