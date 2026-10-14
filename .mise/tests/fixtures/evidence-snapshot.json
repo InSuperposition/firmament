@@ -1,0 +1,8 @@
+{
+  "collected": "2026-10-14T12:04:00Z",
+  "image": {"configured": "sha256:2009b87980da0887cccc8bd4e681771e183f522d05358a1e711bfa0a69cacedd", "running": "sha256:2009b87980da0887cccc8bd4e681771e183f522d05358a1e711bfa0a69cacedd"},
+  "chart": {"digest": "sha256:e2e23ef16404303b2c0bd230e877ddef4d85028235001c3e27fc71460323b15d", "signer_pattern": "^https://github\\.com/InSuperposition/cv/\\.github/workflows/publish\\.yaml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+$"},
+  "flux": {"status": "ok", "kustomizations": [{"name": "payload", "ready": true}, {"name": "rendered", "ready": true}]},
+  "hubble": {"status": "ok", "window": "the last 200 flows into cv", "counts": [{"source_namespace": "default", "verdict": "DROPPED", "count": 2}, {"source_namespace": "kube-system", "verdict": "FORWARDED", "count": 14}]},
+  "policies": {"status": "ok", "names": ["require-signed-images", "deny-ephemeral-containers"]}
+}
