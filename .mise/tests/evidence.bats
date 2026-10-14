@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
-# mise run evidence on a stand-in repository: the task copies a record into
-# .mise/evidence/, so it must never run against the real checkout.
+# mise run evidence on a stand-in repository, so a test never reads the real
+# checkout.
 
 bats_require_minimum_version 1.5.0
 
@@ -20,9 +20,6 @@ setup() {
   cp "$root_directory/.mise/lib.sh" "$repository/.mise/"
   cp "$root_directory/.mise/tasks/evidence.sh" "$repository/.mise/tasks/"
   cp "$root_directory/contracts/run-record/schema.cue" "$repository/contracts/run-record/"
-  git -C "$repository" init -q -b main
-  git -C "$repository" add -A
-  git -C "$repository" -c user.name=t -c user.email=t@example.test commit -q -m base
   record="$BATS_TEST_TMPDIR/record.json"
   snapshot="$BATS_TEST_TMPDIR/snapshot.json"
   cp "$root_directory/.mise/tests/fixtures/evidence-record.json" "$record"
@@ -87,15 +84,12 @@ with() {
   [[ "$html" == *"No admission policy was found."* ]]
 }
 
-@test "evidence labels an incomplete record and refuses to publish it" {
+@test "evidence labels an incomplete record" {
   jq '.complete = false | .actions = .actions[0:1] | del(.finished)' "$record" >"$record.new" && mv "$record.new" "$record"
   with
   [ "$status" -eq 0 ] || fail "$output"
-  [[ "$(cat "$page/index.html")" == *"incomplete: not published"* ]]
-  with usage_publish_record=true
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"incomplete record, which is never published"* ]]
-  [ ! -e "$repository/.mise/evidence/record.json" ]
+  [[ "$(cat "$page/index.html")" == *'class="badge">incomplete<'* ]]
+  [[ "$output" == *"incomplete record"* ]]
 }
 
 @test "evidence refuses a record that does not match the run-record contract" {
@@ -116,21 +110,13 @@ with() {
   jq '.complete = false | .actions = .actions[0:1] | del(.finished)' "$record" >"$BATS_TEST_TMPDIR/state/evidence/record-20261014T130000Z.json"
   evidence usage_snapshot="$snapshot"
   [ "$status" -eq 0 ] || fail "$output"
-  [[ "$(cat "$page/index.html")" != *"incomplete: not published"* ]]
+  [[ "$(cat "$page/index.html")" != *'class="badge">incomplete<'* ]]
 }
 
-@test "evidence states the commit of the published record, and what is not committed" {
-  with usage_publish_record=true
-  [ "$status" -eq 0 ] || fail "$output"
-  [ -f "$repository/.mise/evidence/record.json" ]
-  [[ "$(cat "$page/index.html")" == *"has changes that are not committed yet"* ]]
-  git -C "$repository" add -A
-  git -C "$repository" -c user.name=t -c user.email=t@example.test commit -q -m record
-  commit=$(git -C "$repository" rev-parse HEAD)
+@test "evidence gives the sha256 of the record and does not claim the commands ran" {
   with
   [ "$status" -eq 0 ] || fail "$output"
-  [[ "$(cat "$page/index.html")" == *"was committed at $commit; sha256 "* ]]
-  jq '.started = "2026-10-15T12:00:00Z"' "$record" >"$record.new" && mv "$record.new" "$record"
-  with
-  [[ "$(cat "$page/index.html")" == *"was committed at $commit, and differs from this record"* ]]
+  html=$(cat "$page/index.html")
+  [[ "$html" == *"sha256 $(shasum -a 256 "$record" | cut -d' ' -f1)"* ]]
+  [[ "$html" == *"Nothing on this page proves that the commands ran"* ]]
 }

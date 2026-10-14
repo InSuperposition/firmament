@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
-#MISE description="Render the evidence page for the cv tenant from a run record of the tour, labeled observed, and a snapshot of configured state, labeled configured; the page shows only allowlisted facts, escaped (--publish-record copies a complete record into the repository for you to commit)"
+#MISE description="Render the evidence page for the cv tenant from a run record of the tour, labeled observed, and a snapshot of configured state, labeled configured; the page shows only allowlisted facts, escaped"
 #USAGE flag "--record <file>" help="The run record to show (default: the newest complete record of the environment, else the newest)"
 #USAGE flag "--snapshot <file>" help="Use this snapshot of configured state instead of collecting one from the cluster; only allowlisted fields are kept"
 #USAGE flag "--out <directory>" help="Where to write index.html (default: evidence/page in the environment's state folder)"
-#USAGE flag "--publish-record" help="Copy the complete record to .mise/evidence/record.json, for you to commit"
 set -euo pipefail
 # shellcheck source=../lib.sh
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 cd "$MISE_PROJECT_ROOT"
 
 readonly schema=contracts/run-record/schema.cue
-readonly published_record=.mise/evidence/record.json
 # shellcheck disable=SC2154 # mise sets usage_* from the #USAGE spec
 record_file="${usage_record:-}"
 snapshot_file="${usage_snapshot:-}"
@@ -39,13 +37,6 @@ newest_record() {
 cue vet -c -d '#Contract' "$schema" "$record_file" ||
   fail "$record_file does not match contracts/run-record" || exit
 complete=$(jq -r .complete "$record_file")
-
-if [[ "${usage_publish_record:-}" == true ]]; then
-  [[ "$complete" == true ]] || fail "$record_file is an incomplete record, which is never published" || exit
-  mkdir -p "$(dirname "$published_record")"
-  cp "$record_file" "$published_record"
-  printf 'Copied the record to %s; commit it so the page can state its commit hash.\n' "$published_record"
-fi
 
 # Keeps only the allowlisted fields of a snapshot; anything else, such as an
 # address or a pod name, is dropped here and so can never reach the page.
@@ -99,20 +90,7 @@ else
   snapshot=$(collect_snapshot | jq -c "$snapshot_allowlist") || exit
 fi
 
-# What the page says about the committed copy of the record.
 record_sha=$(shasum -a 256 "$record_file" | cut -d' ' -f1)
-committed="no record is committed under $published_record yet"
-if [[ -f "$published_record" ]]; then
-  published_sha=$(shasum -a 256 "$published_record" | cut -d' ' -f1)
-  commit=$(git log -1 --format=%H -- "$published_record" 2>/dev/null || true)
-  if [[ -n "$(git status --porcelain -- "$published_record" 2>/dev/null)" || -z "$commit" ]]; then
-    committed="$published_record has changes that are not committed yet"
-  elif [[ "$published_sha" != "$record_sha" ]]; then
-    committed="$published_record was committed at $commit, and differs from this record"
-  else
-    committed="$published_record was committed at $commit; sha256 $published_sha"
-  fi
-fi
 
 # The page: static, no script, every value escaped.
 # shellcheck disable=SC2016 # the jq program names jq variables, not shell ones
@@ -146,7 +124,7 @@ code{word-break:break-word}.badge{padding:.1rem .5rem;border:2px solid #1a1a1a;f
 </head>
 <body>
 <h1>How the cv site is run</h1>
-<p>Run record: <span class=\"badge\">\(if $record.complete then "complete" else "incomplete: not published" end)</span>, started \($record.started | e), finished \($record.finished // "" | e).
+<p>Run record: <span class=\"badge\">\(if $record.complete then "complete" else "incomplete" end)</span>, started \($record.started | e), finished \($record.finished // "" | e).
 The cluster ran revision \($record.revision.cluster | e); the checkout was at \($record.revision.checkout | e) (\(if $record.revision.matches then "the same" else "not the same" end)).</p>
 <h2>Observed</h2>
 <p>What the tour saw, from the run record.</p>
@@ -171,14 +149,13 @@ The cluster ran revision \($record.revision.cluster | e); the checkout was at \(
 \(section_state($snapshot.policies.status; "No admission policy was found."))
 <ul>\([$snapshot.policies.names[] | "<li>\(. | e)</li>"] | join(""))</ul>
 <h2>Verify</h2>
-<p>Committed copy: \($committed | e).</p>
-<p>The record on this page has sha256 \($sha | e). A git commit shows the file is unchanged since it was committed; it does not show that the commands ran or that the clock was right.</p>
-<p>Check it yourself: <code>shasum -a 256 \($published | e)</code> and <code>git log -1 -- \($published | e)</code>.</p>
+<p>The record on this page has sha256 \($sha | e). Nothing on this page proves that the commands ran or that the clock was right; it shows what the tour wrote down.</p>
+<p>Check the digest yourself: <code>shasum -a 256 &lt;the record file&gt;</code>.</p>
 </body>
 </html>"'
 
 [[ -n "$out_directory" ]] || out_directory="${state_directory:?run this through mise, or pass --out}/evidence/page"
 mkdir -p "$out_directory"
-jq -rn --slurpfile record_input "$record_file" --argjson snapshot "$snapshot" --arg committed "$committed" --arg sha "$record_sha" --arg published "$published_record" \
+jq -rn --slurpfile record_input "$record_file" --argjson snapshot "$snapshot" --arg sha "$record_sha" \
   '($record_input[0]) as $record | '"$page_program" >"$out_directory/index.html"
 printf 'Wrote %s (%s record)\n' "$out_directory/index.html" "$([[ "$complete" == true ]] && echo complete || echo incomplete)"

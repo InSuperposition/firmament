@@ -81,9 +81,8 @@ Each run writes a record under `evidence/` in the environment's state folder.
 the tour observed, and, labeled as not observed, what the repository and the
 cluster say now. A record is checked against
 [the run-record contract](contracts/run-record/README.md), which keeps an
-address or a pod name out of its refusal lines. `mise run evidence --publish-record` copies a complete record to
-`.mise/evidence/record.json`; once you commit it, the page states the commit.
-A commit shows the file is unchanged since then, not that the commands ran.
+address or a pod name out of its refusal lines. The page gives the record's
+sha256; it shows what the tour wrote down, not proof that the commands ran.
 
 If the tour does not start: `no running cluster` means run `mise run env:apply`;
 `local port ... is already in use` means close what holds 9080, 12000 or 18080
