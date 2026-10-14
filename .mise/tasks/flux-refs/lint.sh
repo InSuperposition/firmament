@@ -5,6 +5,7 @@ cd "${MISE_PROJECT_ROOT:?}"
 
 readonly publish_workflow=".github/workflows/publish.yaml"
 readonly trees_file=".mise/render-trees.yaml"
+readonly source_schema=".mise/flux-source.cue"
 
 status=0
 problem() {
@@ -153,6 +154,31 @@ check_cluster() {
   done
 }
 
+# Vets every OCIRepository in a flux folder, and every environment's
+# artifact_source, against the identity of this repository's publish workflow.
+check_artifact_source() {
+  local origin repository file detail
+  origin="$(git remote get-url origin 2>/dev/null || true)"
+  repository="$(sed -E 's#^.*github\.com[:/]##; s#\.git$##' <<<"$origin")"
+  if [[ ! "$repository" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+    problem "the origin remote '$origin' is not a GitHub repository, so the artifact source cannot be checked"
+    return
+  fi
+  local -a tags=(-t "repository=$repository" -t "workflow=$(basename "$publish_workflow")")
+  for file in clusters/*/flux/*.yaml; do
+    yq -e '.kind == "OCIRepository"' "$file" >/dev/null 2>&1 || continue
+    if ! detail="$(cue vet -c -d '#OCIRepository' "${tags[@]}" "$source_schema" "$file" 2>&1)"; then
+      problem "$file: the source does not verify the signature of $publish_workflow on a branch of $repository"
+      printf '  %s\n' "${detail//$'\n'/$'\n'  }" >&2
+    fi
+  done
+  for file in environments/*/environment.yaml; do
+    [[ -f "$file" ]] || continue
+    cue vet -c -d '#Environment' "${tags[@]}" "$source_schema" "$file" >/dev/null 2>&1 ||
+      problem "$file: artifact_source is not ghcr.io/$(tr '[:upper:]' '[:lower:]' <<<"$repository")"
+  done
+}
+
 mapfile -t flux_folders < <(find clusters -mindepth 2 -maxdepth 2 -type d -name flux | sort)
 if ((${#flux_folders[@]} == 0)); then
   problem "no clusters/*/flux folder to check"
@@ -160,4 +186,5 @@ fi
 for flux_folder in "${flux_folders[@]}"; do
   check_cluster "$flux_folder"
 done
+check_artifact_source
 exit "$status"

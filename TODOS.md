@@ -54,18 +54,6 @@ An item lives here only while it is open. When it is completed, move it to a new
 **Priority:** P3
 **Depends on:** engine-flux (merged, #54)
 
-### Guard Flux artifact verification offline with CUE
-
-**What:** A CUE schema in `flux:lint` that fails when the `OCIRepository` has no `spec.verify`, when its subject differs from the one derived from the repository and workflow file name, or when its URL differs from `artifact_source`.
-
-**Why:** Catches a quietly dropped `spec.verify` before the cluster does. The chainsaw assertion in `env:verify` already proves verification on a live cluster, so this only adds an earlier, offline signal.
-
-**Context:** Take the repository from `git remote get-url origin`; the subject is mixed case and `artifact_source` is lowercase.
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** engine-flux (merged, #54)
-
 ### Lint GitHub workflows with zizmor
 
 **What:** Pin `zizmor` in `mise.toml` and add a `workflow:lint` task that runs it offline from `mise run check`.
