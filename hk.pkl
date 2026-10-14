@@ -23,6 +23,11 @@ local fast = new Mapping<String, Step> {
     glob = List("contracts/**")
     check = "mise run contracts:lint"
   }
+  // The folders, the packages and the README Structure block against the
+  // tracked tree. Any change can alter the tree, so it has no glob.
+  ["layout"] {
+    check = "mise run layout:lint"
+  }
   // Task code names no environment: MISE_ENV selects it.
   ["environments"] {
     glob = List(".mise/tasks/**", "environments/*")

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run the read-only chainsaw suites against the environment's cluster: its cluster definition's tests/cluster, then tests/cluster of each package its Flux build deploys"
+#MISE description="Run the read-only chainsaw suites against the environment's cluster: its cluster definition's tests/cluster, then tests/cluster of each package the environment deploys (listed by its Flux build or bound by its cluster's bindings)"
 #USAGE flag "--only <packages>" help="Comma-separated packages whose suites run, such as cilium,flux; the environment's own suite always runs (default: every package)"
 #USAGE flag "--changed" help="Choose the packages this branch changed since it left origin/main, instead of --only"
 set -euo pipefail
