@@ -683,3 +683,148 @@ owned_by_other_worktree() {
   release_environment
   [ ! -e "$(owner_file)" ]
 }
+
+teardown() {
+  end_background_processes
+}
+
+runs_directory() {
+  printf '%s/runs\n' "$TF_VAR_state_directory"
+}
+
+@test "records the claiming run in the state directory" {
+  claim_environment
+  local files=("$(runs_directory)"/*)
+  [ "${#files[@]}" -eq 1 ]
+  [[ "${files[0]##*/}" == "$$."* ]]
+}
+
+@test "claims again from the same process without refusing itself" {
+  claim_environment
+  claim_environment
+  local files=("$(runs_directory)"/*)
+  [ "${#files[@]}" -eq 1 ]
+}
+
+@test "refuses while another run is alive, names it, and records nothing" {
+  local pid
+  pid=$(start_background_process)
+  write_run "$(run_name_of "$pid")"
+  run claim_environment
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"environment 'local' is busy: env:apply (pid $pid) from /checkout/elsewhere since 2026-10-15 12:31:00"* ]]
+  [[ "$output" == *"kill $pid (processes it left behind: pkill -g "* ]]
+  [[ "$output" == *"remove $(runs_directory)/$(run_name_of "$pid")"* ]]
+  [ ! -e "$(owner_file)" ]
+  local files=("$(runs_directory)"/*)
+  [ "${#files[@]}" -eq 1 ]
+}
+
+@test "does not count a run whose process ended, and forgets its file" {
+  local pid
+  pid=$(ended_process_pid)
+  write_run "$pid.$pid.Thu_Oct_15_12_31_00_2026"
+  run claim_environment
+  [ "$status" -eq 0 ]
+  [ ! -e "$(runs_directory)/$pid.$pid.Thu_Oct_15_12_31_00_2026" ]
+}
+
+@test "does not trust a reused pid: a live process started at another time, with no group left" {
+  local pid dead
+  pid=$(start_background_process)
+  dead=$(ended_process_pid)
+  write_run "$pid.$dead.Thu_Oct_15_12_31_00_2026"
+  run claim_environment
+  [ "$status" -eq 0 ]
+}
+
+@test "forgets a file in the runs directory that is not a run" {
+  mkdir -p "$(runs_directory)"
+  : >"$(runs_directory)/notes.txt"
+  run claim_environment
+  [ "$status" -eq 0 ]
+  [ ! -e "$(runs_directory)/notes.txt" ]
+}
+
+@test "does not count the ancestors of a run" {
+  local pid name
+  pid=$(start_background_process)
+  name=$(run_name_of "$pid")
+  write_run "$name"
+  FIRMAMENT_RUN_ANCESTORS="other:$name" run claim_environment
+  [ "$status" -eq 0 ]
+}
+
+@test "holds while a process of a killed run's group still runs, and frees when the group ends" {
+  local leader name
+  set -m
+  bash -c 'sleep 60 & wait' 3>&- &
+  leader=$!
+  set +m
+  remember_process "$leader"
+  until [ -n "$(pgrep -P "$leader")" ]; do sleep 0.05; done
+  name=$(run_name_of "$leader")
+  write_run "$name"
+  kill -9 "$leader"
+  while kill -0 "$leader" 2>/dev/null; do sleep 0.05; done
+  run claim_environment
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pkill -g $leader"* ]]
+  pkill -g "$leader"
+  while pgrep -g "$leader" >/dev/null; do sleep 0.05; done
+  run claim_environment
+  [ "$status" -eq 0 ]
+}
+
+@test "does not hold through a group the ended run only belonged to" {
+  local pid dead
+  pid=$(start_background_process)
+  dead=$(ended_process_pid)
+  write_run "$dead.$pid.Thu_Oct_15_12_31_00_2026"
+  run claim_environment
+  [ "$status" -eq 0 ]
+}
+
+@test "keeps the lock for a nested run after the run that started it ends" {
+  local parent name child_marker
+  parent=$(start_background_process)
+  name=$(run_name_of "$parent")
+  write_run "$name"
+  FIRMAMENT_RUN_ANCESTORS="$name" bash -c 'source "$1/.mise/lib.sh"; claim_environment; sleep 60' _ "$root_directory" >/dev/null 2>&1 3>&- &
+  remember_process "$!"
+  until [ "$(find "$(runs_directory)" -type f | wc -l)" -ge 2 ]; do sleep 0.05; done
+  kill "$parent"
+  while kill -0 "$parent" 2>/dev/null; do sleep 0.05; done
+  run claim_environment
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"is busy"* ]]
+}
+
+@test "stops when it cannot record that a run is alive" {
+  mkdir -p "$TF_VAR_state_directory"
+  chmod 500 "$TF_VAR_state_directory"
+  run claim_environment
+  chmod 700 "$TF_VAR_state_directory"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot create $(runs_directory)"* ]]
+}
+
+@test "never lets two runs that start close together both proceed" {
+  export TF_VAR_state_directory MISE_PROJECT_ROOT
+  local results="$BATS_TEST_TMPDIR/results" round
+  : >"$results"
+  for round in 1 2 3 4 5 6 7 8 9 10; do
+    for _ in 1 2; do
+      bash -c '
+        source "$1/.mise/lib.sh"
+        if claim_environment 2>/dev/null; then
+          if mkdir "$2/inside" 2>/dev/null; then sleep 0.1; rmdir "$2/inside"; echo proceeded >>"$3"
+          else echo overlapped >>"$3"; fi
+        fi' _ "$root_directory" "$TF_VAR_state_directory" "$results" 3>&- &
+      sleep 0.03
+    done
+    wait
+  done
+  ! grep -q overlapped "$results"
+  grep -q proceeded "$results"
+}

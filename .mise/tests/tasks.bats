@@ -6,6 +6,10 @@ setup() {
   setup_stubs
 }
 
+teardown() {
+  end_background_processes
+}
+
 task_scripts() {
   find "$root_directory/.mise/tasks" -name '*.sh' | sort
 }
@@ -71,11 +75,30 @@ run_task() {
   done
 }
 
+# Prints each task script that changes an environment.
+claiming_scripts() {
+  printf '%s\n' "$root_directory"/.mise/tasks/*/apply.sh "$root_directory"/.mise/tasks/*/destroy.sh \
+    "$root_directory/.mise/tasks/env/e2e.sh" "$root_directory"/.mise/tasks/cilium/{restart-agent,traffic-start,traffic-check}.sh
+}
+
 @test "every task that changes an environment claims it first" {
   local script
-  for script in "$root_directory"/.mise/tasks/*/apply.sh "$root_directory"/.mise/tasks/*/destroy.sh \
-    "$root_directory/.mise/tasks/env/e2e.sh" "$root_directory"/.mise/tasks/cilium/{restart-agent,traffic-start,traffic-check}.sh; do
+  for script in $(claiming_scripts); do
     grep -qx 'claim_environment' "$script" || fail "$script changes the environment without claiming it"
+  done
+}
+
+@test "every task that changes an environment refuses while another run of it is alive, before it calls anything" {
+  local script holder
+  e2e_repository
+  holder=$(start_background_process)
+  write_run "$(run_name_of "$holder")" "$FIRMAMENT_STATE_HOME/environments/local"
+  for script in $(claiming_scripts); do
+    rm -f "$CALLS"
+    run_task "$script" local
+    [ "$status" -ne 0 ] || fail "$script ran while another run was alive"
+    [[ "$output" == *"environment 'local' is busy: env:apply (pid $holder)"* ]] || fail "$script: $output"
+    [ ! -e "$CALLS" ] || fail "$script called $(cat "$CALLS") before it was refused"
   done
 }
 

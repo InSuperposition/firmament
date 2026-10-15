@@ -8,8 +8,8 @@ require_environment >/dev/null
 # checkout is not it.
 pinned_git_commit >/dev/null
 
-init_root machine-orb
 claim_environment
+init_root machine-orb
 refuse_k0s_charts
 # Each root reads the contract file the one before it wrote, so they apply
 # in order: the machine, then k0s on it, then the bootstrap into the cluster.

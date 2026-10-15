@@ -5,8 +5,8 @@ set -euo pipefail
 source "${MISE_PROJECT_ROOT:?}/.mise/lib.sh"
 require_environment >/dev/null
 
-init_root machine-orb
 claim_environment
+init_root machine-orb
 tofu_in_root machine-orb apply -input=false -auto-approve
 machine=$(contract_field machine-hosts.yaml .name)
 orb info "$machine" --format json

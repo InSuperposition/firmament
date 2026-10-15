@@ -357,3 +357,47 @@ commit_and_push() {
   git -C "$repository" push -q origin "HEAD:refs/heads/$branch"
   git -C "$repository" fetch -q origin
 }
+
+# Ends the processes a test started with start_background_process, and their
+# groups. A test file calls it from its teardown.
+end_background_processes() {
+  local pid
+  while read -r pid; do
+    pkill -g "$pid" 2>/dev/null || true
+    kill "$pid" 2>/dev/null || true
+  done < <(cat "$BATS_TEST_TMPDIR/background-pids" 2>/dev/null)
+}
+
+# Notes a process the test started, so end_background_processes ends it.
+remember_process() {
+  printf '%s\n' "$1" >>"$BATS_TEST_TMPDIR/background-pids"
+}
+
+# Starts a process that lives until the test ends, and prints its pid.
+start_background_process() {
+  sleep 60 >/dev/null 2>&1 3>&- &
+  remember_process "$!"
+  printf '%s\n' "$!"
+}
+
+# Prints the pid of a process that has already ended.
+ended_process_pid() {
+  true &
+  local pid=$!
+  wait "$pid"
+  printf '%s\n' "$pid"
+}
+
+# Prints the name a run of process $1 records: pid, process group, start time.
+run_name_of() {
+  printf '%s.%s.%s\n' "$1" "$(ps -o pgid= -p "$1" | tr -d ' ')" \
+    "$(ps -o lstart= -p "$1" | tr -d '\n' | tr -c 'A-Za-z0-9' _)"
+}
+
+# Records a run named $1 under the runs directory of the state directory $2
+# (the test's own by default), as the claim of a live process writes it.
+write_run() {
+  local directory="${2:-$TF_VAR_state_directory}/runs"
+  mkdir -p "$directory"
+  printf 'env:apply\t/checkout/elsewhere\t2026-10-15 12:31:00\n' >"$directory/$1"
+}
