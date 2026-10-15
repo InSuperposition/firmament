@@ -32,6 +32,10 @@ setup() {
 printf 'mise %s\n' "\$*" >>"\$CALLS"
 case "\$*" in
   "run flux:ui --port "* | "run cilium:ui --port "*)
+    if [[ -n "\${TOUR_UI_FAIL:-}" ]]; then
+      echo "port-forward failed: boom" >&2
+      exit 1
+    fi
     port="\${!#}"
     while true; do nc -l "\$port"; done ;;
   "run env:apply") exit 0 ;;
@@ -98,6 +102,13 @@ latest_record() {
   sleep 1
   ! nc -z 127.0.0.1 "$flux_port" || fail "the Flux UI port is still open"
   ! nc -z 127.0.0.1 "$hubble_port" || fail "the Hubble UI port is still open"
+}
+
+@test "tour shows why a UI task exited" {
+  TOUR_UI_FAIL=1 tour
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the process that should listen on local port $flux_port exited"* ]]
+  [[ "$output" == *"port-forward failed: boom"* ]]
 }
 
 @test "tour stops before starting anything when a UI port is busy" {

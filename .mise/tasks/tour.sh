@@ -64,6 +64,14 @@ stop_uis() {
   done
 }
 
+# Waits until the UI process $1 listens on port $2 within $3 seconds. When it
+# does not, prints the tail of its output file $4, which holds the reason.
+await_ui() {
+  wait_for_local_port "$1" "$2" "$3" && return 0
+  tail -n 20 "$4" >&2 2>/dev/null || true
+  return 1
+}
+
 # Writes the run record: complete only when $1 is true. A record is written to
 # a partial file and moved into place, so a reader never sees half of one.
 write_record() {
@@ -116,14 +124,17 @@ printf 'ok: the cluster answers, runs %s, and is ready\n' "$cluster_revision"
 # The two UI tasks run until stopped, each in a process group of its own, so
 # stopping the tour stops them and their port-forwards.
 printf 'Starting the Flux UI on port %s and the Hubble UI on port %s\n' "$flux_port" "$hubble_port"
+flux_ui_log="$evidence_directory/ui-flux-$stamp.log"
+hubble_ui_log="$evidence_directory/ui-hubble-$stamp.log"
+cv_forward_log="$evidence_directory/ui-cv-$stamp.log"
 set -m
-mise run flux:ui --port "$flux_port" >/dev/null 2>&1 &
+mise run flux:ui --port "$flux_port" </dev/null >"$flux_ui_log" 2>&1 &
 ui_pids+=($!)
-mise run cilium:ui --port "$hubble_port" >/dev/null 2>&1 &
+mise run cilium:ui --port "$hubble_port" </dev/null >"$hubble_ui_log" 2>&1 &
 ui_pids+=($!)
 set +m
-wait_for_local_port "${ui_pids[0]}" "$flux_port" 60 || exit
-wait_for_local_port "${ui_pids[1]}" "$hubble_port" 60 || exit
+await_ui "${ui_pids[0]}" "$flux_port" 60 "$flux_ui_log" || exit
+await_ui "${ui_pids[1]}" "$hubble_port" 60 "$hubble_ui_log" || exit
 
 # The cv site, through the Gateway; when the Gateway does not answer from this
 # machine, through a port-forward to the cv service instead.
@@ -141,10 +152,10 @@ fi
 if [[ -z "$cv_url" ]]; then
   require_free_local_port "$cv_port" || exit
   set -m
-  kubectl --kubeconfig "$kubeconfig" -n cv port-forward svc/cv "$cv_port:80" >/dev/null 2>&1 &
+  kubectl --kubeconfig "$kubeconfig" -n cv port-forward svc/cv "$cv_port:80" </dev/null >"$cv_forward_log" 2>&1 &
   ui_pids+=($!)
   set +m
-  wait_for_local_port "${ui_pids[2]}" "$cv_port" 30 || exit
+  await_ui "${ui_pids[2]}" "$cv_port" 30 "$cv_forward_log" || exit
   cv_url="http://localhost:$cv_port/"
 fi
 open "$cv_url"
