@@ -274,6 +274,16 @@ run from another worktree while the owner exists. Run the task from the
 owning worktree, destroy the cluster there, or set
 `FIRMAMENT_TAKE_OVER=1` to take it over.
 
+Those tasks also refuse to start while another run of the environment is
+alive, so an apply cannot race a destroy. Each run writes a file in
+`runs/` in the state directory, named by its process id, process group
+and start time. A run counts only while its process, or a process of the
+group it led, still runs, so a killed run needs no cleanup and a killed
+task that left `tofu` or `k0sctl` behind still holds the environment. The
+refusal names the run and says how to end it. Steps that `env:e2e`
+starts do not count it. Runs that start within a few milliseconds of each
+other can all back off; run the task again.
+
 The hooks are safe in linked worktrees. Git hands a
 worktree's hooks `GIT_DIR`, `GIT_INDEX_FILE` and similar variables with
 absolute paths. Every task clears them when it starts (`.mise/lib.sh`),

@@ -180,11 +180,78 @@ current_worktree() {
   printf '%s\n' "${FIRMAMENT_WORKTREE:-${MISE_PROJECT_ROOT:?run this through mise}}"
 }
 
+# Prints a token naming when process $1 started, or nothing when it does not
+# run. A pid alone can be reused by another process; a pid with its start
+# time cannot.
+process_start_token() {
+  ps -o lstart= -p "$1" 2>/dev/null | tr -d '\n' | tr -c 'A-Za-z0-9' _
+}
+
+# Succeeds while the run named <pid>.<pgid>.<start> is alive: its process
+# still runs, or a process of its group does, as a killed task can leave tofu
+# or k0sctl running. Only a group the run led counts, as every task mise
+# starts does; a group the run merely belonged to is shared with other
+# processes and says nothing about it.
+run_is_live() {
+  local pid pgid start
+  IFS=. read -r pid pgid start <<<"$1"
+  if [[ -n "$start" && "$(process_start_token "$pid")" == "$start" ]]; then
+    return 0
+  fi
+  [[ "$pgid" == "$pid" ]] && pgrep -g "$pgid" >/dev/null 2>&1
+}
+
+# Records that this run is alive and fails while another run of the
+# environment is, so an apply cannot race a destroy. Each run owns one file
+# in <state>/runs, named by its pid, process group and start time, and a run
+# is alive only while that process or its group is. Nothing is released: a
+# run that ends, or is killed, stops counting. A run whose ancestors are
+# listed in FIRMAMENT_RUN_ANCESTORS (env:e2e's steps) does not count them, and
+# a run that backs off removes its own file. Runs that start in the same few
+# milliseconds can all back off; running the task again works.
+acquire_environment_lock() {
+  local environment directory marker file name task worktree since pid pgid
+  environment=$(require_environment) || return
+  directory="${TF_VAR_state_directory}/runs"
+  mkdir -p "$directory" || {
+    fail "cannot create $directory, where each run records that it is alive"
+    return
+  }
+  pgid=$(ps -o pgid= -p "$$" | tr -d ' ')
+  marker="$$.${pgid}.$(process_start_token "$$")"
+  printf '%s\t%s\t%s\n' "${MISE_TASK_NAME:-${0##*/}}" "$(current_worktree)" "$(date '+%Y-%m-%d %H:%M:%S')" \
+    >"$directory/$marker" || {
+    fail "cannot write $directory/$marker"
+    return
+  }
+  for file in "$directory"/*; do
+    [[ -e "$file" ]] || continue
+    name=${file##*/}
+    if [[ "$name" == "$marker" || ":${FIRMAMENT_RUN_ANCESTORS:-}:" == *":$name:"* ]]; then
+      continue
+    fi
+    if [[ "$name" =~ ^[0-9]+\.[0-9]+\.[A-Za-z0-9_]+$ ]] && run_is_live "$name"; then
+      rm -f "$directory/$marker"
+      IFS=$'\t' read -r task worktree since <"$file" || true
+      IFS=. read -r pid pgid _ <<<"$name"
+      fail "environment '$environment' is busy: ${task:-a run that is starting} (pid $pid) from ${worktree:-an unknown checkout} since ${since:-now}
+  wait for it, or end it: kill $pid (processes it left behind: pkill -g $pgid)
+  not a firmament run? remove $file"
+      return
+    fi
+    rm -f "$file"
+  done
+  if [[ ":${FIRMAMENT_RUN_ANCESTORS:-}:" != *":$marker:"* ]]; then
+    export FIRMAMENT_RUN_ANCESTORS="${FIRMAMENT_RUN_ANCESTORS:+$FIRMAMENT_RUN_ANCESTORS:}$marker"
+  fi
+}
+
 # Records this checkout as the owner of an environment's live cluster, or
 # fails when another existing worktree owns it, so one worktree cannot
 # rebuild or destroy the cluster another is testing. A recorded worktree
 # that no longer exists does not count. FIRMAMENT_TAKE_OVER=1 claims it
-# anyway.
+# anyway. It also fails while another run of the environment is alive, and
+# does that before it records the owner, so a refused run changes nothing.
 claim_environment() {
   local environment worktree owner_file owner
   environment=$(require_environment) || return
@@ -195,6 +262,7 @@ claim_environment() {
     fail "environment '$environment' belongs to the worktree $owner; run this there, or set FIRMAMENT_TAKE_OVER=1 to take it over"
     return
   fi
+  acquire_environment_lock || return
   mkdir -p "$(dirname -- "$owner_file")"
   printf '%s\n' "$worktree" >"$owner_file"
 }

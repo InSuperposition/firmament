@@ -22,18 +22,6 @@ Priority: P2 bites the local setup today; P3 is cleanup, or waits for the trigge
 **Priority:** P3
 **Depends on:** nothing
 
-### Exclude two runs from one checkout around the k0sctl edge
-
-**What:** Add a lock around the environment apply and destroy tasks so two runs from the same checkout cannot interleave.
-
-**Why:** `claim_environment` refuses only a different worktree, and OpenTofu's state lock covers one command, not the render, `k0sctl apply` and publish sequence. An apply racing a destroy can remove the machine while `k0sctl` is mid-run.
-
-**Context:** `claim_environment` in `.mise/lib.sh` writes the owning worktree to `$state/owner`. The repo has no lock pattern; macOS has no `flock`, so the work is a lock directory with stale-lock handling, taken by `env:apply`, `k0s:apply` and both destroy tasks.
-
-**Effort:** M
-**Priority:** P2
-**Depends on:** nothing
-
 ### Manage the GitHub repository settings as code
 
 **What:** Declare branch protection, Actions permissions and package visibility in an OpenTofu root with the GitHub provider, so the settings that gate delivery are reviewed and recorded like the rest of the repository.
