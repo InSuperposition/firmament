@@ -74,3 +74,10 @@ $FIRMAMENT_STATE_HOME/environments/local/
 mise sets `FIRMAMENT_STATE_HOME` to
 `${XDG_STATE_HOME:-$HOME/.local/state}/firmament` unless it is already
 set, and treats an empty value as unset.
+
+The `runs/` folder in it holds one file for each run of a task that
+changes the environment, and a run counts only while its process, or a
+process of the group it led, still runs. A refused task prints the busy run's
+task, process id and checkout, and says how to end it. If it names a
+process that is not a firmament run, which can happen after a reboot
+reuses its process group id, remove the file it names.
