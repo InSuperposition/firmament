@@ -14,3 +14,14 @@ The Gateway API custom resource definitions that Cilium's Gateway controller req
 - It holds the seven definitions Cilium requires (GatewayClass, Gateway, HTTPRoute, GRPCRoute, BackendTLSPolicy, ReferenceGrant, TLSRoute), the optional ListenerSet, TCPRoute and UDPRoute, and the upstream `safe-upgrades` ValidatingAdmissionPolicy with its binding.
 - `mise run gateway:check-crds` compares `crds.yaml` and the release at the URL above with that checksum. Change the version, the URL and the checksum together, and run it.
 - Upgrade one Cilium minor at a time and read its upgrade notes on the Gateway API version before changing the file.
+
+## Upgrading
+
+A Cilium minor may document another Gateway API version. The definitions are never pruned, so a change is a deliberate upgrade:
+
+1. Read the Cilium upgrade notes for the Gateway API version.
+2. Replace `crds.yaml` with the upstream `standard-install.yaml` of that release.
+3. Change the version, the URL and the SHA-256 above together.
+4. Run `mise run gateway:check-crds`.
+
+The upstream `safe-upgrades` policy in `crds.yaml` refuses an older version and refuses experimental definitions over standard ones, so a downgrade fails on the cluster.

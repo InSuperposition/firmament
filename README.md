@@ -252,9 +252,8 @@ formats the staged files, fixing and restaging what it can. `pre-push`
 adds `tofu:validate` and `test`, each only when the pushed commits touch
 a file that can change its result.
 
-Deferred work is planned in `.plan/`, a local folder that Git ignores:
-start with `.plan/README.md`. `TODOS.md` lists small follow-ups found while
-building, each with its context.
+`TODOS.md` lists the open follow-ups found while building, each with its
+context, effort and priority.
 
 ### Worktrees
 
