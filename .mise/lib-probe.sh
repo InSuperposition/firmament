@@ -13,10 +13,11 @@
 readonly image=public.ecr.aws/docker/library/busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
 
 # Runs one short-lived pod, named $2, in namespace $1 and prints what the shell
-# command $3 printed.
+# command $3 printed. kubectl reads no input: timeout runs it in a process group
+# of its own, and a background process that reads the terminal is stopped.
 probe() {
   timeout 180 kubectl --kubeconfig "$kubeconfig" -n "$1" run "$2" --rm -i --restart=Never \
-    --image="$image" --command -- sh -c "$3" 2>&1 || true
+    --image="$image" --command -- sh -c "$3" 2>&1 </dev/null || true
 }
 
 # A name for the next probe pod, which Hubble keeps in the flows it records.
