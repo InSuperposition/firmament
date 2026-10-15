@@ -19,7 +19,10 @@ machine through OrbStack's multiplexer. `ssh` holds the `address`, `port`,
 multiplexer's server keys read from `~/.orbstack/ssh/known_hosts` as
 `<type> <base64 key>` entries. Reading `~/.orbstack` is why only this
 module knows OrbStack. When no key is found for `[127.0.0.1]:32222`, the
-`ssh` output fails and names the file.
+`ssh` output fails and names the file. The file exists on a Mac where
+OrbStack has run; that OrbStack writes it before the first machine exists on
+a clean profile has not been checked, and apply fails with the message above
+if it does not.
 
 ## Constraints
 

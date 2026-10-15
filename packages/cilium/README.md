@@ -117,7 +117,11 @@ Limits of host-network mode:
 - The listener port must be above 1023 and free on the node (8880 here).
   Another Gateway or listener needs another port.
 - The Gateway's address is the node's. With two or more nodes every node
-  listens and the Gateway reports one address; see `TODOS.md`.
+  listens and the Gateway reports one address, so the address in `status`
+  is not the only one that answers. The chart's node selector for
+  host-network Envoy (`gatewayAPI.hostNetwork.nodes.matchLabels`; check it
+  in the chart before use) pins Envoy to chosen nodes. Single node today;
+  an address of its own is in `TODOS.md`.
 - Envoy runs in the `reserved:ingress` identity, which carries no namespace
   label. The clusterwide `tenant-default-deny` selects with `NotIn` plus
   `Exists` on the namespace label so it leaves that endpoint alone; a
