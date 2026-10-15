@@ -37,6 +37,28 @@ run_task() {
   done
 }
 
+# The name mise gives a task script: .mise/tasks/openbao/seed.sh is openbao:seed.
+task_name() {
+  local relative="${1#"$root_directory"/.mise/tasks/}"
+  relative="${relative%.sh}"
+  echo "${relative//\//:}"
+}
+
+@test "every task a README does not exempt is named in one of the two READMEs" {
+  local script name
+  for script in $(task_scripts); do
+    name=$(task_name "$script")
+    case "$name" in
+    *:lint | *:format | *:test | orb:inspect | orb:capture-stall) continue ;;
+    esac
+    # A name counts when it is quoted in code or follows "run", so a task
+    # called "render" or "tour" is not satisfied by the same word in prose.
+    grep -Eq "(\`|run )${name}([^a-z:-]|\$)" \
+      "$root_directory/README.md" "$root_directory/environments/local/README.md" ||
+      fail "$name is in neither README.md nor environments/local/README.md; add it to the table, or exempt it here"
+  done
+}
+
 @test "every environment task stops at an unknown environment before calling any tool" {
   local script
   for script in $(environment_scripts); do
